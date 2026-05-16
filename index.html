@@ -105,7 +105,7 @@
                 <strong id="totalCustomers">0</strong>
               </article>
               <article class="metric metric-green">
-                <span>งวดที่เปิดอยู่</span>
+                <span>งวดที่ยังรับอยู่</span>
                 <strong id="openRoundsCount">0</strong>
               </article>
               <article class="metric metric-amber">
@@ -307,7 +307,8 @@
           <section class="view" data-view="customers" hidden>
             <section class="panel customer-panel">
               <div class="panel-heading">
-                <h2>จัดการลูกค้า</h2>
+                <h2 id="customerFormTitle">เพิ่มลูกค้า</h2>
+                <button id="resetCustomerBtn" class="text-button hidden" type="button">ยกเลิกแก้ไข</button>
               </div>
               <form id="customerForm" class="stack-form">
                 <div class="field-grid customer-grid">
@@ -320,8 +321,8 @@
                     <select id="customerHeadHouseInput" required></select>
                   </label>
                 </div>
-                <p class="helper-copy">ระบบจะออกรหัสลูกค้าให้อัตโนมัติ เช่น C0001</p>
-                <button class="button button-primary" type="submit">เพิ่มลูกค้า</button>
+                <p class="helper-copy">ระบบจะออกรหัสลูกค้าให้อัตโนมัติ เช่น C0001 และจะไม่ให้ย้ายหัวบ้านหลังมีรายการแล้วเพื่อคงยอดย้อนหลังให้ถูกต้อง</p>
+                <button id="customerSubmitBtn" class="button button-primary" type="submit">เพิ่มลูกค้า</button>
               </form>
               <div id="customerList" class="customer-list"></div>
             </section>
@@ -390,7 +391,8 @@
 
               <section class="panel round-panel">
                 <div class="panel-heading">
-                  <h2>สร้างงวด</h2>
+                  <h2 id="roundFormTitle">สร้างงวด</h2>
+                  <button id="resetRoundBtn" class="text-button hidden" type="button">ยกเลิกแก้ไข</button>
                 </div>
                 <form id="roundForm" class="stack-form">
                   <div class="field-grid customer-grid">
@@ -417,7 +419,7 @@
                       <input id="roundCloseBeforeInput" type="number" min="0" max="1440" step="1" value="15" required />
                     </label>
                   </div>
-                  <button class="button button-primary" type="submit">เพิ่มงวด</button>
+                  <button id="roundSubmitBtn" class="button button-primary" type="submit">เพิ่มงวด</button>
                 </form>
               </section>
             </section>
@@ -621,7 +623,8 @@
             <section class="split-grid">
               <section class="panel user-panel">
                 <div class="panel-heading">
-                  <h2>เพิ่มผู้ใช้</h2>
+                  <h2 id="userFormTitle">เพิ่มผู้ใช้</h2>
+                  <button id="resetUserBtn" class="text-button hidden" type="button">ยกเลิกแก้ไข</button>
                 </div>
                 <form id="userForm" class="stack-form">
                   <label class="field">
@@ -644,7 +647,8 @@
                     <span>หัวบ้าน</span>
                     <select id="userHeadHouseInput"></select>
                   </label>
-                  <button class="button button-primary" type="submit">เพิ่มผู้ใช้</button>
+                  <p id="userPasswordHint" class="helper-copy hidden">เว้นว่างได้ หากไม่ต้องการเปลี่ยนรหัสผ่าน</p>
+                  <button id="userSubmitBtn" class="button button-primary" type="submit">เพิ่มผู้ใช้</button>
                 </form>
               </section>
 
@@ -660,6 +664,7 @@
                         <th>สิทธิ์</th>
                         <th>หัวบ้าน</th>
                         <th>วันที่สร้าง</th>
+                        <th></th>
                       </tr>
                     </thead>
                     <tbody id="usersBody"></tbody>

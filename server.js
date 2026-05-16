@@ -234,6 +234,10 @@ app.post("/api/users", requireAuth, requireAdmin, (req, res) => {
     return res.status(400).json({ error: "invalid_user_payload" });
   }
 
+  if (role === "head_house_viewer" && findViewerForHeadHouse(headHouseId)) {
+    return res.status(409).json({ error: "viewer_account_exists" });
+  }
+
   const user = {
     id: crypto.randomUUID(),
     username,
@@ -254,6 +258,84 @@ app.post("/api/users", requireAuth, requireAdmin, (req, res) => {
 
   logAudit(req.user.id, "create", "user", user.id, { username: user.username, role: user.role });
   res.status(201).json(publicUser(user));
+});
+
+app.put("/api/users/:id", requireAuth, requireAdmin, (req, res) => {
+  const existing = findUser(req.params.id);
+  if (!existing) return res.status(404).json({ error: "user_not_found" });
+
+  const username = cleanText(req.body.username, 40);
+  const password = String(req.body.password || "");
+  const role =
+    req.body.role === "operator"
+      ? "operator"
+      : req.body.role === "head_house_viewer"
+        ? "head_house_viewer"
+        : "admin";
+  const headHouseId = role === "head_house_viewer" ? cleanText(req.body.headHouseId, 80) : null;
+
+  if (!username || (password && password.length < 8) || (role === "head_house_viewer" && !findHeadHouse(headHouseId))) {
+    return res.status(400).json({ error: "invalid_user_payload" });
+  }
+
+  if (role === "head_house_viewer") {
+    const existingViewer = findViewerForHeadHouse(headHouseId);
+    if (existingViewer && existingViewer.id !== existing.id) {
+      return res.status(409).json({ error: "viewer_account_exists" });
+    }
+  }
+
+  if (existing.role === "admin" && role !== "admin" && countAdmins() <= 1) {
+    return res.status(409).json({ error: "last_admin_required" });
+  }
+
+  if (existing.id === req.user.id && role !== "admin") {
+    return res.status(409).json({ error: "self_role_change_blocked" });
+  }
+
+  try {
+    db.prepare(`
+      UPDATE users
+      SET username = ?, role = ?, head_house_id = ?
+      WHERE id = ?
+    `).run(username, role, headHouseId, existing.id);
+  } catch {
+    return res.status(409).json({ error: "username_exists" });
+  }
+
+  if (password) {
+    db.prepare("UPDATE users SET password_hash = ? WHERE id = ?").run(bcrypt.hashSync(password, 12), existing.id);
+    if (existing.id === req.user.id) {
+      db.prepare("DELETE FROM sessions WHERE user_id = ? AND token_hash <> ?").run(existing.id, req.session.tokenHash);
+    } else {
+      db.prepare("DELETE FROM sessions WHERE user_id = ?").run(existing.id);
+    }
+  }
+
+  const updated = findUser(existing.id);
+  logAudit(req.user.id, "update", "user", updated.id, {
+    username: updated.username,
+    role: updated.role,
+    headHouseId: updated.head_house_id,
+    passwordChanged: Boolean(password),
+  });
+  res.json(publicUser(updated));
+});
+
+app.delete("/api/users/:id", requireAuth, requireAdmin, (req, res) => {
+  const existing = findUser(req.params.id);
+  if (!existing) return res.status(404).json({ error: "user_not_found" });
+  if (existing.id === req.user.id) return res.status(409).json({ error: "self_delete_blocked" });
+  if (existing.role === "admin" && countAdmins() <= 1) {
+    return res.status(409).json({ error: "last_admin_required" });
+  }
+
+  db.prepare("DELETE FROM users WHERE id = ?").run(existing.id);
+  logAudit(req.user.id, "delete", "user", existing.id, {
+    username: existing.username,
+    role: existing.role,
+  });
+  res.status(204).end();
 });
 
 app.post("/api/head-houses", requireAuth, requireAdmin, (req, res) => {
@@ -436,6 +518,46 @@ app.post("/api/customers", requireAuth, requireWriteAccess, (req, res) => {
   res.status(201).json(customer);
 });
 
+app.put("/api/customers/:id", requireAuth, requireWriteAccess, (req, res) => {
+  const existing = findCustomer(req.params.id);
+  if (!existing) return res.status(404).json({ error: "customer_not_found" });
+
+  const name = cleanText(req.body.name, 80);
+  const headHouseId = cleanText(req.body.headHouseId, 80);
+  if (!findHeadHouse(headHouseId)) {
+    return res.status(400).json({ error: "invalid_customer_payload" });
+  }
+
+  const entryCount = db.prepare("SELECT COUNT(*) AS count FROM entries WHERE customer_id = ?").get(existing.id).count;
+  if (entryCount > 0 && headHouseId !== existing.head_house_id) {
+    return res.status(409).json({ error: "customer_head_house_locked" });
+  }
+
+  db.prepare(`
+    UPDATE customers
+    SET name = ?, head_house_id = ?, updated_at = ?
+    WHERE id = ?
+  `).run(name, headHouseId, nowIso(), existing.id);
+
+  const updated = findCustomer(existing.id);
+  logAudit(req.user.id, "update", "customer", updated.id, updated);
+  res.json(updated);
+});
+
+app.delete("/api/customers/:id", requireAuth, requireWriteAccess, (req, res) => {
+  const existing = findCustomer(req.params.id);
+  if (!existing) return res.status(404).json({ error: "customer_not_found" });
+
+  const entryCount = db.prepare("SELECT COUNT(*) AS count FROM entries WHERE customer_id = ?").get(existing.id).count;
+  if (entryCount > 0) {
+    return res.status(409).json({ error: "customer_has_entries" });
+  }
+
+  db.prepare("DELETE FROM customers WHERE id = ?").run(existing.id);
+  logAudit(req.user.id, "delete", "customer", existing.id, existing);
+  res.status(204).end();
+});
+
 app.post("/api/lotteries", requireAuth, requireWriteAccess, (req, res) => {
   const name = cleanText(req.body.name, 80);
   if (!name) {
@@ -525,13 +647,15 @@ app.put("/api/rounds/:id", requireAuth, requireWriteAccess, (req, res) => {
   const round = findRound(req.params.id);
   if (!round) return res.status(404).json({ error: "round_not_found" });
 
-  const status = req.body.status === "closed" ? "closed" : "open";
+  const status = req.body.status === undefined ? round.status : req.body.status === "closed" ? "closed" : "open";
+  const label = req.body.label ? cleanText(req.body.label, 80) : round.label;
   const drawDate = req.body.drawDate ? cleanText(req.body.drawDate, 20) : round.draw_date;
   const drawTime = req.body.drawTime ? cleanText(req.body.drawTime, 5) : round.draw_time;
   const closeBeforeMinutes =
     req.body.closeBeforeMinutes === undefined ? round.close_before_minutes : Number(req.body.closeBeforeMinutes);
 
   if (
+    !label ||
     !isIsoDate(drawDate) ||
     !isTimeOfDay(drawTime) ||
     !Number.isInteger(closeBeforeMinutes) ||
@@ -542,13 +666,17 @@ app.put("/api/rounds/:id", requireAuth, requireWriteAccess, (req, res) => {
   }
 
   const updatedAt = nowIso();
-  db.prepare(`
-    UPDATE rounds
-    SET status = ?, draw_date = ?, draw_time = ?, close_before_minutes = ?, updated_at = ?
-    WHERE id = ?
-  `).run(status, drawDate, drawTime, closeBeforeMinutes, updatedAt, round.id);
+  try {
+    db.prepare(`
+      UPDATE rounds
+      SET label = ?, status = ?, draw_date = ?, draw_time = ?, close_before_minutes = ?, updated_at = ?
+      WHERE id = ?
+    `).run(label, status, drawDate, drawTime, closeBeforeMinutes, updatedAt, round.id);
+  } catch {
+    return res.status(409).json({ error: "round_exists" });
+  }
   const updated = findRound(round.id);
-  logAudit(req.user.id, "update", "round", round.id, { status });
+  logAudit(req.user.id, "update", "round", round.id, updated);
   res.json(presentRound(updated));
 });
 
@@ -925,6 +1053,24 @@ function findLottery(id) {
 
 function findHeadHouse(id) {
   return db.prepare("SELECT * FROM head_houses WHERE id = ?").get(id);
+}
+
+function findUser(id) {
+  return db.prepare("SELECT * FROM users WHERE id = ?").get(id);
+}
+
+function countAdmins() {
+  return db.prepare("SELECT COUNT(*) AS count FROM users WHERE role = 'admin'").get().count;
+}
+
+function findViewerForHeadHouse(headHouseId) {
+  return db
+    .prepare("SELECT * FROM users WHERE role = 'head_house_viewer' AND head_house_id = ?")
+    .get(headHouseId);
+}
+
+function findCustomer(id) {
+  return db.prepare("SELECT * FROM customers WHERE id = ?").get(id);
 }
 
 function findRound(id) {

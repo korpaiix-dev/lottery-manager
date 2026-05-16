@@ -34,8 +34,9 @@ Then open `http://127.0.0.1:3001`.
 
 - Customer management
 - Head-house management
+- User management with edit/delete safeguards
 - Lottery product management
-- Round management
+- Round management with editable cutoff settings
 - Fast intake parser for pasted LINE-style messages
 - Customer-code detection inside pasted LINE messages
 - Manual entry recording
