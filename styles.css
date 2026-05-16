@@ -47,8 +47,58 @@ textarea {
   font: inherit;
 }
 
-.app-shell {
-  width: min(1320px, calc(100% - 32px));
+.app-frame {
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr);
+  min-height: 100vh;
+}
+
+.sidebar {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  padding: 24px 16px;
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
+  background: #112238;
+  color: #fff;
+}
+
+.brand-block {
+  padding: 0 10px 24px;
+}
+
+.brand-block .eyebrow {
+  color: rgba(255, 255, 255, 0.62);
+}
+
+.brand-block h1 {
+  font-size: 24px;
+}
+
+.sidebar-nav {
+  display: grid;
+  gap: 8px;
+}
+
+.nav-button {
+  min-height: 44px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.78);
+  text-align: left;
+  padding: 0 14px;
+  cursor: pointer;
+}
+
+.nav-button:hover,
+.nav-button.is-active {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+
+.workspace {
+  width: min(1260px, calc(100% - 36px));
   margin: 0 auto;
   padding: 28px 0 40px;
 }
@@ -59,6 +109,10 @@ textarea {
   align-items: flex-start;
   gap: 20px;
   margin-bottom: 24px;
+}
+
+.topbar h2 {
+  font-size: 28px;
 }
 
 .eyebrow {
@@ -105,9 +159,14 @@ small {
   gap: 10px;
 }
 
-.layout {
+.view-stack,
+.view {
   display: grid;
   gap: 18px;
+}
+
+.view[hidden] {
+  display: none;
 }
 
 .split-grid {
@@ -598,6 +657,38 @@ td.amount {
 }
 
 @media (max-width: 900px) {
+  .app-frame {
+    grid-template-columns: 1fr;
+  }
+
+  .sidebar {
+    position: static;
+    height: auto;
+    padding: 14px 14px 10px;
+    border-right: 0;
+  }
+
+  .brand-block {
+    padding: 0 4px 14px;
+  }
+
+  .sidebar-nav {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    padding-bottom: 4px;
+  }
+
+  .nav-button {
+    flex: 0 0 auto;
+    min-width: max-content;
+  }
+
+  .workspace {
+    width: min(100% - 24px, 1260px);
+    padding-top: 20px;
+  }
+
   .topbar,
   .records-heading,
   .hero-panel {
@@ -616,8 +707,8 @@ td.amount {
 }
 
 @media (max-width: 640px) {
-  .app-shell {
-    width: min(100% - 20px, 1320px);
+  .workspace {
+    width: min(100% - 20px, 1260px);
     padding-top: 18px;
   }
 

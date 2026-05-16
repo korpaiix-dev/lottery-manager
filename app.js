@@ -18,7 +18,38 @@ const state = {
   editingLimitId: null,
 };
 
+const VIEW_META = {
+  dashboard: {
+    eyebrow: "ศูนย์ควบคุมงานหลังบ้าน",
+    title: "แดชบอร์ด",
+  },
+  entries: {
+    eyebrow: "รับข้อมูลจากแอดมิน",
+    title: "รับรายการ",
+  },
+  customers: {
+    eyebrow: "ข้อมูลผู้ส่งรายการ",
+    title: "ลูกค้า",
+  },
+  lotteries: {
+    eyebrow: "หมวดหวยที่เปิดใช้งาน",
+    title: "หวย",
+  },
+  limits: {
+    eyebrow: "ควบคุมเพดานรับ",
+    title: "อั้นเลข",
+  },
+  reports: {
+    eyebrow: "สรุปผลการบันทึก",
+    title: "รายงาน",
+  },
+};
+
 const elements = {
+  navButtons: document.querySelectorAll("[data-view-target]"),
+  views: document.querySelectorAll("[data-view]"),
+  currentViewEyebrow: document.querySelector("#currentViewEyebrow"),
+  currentViewTitle: document.querySelector("#currentViewTitle"),
   entryForm: document.querySelector("#entryForm"),
   formTitle: document.querySelector("#formTitle"),
   submitBtn: document.querySelector("#submitBtn"),
@@ -78,6 +109,9 @@ initialize();
 
 function initialize() {
   elements.date.value = getTodayLocalDate();
+  elements.navButtons.forEach((button) => {
+    button.addEventListener("click", () => activateView(button.dataset.viewTarget));
+  });
   elements.entryForm.addEventListener("submit", handleRecordSubmit);
   elements.resetBtn.addEventListener("click", resetRecordForm);
   elements.customerForm.addEventListener("submit", handleCustomerSubmit);
@@ -106,7 +140,29 @@ function initialize() {
   elements.limitNumber.addEventListener("input", () => sanitizeNumberInput(elements.limitNumber, elements.limitType.value));
   syncNumberLimit(elements.number, elements.type.value);
   syncNumberLimit(elements.limitNumber, elements.limitType.value);
+  activateView("dashboard", false);
   render();
+}
+
+function activateView(viewName, shouldScroll = true) {
+  const meta = VIEW_META[viewName] ?? VIEW_META.dashboard;
+
+  elements.views.forEach((view) => {
+    const isActive = view.dataset.view === viewName;
+    view.hidden = !isActive;
+    view.classList.toggle("is-active", isActive);
+  });
+
+  elements.navButtons.forEach((button) => {
+    button.classList.toggle("is-active", button.dataset.viewTarget === viewName);
+  });
+
+  elements.currentViewEyebrow.textContent = meta.eyebrow;
+  elements.currentViewTitle.textContent = meta.title;
+
+  if (shouldScroll) {
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
 }
 
 function loadAppState() {
@@ -803,6 +859,7 @@ function beginRecordEdit(id) {
   const record = state.records.find((item) => item.id === id);
   if (!record) return;
 
+  activateView("entries");
   state.editingRecordId = id;
   renderSelectOptions();
   elements.lottery.value = record.lotteryId;
@@ -838,6 +895,7 @@ function beginLimitEdit(id) {
   const limit = state.limits.find((item) => item.id === id);
   if (!limit) return;
 
+  activateView("limits");
   state.editingLimitId = id;
   renderSelectOptions();
   elements.limitLottery.value = limit.lotteryId;
