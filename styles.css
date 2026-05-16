@@ -414,6 +414,7 @@ small {
 
 .lottery-card {
   display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
   gap: 4px;
   min-height: 96px;
   border: 1px solid var(--line);
@@ -422,6 +423,14 @@ small {
   text-align: left;
   color: inherit;
   background: #f4f5f7;
+}
+
+.lottery-card-flag {
+  grid-row: span 4;
+  align-self: start;
+  font-size: 28px;
+  line-height: 1;
+  margin-right: 4px;
 }
 
 .lottery-card strong {
@@ -483,8 +492,8 @@ small {
 .ticket-panel {
   display: grid;
   gap: 16px;
-  border: 2px solid rgba(23, 105, 170, 0.62);
-  background: #edf6fd;
+  border: 1px solid #ead85a;
+  background: #fffdf1;
 }
 
 .announcement-panel {
@@ -517,7 +526,7 @@ small {
 }
 
 .ticket-topline,
-.ticket-header,
+.ticket-reference-title,
 .ticket-summary-row {
   display: flex;
   justify-content: space-between;
@@ -529,14 +538,84 @@ small {
   color: #d14343;
 }
 
-.ticket-header h2 {
+.ticket-reference-header {
+  display: grid;
+  gap: 10px;
+  border: 1px solid #ead85a;
+  background: #fff8bf;
+  padding: 14px;
+}
+
+.ticket-reference-title h2 {
+  margin-bottom: 4px;
   font-size: 20px;
+}
+
+.ticket-inline-rate {
+  color: var(--primary);
+  font-size: 13px;
+}
+
+.ticket-reference-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.large-flag {
+  font-size: 28px;
+  line-height: 1;
 }
 
 .ticket-context-grid {
   display: grid;
   grid-template-columns: minmax(170px, 1fr) minmax(220px, 1.15fr) minmax(160px, 0.8fr);
   gap: 12px;
+}
+
+.ticket-top-controls {
+  grid-template-columns: minmax(220px, 1fr) minmax(260px, 1.15fr);
+}
+
+.ticket-mode-tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid #ead85a;
+}
+
+.ticket-mode-tab {
+  min-height: 38px;
+  border: 0;
+  border-radius: 4px 4px 0 0;
+  background: transparent;
+  color: var(--text);
+  padding: 0 14px;
+}
+
+.ticket-mode-tab.is-active {
+  background: #fff;
+}
+
+.ticket-compose-board {
+  display: grid;
+  gap: 14px;
+  border: 1px solid #ead85a;
+  background: #fff;
+  padding: 14px;
+}
+
+.ticket-compose-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.ticket-compose-heading h3 {
+  margin-bottom: 4px;
+}
+
+.ticket-compose-heading span {
+  color: var(--muted);
 }
 
 .readonly-field {
@@ -560,14 +639,15 @@ small {
   border: 1px solid rgba(23, 105, 170, 0.18);
   border-radius: 6px;
   padding: 0 14px;
-  background: #fff;
-  color: var(--primary);
+  border-color: #f5bf52;
+  background: #fff8e8;
+  color: #b26a00;
   cursor: pointer;
 }
 
 .ticket-tab.is-active {
-  border-color: #f39a45;
-  background: #f48c42;
+  border-color: #f7b52c;
+  background: #f7b52c;
   color: #fff;
 }
 
@@ -579,7 +659,7 @@ small {
 }
 
 .ticket-draft-wrap {
-  border: 1px solid rgba(23, 105, 170, 0.18);
+  border: 1px solid #ead85a;
   border-radius: 8px;
   background: #fff;
   padding: 14px;
@@ -1355,7 +1435,7 @@ td.credit {
   .inline-form,
   .closing-soon-banner,
   .ticket-topline,
-  .ticket-header,
+  .ticket-reference-title,
   .ticket-summary-row,
   .watch-item,
   .customer-item,
@@ -1366,6 +1446,10 @@ td.credit {
 
   .ticket-entry-grid {
     grid-template-columns: 1fr;
+  }
+
+  .ticket-compose-heading {
+    flex-direction: column;
   }
 
   .compact-row {

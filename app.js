@@ -108,6 +108,10 @@ const elements = {
   ticketAcceptingState: document.querySelector("#ticketAcceptingState"),
   ticketRoundTitle: document.querySelector("#ticketRoundTitle"),
   ticketRoundDate: document.querySelector("#ticketRoundDate"),
+  ticketFlag: document.querySelector("#ticketFlag"),
+  ticketComposeRoundLabel: document.querySelector("#ticketComposeRoundLabel"),
+  ticketComposeDate: document.querySelector("#ticketComposeDate"),
+  ticketSummaryRoundLabel: document.querySelector("#ticketSummaryRoundLabel"),
   ticketCustomer: document.querySelector("#ticketCustomerInput"),
   ticketRound: document.querySelector("#ticketRoundInput"),
   ticketRateLabel: document.querySelector("#ticketRateLabel"),
@@ -526,10 +530,11 @@ function renderLotteryBoard() {
                   data-lottery-id="${escapeHtml(lottery.id)}"
                   ${round ? "" : "disabled"}
                 >
+                  <span class="lottery-card-flag">${getLotteryFlag(lottery.id)}</span>
                   <strong>${escapeHtml(lottery.name)}</strong>
                   <span>${round ? escapeHtml(round.label) : "ยังไม่มีงวด"}</span>
-                  <small>${round ? `เปิด ${formatRoundOpenTime(round)} · ปิด ${formatRoundCloseTime(round)}` : "-"}</small>
-                  <em>${round ? status.label : "ยังไม่ตั้งงวด"}</em>
+                  <small>${round ? `ปิดรับ ${formatRoundCloseTime(round)}` : "-"}</small>
+                  <em>${round ? `${status.label}${round.accepting ? ` ${formatCountdownCompact(round)}` : ""}` : "ยังไม่ตั้งงวด"}</em>
                 </button>
               `;
             })
@@ -610,6 +615,10 @@ function renderTicketHeader() {
     elements.ticketAcceptingState.className = "status-pill warning";
     elements.ticketAcceptingState.textContent = "รอเลือกงวด";
     elements.ticketRateLabel.textContent = "-";
+    elements.ticketFlag.textContent = "🏳️";
+    elements.ticketComposeRoundLabel.textContent = "-";
+    elements.ticketComposeDate.textContent = "-";
+    elements.ticketSummaryRoundLabel.textContent = "-";
     return;
   }
 
@@ -619,6 +628,10 @@ function renderTicketHeader() {
   elements.ticketAcceptingState.textContent = roundStatusLabel(round);
   elements.ticketCountdown.textContent = formatCountdown(round);
   elements.ticketRateLabel.textContent = `${getBetTypeName(state.ticketBetTypeId)} บาทละ ${formatRate(getPayoutRate(round.lottery_id, state.ticketBetTypeId))}`;
+  elements.ticketFlag.textContent = getLotteryFlag(round.lottery_id);
+  elements.ticketComposeRoundLabel.textContent = `${getLotteryName(round.lottery_id)} · ${round.label}`;
+  elements.ticketComposeDate.textContent = shortDate(round.draw_date);
+  elements.ticketSummaryRoundLabel.textContent = `${getLotteryName(round.lottery_id)} · ${round.label}`;
 }
 
 function renderTicketBetTypeTabs() {
@@ -2238,6 +2251,19 @@ function getLotteryCategoryLabel(id) {
   return LOTTERY_CATEGORIES.find((category) => category.id === id)?.label || "หวยอื่น ๆ";
 }
 
+function getLotteryFlag(id) {
+  if (id === "thai" || id === "omsin" || id === "baac") return "🇹🇭";
+  if (id.startsWith("lao")) return "🇱🇦";
+  if (id.startsWith("hanoi")) return "🇻🇳";
+  if (id === "malaysia") return "🇲🇾";
+  if (id === "yamoey") return "🇻🇳";
+  if (id === "stock") return "📈";
+  if (id.includes("nikkei")) return "🇯🇵";
+  if (id.includes("china")) return "🇨🇳";
+  if (id.includes("hangseng")) return "🇭🇰";
+  return "🏳️";
+}
+
 function syncNumberLength(input, betTypeId) {
   const digits = getBetType(betTypeId)?.digits || 3;
   input.maxLength = digits;
@@ -2395,6 +2421,16 @@ function formatDuration(milliseconds) {
   const seconds = totalSeconds % 60;
   const clock = `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
   return days > 0 ? `${days} วัน ${clock}` : clock;
+}
+
+function formatCountdownCompact(round) {
+  const remainingMs = new Date(round.close_at).getTime() - Date.now();
+  if (remainingMs <= 0) return "";
+  const totalSeconds = Math.floor(remainingMs / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
 }
 
 function today() {
