@@ -78,6 +78,22 @@ db.exec(`
     UNIQUE(lottery_id, label)
   );
 
+  CREATE TABLE IF NOT EXISTS schedule_templates (
+    id TEXT PRIMARY KEY,
+    lottery_id TEXT NOT NULL UNIQUE REFERENCES lotteries(id) ON DELETE CASCADE,
+    frequency TEXT NOT NULL CHECK(frequency IN ('daily', 'weekly', 'monthly')),
+    weekdays TEXT NOT NULL DEFAULT '0,1,2,3,4,5,6',
+    month_days TEXT NOT NULL DEFAULT '',
+    open_days_before INTEGER NOT NULL DEFAULT 0,
+    open_time TEXT NOT NULL DEFAULT '00:00',
+    draw_time TEXT NOT NULL DEFAULT '00:00',
+    close_before_minutes INTEGER NOT NULL DEFAULT 15,
+    active INTEGER NOT NULL DEFAULT 1,
+    source_note TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+
   CREATE TABLE IF NOT EXISTS bet_types (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
@@ -146,6 +162,8 @@ ensureColumn("rounds", "draw_time", "TEXT NOT NULL DEFAULT '00:00'");
 ensureColumn("rounds", "close_before_minutes", "INTEGER NOT NULL DEFAULT 0");
 ensureColumn("rounds", "open_date", "TEXT");
 ensureColumn("rounds", "open_time", "TEXT");
+ensureColumn("rounds", "schedule_template_id", "TEXT");
+ensureColumn("rounds", "auto_generated", "INTEGER NOT NULL DEFAULT 0");
 ensureColumn("customers", "head_house_id", "TEXT");
 ensureColumn("users", "head_house_id", "TEXT");
 ensureColumn("head_houses", "commission_percent", "REAL NOT NULL DEFAULT 0");
@@ -153,6 +171,7 @@ ensureColumn("lotteries", "category", "TEXT NOT NULL DEFAULT 'other'");
 ensureColumn("lotteries", "display_order", "INTEGER NOT NULL DEFAULT 999");
 seedReferenceData();
 db.prepare("UPDATE customers SET head_house_id = 'direct' WHERE head_house_id IS NULL OR head_house_id = ''").run();
+ensureUpcomingRounds();
 
 const app = express();
 app.disable("x-powered-by");
@@ -224,6 +243,7 @@ app.get("/api/me", requireAuth, (req, res) => {
 });
 
 app.get("/api/state", requireAuth, (req, res) => {
+  ensureUpcomingRounds();
   res.json(getFullState(req.user));
 });
 
@@ -602,6 +622,101 @@ app.post("/api/lotteries", requireAuth, requireWriteAccess, (req, res) => {
   seedPayoutRatesForLottery(lottery.id);
   logAudit(req.user.id, "create", "lottery", lottery.id, lottery);
   res.status(201).json(lottery);
+});
+
+app.post("/api/schedule-templates", requireAuth, requireWriteAccess, (req, res) => {
+  const payload = normalizeSchedulePayload(req.body);
+  if (!payload || !findLottery(payload.lottery_id)) {
+    return res.status(400).json({ error: "invalid_schedule_payload" });
+  }
+
+  if (findScheduleTemplateByLottery(payload.lottery_id)) {
+    return res.status(409).json({ error: "schedule_exists" });
+  }
+
+  const now = nowIso();
+  const schedule = {
+    id: crypto.randomUUID(),
+    ...payload,
+    created_at: now,
+    updated_at: now,
+  };
+
+  db.prepare(`
+    INSERT INTO schedule_templates (
+      id, lottery_id, frequency, weekdays, month_days, open_days_before, open_time,
+      draw_time, close_before_minutes, active, source_note, created_at, updated_at
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    schedule.id,
+    schedule.lottery_id,
+    schedule.frequency,
+    schedule.weekdays,
+    schedule.month_days,
+    schedule.open_days_before,
+    schedule.open_time,
+    schedule.draw_time,
+    schedule.close_before_minutes,
+    schedule.active,
+    schedule.source_note,
+    schedule.created_at,
+    schedule.updated_at,
+  );
+
+  generateRoundsForSchedule(schedule, bangkokTodayIso(), shiftIsoDate(bangkokTodayIso(), 14));
+  logAudit(req.user.id, "create", "schedule_template", schedule.id, schedule);
+  res.status(201).json(presentScheduleTemplate(schedule));
+});
+
+app.put("/api/schedule-templates/:id", requireAuth, requireWriteAccess, (req, res) => {
+  const existing = findScheduleTemplate(req.params.id);
+  if (!existing) return res.status(404).json({ error: "schedule_not_found" });
+
+  const payload = normalizeSchedulePayload({
+    lotteryId: existing.lottery_id,
+    ...req.body,
+  });
+  if (!payload) {
+    return res.status(400).json({ error: "invalid_schedule_payload" });
+  }
+
+  const updatedAt = nowIso();
+  db.prepare(`
+    UPDATE schedule_templates
+    SET frequency = ?, weekdays = ?, month_days = ?, open_days_before = ?, open_time = ?,
+        draw_time = ?, close_before_minutes = ?, active = ?, source_note = ?, updated_at = ?
+    WHERE id = ?
+  `).run(
+    payload.frequency,
+    payload.weekdays,
+    payload.month_days,
+    payload.open_days_before,
+    payload.open_time,
+    payload.draw_time,
+    payload.close_before_minutes,
+    payload.active,
+    payload.source_note,
+    updatedAt,
+    existing.id,
+  );
+
+  const updated = findScheduleTemplate(existing.id);
+  syncFutureGeneratedRounds(updated);
+  generateRoundsForSchedule(updated, bangkokTodayIso(), shiftIsoDate(bangkokTodayIso(), 14));
+  logAudit(req.user.id, "update", "schedule_template", updated.id, updated);
+  res.json(presentScheduleTemplate(updated));
+});
+
+app.post("/api/schedule-templates/generate", requireAuth, requireWriteAccess, (req, res) => {
+  const days = Number(req.body?.days ?? 14);
+  if (!Number.isInteger(days) || days < 1 || days > 90) {
+    return res.status(400).json({ error: "invalid_generate_days" });
+  }
+
+  const summary = ensureUpcomingRounds(days);
+  logAudit(req.user.id, "generate", "rounds", "scheduled", summary);
+  res.json(summary);
 });
 
 app.post("/api/rounds", requireAuth, requireWriteAccess, (req, res) => {
@@ -1021,6 +1136,50 @@ function seedReferenceData() {
   `).run(now, now);
 
   lotteries.forEach(([id]) => seedPayoutRatesForLottery(id));
+  seedScheduleTemplates();
+}
+
+function seedScheduleTemplates() {
+  const now = nowIso();
+  const schedules = [
+    ["thai", "monthly", "", "1,16", 0, "00:00", "14:30", 15, 1, "อ้างอิงตารางทางการ"],
+    ["omsin", "monthly", "", "16", 0, "00:00", "10:30", 15, 1, "อ้างอิงตารางทางการ"],
+    ["hanoi", "daily", "0,1,2,3,4,5,6", "", 0, "00:00", "18:30", 5, 1, "ค่าเริ่มต้นจากตารางงานที่ผู้ดูแลกำหนด"],
+    ["hanoi_vip", "daily", "0,1,2,3,4,5,6", "", 0, "00:00", "19:30", 5, 1, "ค่าเริ่มต้นจากตารางงานที่ผู้ดูแลกำหนด"],
+    ["hanoi_star", "daily", "0,1,2,3,4,5,6", "", 0, "00:00", "20:30", 5, 1, "ค่าเริ่มต้นจากตารางงานที่ผู้ดูแลกำหนด"],
+    ["hanoi_tv", "daily", "0,1,2,3,4,5,6", "", 0, "00:00", "19:45", 5, 1, "ค่าเริ่มต้นจากตารางงานที่ผู้ดูแลกำหนด"],
+    ["lao", "daily", "0,1,2,3,4,5,6", "", 0, "00:00", "21:00", 5, 1, "ค่าเริ่มต้นจากตารางงานที่ผู้ดูแลกำหนด"],
+    ["lao_development", "daily", "0,1,2,3,4,5,6", "", 0, "00:00", "20:30", 5, 1, "ค่าเริ่มต้นจากตารางงานที่ผู้ดูแลกำหนด"],
+    ["lao_unity", "daily", "0,1,2,3,4,5,6", "", 0, "00:00", "20:30", 5, 1, "ค่าเริ่มต้นจากตารางงานที่ผู้ดูแลกำหนด"],
+  ];
+
+  const insert = db.prepare(`
+    INSERT OR IGNORE INTO schedule_templates (
+      id, lottery_id, frequency, weekdays, month_days, open_days_before, open_time,
+      draw_time, close_before_minutes, active, source_note, created_at, updated_at
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+
+  schedules.forEach(
+    ([lotteryId, frequency, weekdays, monthDays, openDaysBefore, openTime, drawTime, closeBeforeMinutes, active, sourceNote]) => {
+      insert.run(
+        crypto.randomUUID(),
+        lotteryId,
+        frequency,
+        weekdays,
+        monthDays,
+        openDaysBefore,
+        openTime,
+        drawTime,
+        closeBeforeMinutes,
+        active,
+        sourceNote,
+        now,
+        now,
+      );
+    },
+  );
 }
 
 function seedPayoutRatesForLottery(lotteryId) {
@@ -1041,6 +1200,7 @@ function getFullState(user) {
       lotteries: [],
       customers: [],
       rounds: [],
+      scheduleTemplates: [],
       betTypes: [],
       payoutRates: [],
       limits: [],
@@ -1070,6 +1230,15 @@ function getFullState(user) {
       `)
       .all()
       .map(presentRound),
+    scheduleTemplates: db
+      .prepare(`
+        SELECT schedule_templates.*, lotteries.name AS lottery_name
+        FROM schedule_templates
+        JOIN lotteries ON lotteries.id = schedule_templates.lottery_id
+        ORDER BY lotteries.category, lotteries.display_order, lotteries.name
+      `)
+      .all()
+      .map(presentScheduleTemplate),
     betTypes: getBetTypes(),
     payoutRates: db.prepare("SELECT * FROM payout_rates").all(),
     limits: db.prepare("SELECT * FROM limits ORDER BY created_at DESC").all(),
@@ -1100,6 +1269,14 @@ function countRows(table) {
 
 function findLottery(id) {
   return db.prepare("SELECT * FROM lotteries WHERE id = ?").get(id);
+}
+
+function findScheduleTemplate(id) {
+  return db.prepare("SELECT * FROM schedule_templates WHERE id = ?").get(id);
+}
+
+function findScheduleTemplateByLottery(lotteryId) {
+  return db.prepare("SELECT * FROM schedule_templates WHERE lottery_id = ?").get(lotteryId);
 }
 
 function findHeadHouse(id) {
@@ -1690,6 +1867,15 @@ function presentRound(round) {
   };
 }
 
+function presentScheduleTemplate(schedule) {
+  return {
+    ...schedule,
+    weekdays: parseIntegerList(schedule.weekdays),
+    month_days: parseIntegerList(schedule.month_days),
+    active: Boolean(schedule.active),
+  };
+}
+
 function roundAcceptsEntries(round) {
   const now = Date.now();
   return round.status === "open" && now >= getRoundOpenAt(round).getTime() && now < getRoundCloseAt(round).getTime();
@@ -1710,4 +1896,183 @@ function getRoundCloseAt(round) {
 
 function isTimeOfDay(value) {
   return /^\d{2}:\d{2}$/.test(value) && Number(value.slice(0, 2)) < 24 && Number(value.slice(3, 5)) < 60;
+}
+
+function normalizeSchedulePayload(raw) {
+  const lotteryId = cleanText(raw.lotteryId || raw.lottery_id, 80);
+  const frequency = ["daily", "weekly", "monthly"].includes(raw.frequency) ? raw.frequency : "";
+  const weekdays = normalizeIntegerList(raw.weekdays, 0, 6);
+  const monthDays = normalizeIntegerList(raw.monthDays ?? raw.month_days, 1, 31);
+  const openDaysBefore = Number(raw.openDaysBefore ?? raw.open_days_before ?? 0);
+  const openTime = cleanText(raw.openTime || raw.open_time, 5);
+  const drawTime = cleanText(raw.drawTime || raw.draw_time, 5);
+  const closeBeforeMinutes = Number(raw.closeBeforeMinutes ?? raw.close_before_minutes);
+  const active = raw.active === false || raw.active === 0 || raw.active === "0" ? 0 : 1;
+  const sourceNote = cleanText(raw.sourceNote || raw.source_note || "", 180);
+
+  if (
+    !lotteryId ||
+    !frequency ||
+    !Number.isInteger(openDaysBefore) ||
+    openDaysBefore < 0 ||
+    openDaysBefore > 30 ||
+    !isTimeOfDay(openTime) ||
+    !isTimeOfDay(drawTime) ||
+    !Number.isInteger(closeBeforeMinutes) ||
+    closeBeforeMinutes < 0 ||
+    closeBeforeMinutes > 1440
+  ) {
+    return null;
+  }
+
+  if (frequency === "monthly" && !monthDays.length) return null;
+  if (frequency !== "monthly" && !weekdays.length) return null;
+
+  return {
+    lottery_id: lotteryId,
+    frequency,
+    weekdays: weekdays.join(","),
+    month_days: monthDays.join(","),
+    open_days_before: openDaysBefore,
+    open_time: openTime,
+    draw_time: drawTime,
+    close_before_minutes: closeBeforeMinutes,
+    active,
+    source_note: sourceNote,
+  };
+}
+
+function normalizeIntegerList(value, min, max) {
+  const raw = Array.isArray(value) ? value : String(value || "").split(",");
+  return [
+    ...new Set(
+      raw
+        .map((item) => String(item).trim())
+        .filter(Boolean)
+        .map((item) => Number(item))
+        .filter((item) => Number.isInteger(item) && item >= min && item <= max),
+    ),
+  ]
+    .sort((a, b) => a - b);
+}
+
+function parseIntegerList(value) {
+  return normalizeIntegerList(value, 0, 31);
+}
+
+function ensureUpcomingRounds(days = 14) {
+  const fromDate = bangkokTodayIso();
+  const toDate = shiftIsoDate(fromDate, days);
+  const schedules = db.prepare("SELECT * FROM schedule_templates WHERE active = 1").all();
+  let created = 0;
+  schedules.forEach((schedule) => {
+    created += generateRoundsForSchedule(schedule, fromDate, toDate);
+  });
+  return { created, fromDate, toDate };
+}
+
+function generateRoundsForSchedule(schedule, fromDate, toDate) {
+  let created = 0;
+  for (let date = fromDate; date <= toDate; date = shiftIsoDate(date, 1)) {
+    if (!scheduleRunsOnDate(schedule, date)) continue;
+
+    const label = formatGeneratedRoundLabel(date);
+    const exists = db
+      .prepare("SELECT 1 FROM rounds WHERE lottery_id = ? AND label = ?")
+      .get(schedule.lottery_id, label);
+    if (exists) continue;
+
+    const now = nowIso();
+    const openDate = shiftIsoDate(date, -Number(schedule.open_days_before || 0));
+    db.prepare(`
+      INSERT INTO rounds (
+        id, lottery_id, label, open_date, open_time, draw_date, draw_time, close_before_minutes,
+        status, schedule_template_id, auto_generated, created_at, updated_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'open', ?, 1, ?, ?)
+    `).run(
+      crypto.randomUUID(),
+      schedule.lottery_id,
+      label,
+      openDate,
+      schedule.open_time,
+      date,
+      schedule.draw_time,
+      schedule.close_before_minutes,
+      schedule.id,
+      now,
+      now,
+    );
+    created += 1;
+  }
+  return created;
+}
+
+function syncFutureGeneratedRounds(schedule) {
+  const today = bangkokTodayIso();
+  const rounds = db
+    .prepare(`
+      SELECT rounds.*
+      FROM rounds
+      LEFT JOIN entries ON entries.round_id = rounds.id
+      WHERE rounds.schedule_template_id = ?
+        AND rounds.auto_generated = 1
+        AND rounds.draw_date >= ?
+      GROUP BY rounds.id
+      HAVING COUNT(entries.id) = 0
+    `)
+    .all(schedule.id, today);
+
+  const update = db.prepare(`
+    UPDATE rounds
+    SET open_date = ?, open_time = ?, draw_time = ?, close_before_minutes = ?, updated_at = ?
+    WHERE id = ?
+  `);
+  const remove = db.prepare("DELETE FROM rounds WHERE id = ?");
+
+  rounds.forEach((round) => {
+    if (!scheduleRunsOnDate(schedule, round.draw_date)) {
+      remove.run(round.id);
+      return;
+    }
+    const openDate = shiftIsoDate(round.draw_date, -Number(schedule.open_days_before || 0));
+    update.run(openDate, schedule.open_time, schedule.draw_time, schedule.close_before_minutes, nowIso(), round.id);
+  });
+}
+
+function scheduleRunsOnDate(schedule, date) {
+  if (!schedule.active) return false;
+  const dayOfWeek = weekdayFromIsoDate(date);
+  const dayOfMonth = Number(date.slice(-2));
+  if (schedule.frequency === "monthly") {
+    return parseIntegerList(schedule.month_days).includes(dayOfMonth);
+  }
+  return parseIntegerList(schedule.weekdays).includes(dayOfWeek);
+}
+
+function formatGeneratedRoundLabel(date) {
+  const [year, month, day] = date.split("-");
+  return `${day}/${month}/${year}`;
+}
+
+function bangkokTodayIso() {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Bangkok",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+  const values = Object.fromEntries(parts.filter((part) => part.type !== "literal").map((part) => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
+}
+
+function shiftIsoDate(date, days) {
+  const [year, month, day] = date.split("-").map(Number);
+  const shifted = new Date(Date.UTC(year, month - 1, day + days));
+  return shifted.toISOString().slice(0, 10);
+}
+
+function weekdayFromIsoDate(date) {
+  const [year, month, day] = date.split("-").map(Number);
+  return new Date(Date.UTC(year, month - 1, day)).getUTCDay();
 }

@@ -45,6 +45,7 @@ const state = {
   lotteries: [],
   customers: [],
   rounds: [],
+  scheduleTemplates: [],
   betTypes: [],
   payoutRates: [],
   limits: [],
@@ -56,6 +57,7 @@ const state = {
   editingHeadHouseId: null,
   editingCustomerId: null,
   editingRoundId: null,
+  editingScheduleId: null,
   editingUserId: null,
   quickParsedEntries: [],
   ticketDraftEntries: [],
@@ -195,6 +197,22 @@ const elements = {
   roundCloseBefore: document.querySelector("#roundCloseBeforeInput"),
   roundSubmitBtn: document.querySelector("#roundSubmitBtn"),
   roundsBody: document.querySelector("#roundsBody"),
+  scheduleForm: document.querySelector("#scheduleForm"),
+  scheduleFormTitle: document.querySelector("#scheduleFormTitle"),
+  resetScheduleBtn: document.querySelector("#resetScheduleBtn"),
+  scheduleLottery: document.querySelector("#scheduleLotteryInput"),
+  scheduleFrequency: document.querySelector("#scheduleFrequencyInput"),
+  scheduleWeekdays: document.querySelector("#scheduleWeekdaysInput"),
+  scheduleMonthDays: document.querySelector("#scheduleMonthDaysInput"),
+  scheduleOpenDaysBefore: document.querySelector("#scheduleOpenDaysBeforeInput"),
+  scheduleOpenTime: document.querySelector("#scheduleOpenTimeInput"),
+  scheduleDrawTime: document.querySelector("#scheduleDrawTimeInput"),
+  scheduleCloseBefore: document.querySelector("#scheduleCloseBeforeInput"),
+  scheduleSourceNote: document.querySelector("#scheduleSourceNoteInput"),
+  scheduleActive: document.querySelector("#scheduleActiveInput"),
+  scheduleSubmitBtn: document.querySelector("#scheduleSubmitBtn"),
+  generateRoundsBtn: document.querySelector("#generateRoundsBtn"),
+  scheduleTemplatesBody: document.querySelector("#scheduleTemplatesBody"),
   limitForm: document.querySelector("#limitForm"),
   limitFormTitle: document.querySelector("#limitFormTitle"),
   limitRound: document.querySelector("#limitRoundInput"),
@@ -249,6 +267,7 @@ async function initialize() {
   elements.roundDate.value = today();
   elements.roundOpenDate.value = today();
   elements.roundOpenTime.value = "00:00";
+  resetScheduleForm();
   window.setInterval(renderTimeSensitiveUi, 1000);
   await bootAuth();
 }
@@ -306,6 +325,10 @@ function bindEvents() {
   elements.lotteryForm.addEventListener("submit", handleLotterySubmit);
   elements.roundForm.addEventListener("submit", handleRoundSubmit);
   elements.resetRoundBtn.addEventListener("click", resetRoundForm);
+  elements.scheduleForm.addEventListener("submit", handleScheduleSubmit);
+  elements.resetScheduleBtn.addEventListener("click", resetScheduleForm);
+  elements.generateRoundsBtn.addEventListener("click", generateUpcomingRounds);
+  elements.scheduleFrequency.addEventListener("change", syncScheduleFrequencyFields);
 
   elements.limitForm.addEventListener("submit", handleLimitSubmit);
   elements.resetLimitBtn.addEventListener("click", resetLimitForm);
@@ -412,6 +435,7 @@ function render() {
   renderHeadHouses();
   renderCustomers();
   renderLotteries();
+  renderScheduleTemplates();
   renderRounds();
   renderLimits();
   renderPayouts();
@@ -445,6 +469,7 @@ function renderSelects() {
   preserveSelect(elements.filterCustomer, option("all", "ทั้งหมด") + customerOptions, "all");
   preserveSelect(elements.quickLottery, lotteryOptions);
   preserveSelect(elements.roundLottery, lotteryOptions);
+  preserveSelect(elements.scheduleLottery, lotteryOptions);
   preserveSelect(elements.quickBetType, betTypeOptions, "two_top");
   preserveSelect(elements.betType, betTypeOptions, "two_top");
   preserveSelect(elements.filterBetType, option("all", "ทั้งหมด") + betTypeOptions, "all");
@@ -1422,9 +1447,128 @@ function renderLotteries() {
   elements.lotteryChips.innerHTML = state.lotteries
     .map((lottery) => {
       const count = state.rounds.filter((round) => round.lottery_id === lottery.id).length;
-      return `<span class="chip">${escapeHtml(lottery.name)} · ${escapeHtml(getLotteryCategoryLabel(lottery.category))} · ${count.toLocaleString("th-TH")} งวด</span>`;
+      const hasSchedule = state.scheduleTemplates.some((schedule) => schedule.lottery_id === lottery.id);
+      return `<span class="chip">${escapeHtml(lottery.name)} · ${escapeHtml(getLotteryCategoryLabel(lottery.category))} · ${count.toLocaleString("th-TH")} งวด${hasSchedule ? " · ตั้งเวลาแล้ว" : ""}</span>`;
     })
     .join("");
+}
+
+async function handleScheduleSubmit(event) {
+  event.preventDefault();
+  const payload = {
+    lotteryId: elements.scheduleLottery.value,
+    frequency: elements.scheduleFrequency.value,
+    weekdays: elements.scheduleWeekdays.value,
+    monthDays: elements.scheduleMonthDays.value,
+    openDaysBefore: Number(elements.scheduleOpenDaysBefore.value),
+    openTime: elements.scheduleOpenTime.value,
+    drawTime: elements.scheduleDrawTime.value,
+    closeBeforeMinutes: Number(elements.scheduleCloseBefore.value),
+    sourceNote: elements.scheduleSourceNote.value.trim(),
+    active: elements.scheduleActive.checked,
+  };
+
+  try {
+    if (state.editingScheduleId) {
+      await api(`/api/schedule-templates/${state.editingScheduleId}`, {
+        method: "PUT",
+        body: payload,
+      });
+    } else {
+      await api("/api/schedule-templates", {
+        method: "POST",
+        body: payload,
+      });
+    }
+    resetScheduleForm();
+    await refreshState();
+  } catch (error) {
+    if (error?.payload?.error === "schedule_exists") {
+      alert("หวยนี้มีตารางเวลาอยู่แล้ว ให้กดแก้ไขตารางเดิม");
+      return;
+    }
+    alert("บันทึกตารางเวลาไม่สำเร็จ");
+  }
+}
+
+function renderScheduleTemplates() {
+  elements.scheduleTemplatesBody.innerHTML = "";
+  state.scheduleTemplates.forEach((schedule) => {
+    const row = document.createElement("tr");
+    row.innerHTML = `
+      <td>${escapeHtml(getLotteryName(schedule.lottery_id))}</td>
+      <td>${escapeHtml(formatScheduleFrequency(schedule))}</td>
+      <td>${escapeHtml(schedule.open_days_before ? `ก่อนออก ${schedule.open_days_before} วัน ${schedule.open_time}` : `วันออก ${schedule.open_time}`)}</td>
+      <td>${escapeHtml(schedule.draw_time)}</td>
+      <td>${schedule.close_before_minutes.toLocaleString("th-TH")} นาที</td>
+      <td>${schedule.active ? '<span class="status-pill normal">ใช้งาน</span>' : '<span class="status-pill warning">พักไว้</span>'}</td>
+      <td>${escapeHtml(schedule.source_note || "-")}</td>
+      <td>
+        <div class="row-actions">
+          <button class="icon-button edit-schedule-button" type="button">แก้ไข</button>
+        </div>
+      </td>
+    `;
+    row.querySelector(".edit-schedule-button").addEventListener("click", () => beginScheduleEdit(schedule.id));
+    elements.scheduleTemplatesBody.appendChild(row);
+  });
+}
+
+function beginScheduleEdit(id) {
+  const schedule = state.scheduleTemplates.find((item) => item.id === id);
+  if (!schedule) return;
+  state.editingScheduleId = schedule.id;
+  elements.scheduleLottery.value = schedule.lottery_id;
+  elements.scheduleLottery.disabled = true;
+  elements.scheduleFrequency.value = schedule.frequency;
+  elements.scheduleWeekdays.value = schedule.weekdays.join(",");
+  elements.scheduleMonthDays.value = schedule.month_days.join(",");
+  elements.scheduleOpenDaysBefore.value = schedule.open_days_before;
+  elements.scheduleOpenTime.value = schedule.open_time;
+  elements.scheduleDrawTime.value = schedule.draw_time;
+  elements.scheduleCloseBefore.value = schedule.close_before_minutes;
+  elements.scheduleSourceNote.value = schedule.source_note || "";
+  elements.scheduleActive.checked = schedule.active;
+  elements.scheduleFormTitle.textContent = "แก้ไขตารางเวลา";
+  elements.scheduleSubmitBtn.textContent = "บันทึกการแก้ไข";
+  elements.resetScheduleBtn.classList.remove("hidden");
+  syncScheduleFrequencyFields();
+}
+
+function resetScheduleForm() {
+  state.editingScheduleId = null;
+  elements.scheduleForm.reset();
+  elements.scheduleLottery.disabled = false;
+  elements.scheduleFrequency.value = "daily";
+  elements.scheduleWeekdays.value = "0,1,2,3,4,5,6";
+  elements.scheduleMonthDays.value = "";
+  elements.scheduleOpenDaysBefore.value = 0;
+  elements.scheduleOpenTime.value = "00:00";
+  elements.scheduleDrawTime.value = "18:00";
+  elements.scheduleCloseBefore.value = 5;
+  elements.scheduleActive.checked = true;
+  elements.scheduleFormTitle.textContent = "ตั้งเวลารันงวดอัตโนมัติ";
+  elements.scheduleSubmitBtn.textContent = "บันทึกตารางเวลา";
+  elements.resetScheduleBtn.classList.add("hidden");
+  renderSelects();
+  syncScheduleFrequencyFields();
+}
+
+function syncScheduleFrequencyFields() {
+  const isMonthly = elements.scheduleFrequency.value === "monthly";
+  elements.scheduleWeekdays.closest(".field").classList.toggle("hidden", isMonthly);
+  elements.scheduleMonthDays.closest(".field").classList.toggle("hidden", !isMonthly);
+  elements.scheduleWeekdays.required = !isMonthly;
+  elements.scheduleMonthDays.required = isMonthly;
+}
+
+async function generateUpcomingRounds() {
+  const summary = await api("/api/schedule-templates/generate", {
+    method: "POST",
+    body: { days: 14 },
+  });
+  await refreshState();
+  alert(`สร้างงวดอัตโนมัติเพิ่ม ${summary.created.toLocaleString("th-TH")} งวด ถึงวันที่ ${longDate(summary.toDate)}`);
 }
 
 async function handleRoundSubmit(event) {
@@ -1470,6 +1614,7 @@ function renderRounds() {
     row.innerHTML = `
       <td>${escapeHtml(getLotteryName(round.lottery_id))}</td>
       <td>${escapeHtml(round.label)}</td>
+      <td>${round.auto_generated ? '<span class="status-pill normal">อัตโนมัติ</span>' : '<span class="status-pill">มือ</span>'}</td>
       <td>${escapeHtml(formatRoundOpenTime(round))}</td>
       <td>${longDate(round.draw_date)}</td>
       <td>${escapeHtml(round.draw_time)}</td>
@@ -2170,6 +2315,15 @@ function formatHeadHouse(headHouse) {
 function formatRound(round) {
   if (!round) return "-";
   return `${round.lottery_name || getLotteryName(round.lottery_id)} · ${round.label} · ${shortDate(round.draw_date)} ${round.draw_time}`;
+}
+
+function formatScheduleFrequency(schedule) {
+  if (schedule.frequency === "monthly") {
+    return `ทุกเดือน วันที่ ${schedule.month_days.join(", ")}`;
+  }
+  const weekdayLabels = ["อา", "จ", "อ", "พ", "พฤ", "ศ", "ส"];
+  const days = schedule.weekdays.map((day) => weekdayLabels[day]).join(", ");
+  return schedule.frequency === "weekly" ? `ทุกสัปดาห์ ${days}` : `ทุกวัน ${days}`;
 }
 
 function findLatestOpenRound(lotteryId) {

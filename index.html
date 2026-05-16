@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>ระบบจัดการหวยหลายประเภท</title>
-    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="styles.css?v=20260516-flagfix" />
   </head>
   <body>
     <section id="authShell" class="auth-shell">
@@ -529,6 +529,70 @@
                 <div id="lotteryChips" class="chip-list"></div>
               </section>
 
+              <section class="panel schedule-panel">
+                <div class="panel-heading">
+                  <h2 id="scheduleFormTitle">ตั้งเวลารันงวดอัตโนมัติ</h2>
+                  <button id="resetScheduleBtn" class="text-button hidden" type="button">ยกเลิกแก้ไข</button>
+                </div>
+                <form id="scheduleForm" class="stack-form">
+                  <div class="field-grid customer-grid">
+                    <label class="field">
+                      <span>หวย</span>
+                      <select id="scheduleLotteryInput" required></select>
+                    </label>
+                    <label class="field">
+                      <span>รูปแบบงวด</span>
+                      <select id="scheduleFrequencyInput">
+                        <option value="daily">รายวัน</option>
+                        <option value="weekly">รายสัปดาห์</option>
+                        <option value="monthly">รายเดือน</option>
+                      </select>
+                    </label>
+                    <label class="field">
+                      <span>วันในสัปดาห์</span>
+                      <input id="scheduleWeekdaysInput" placeholder="0,1,2,3,4,5,6" required />
+                    </label>
+                    <label class="field hidden">
+                      <span>วันที่ของเดือน</span>
+                      <input id="scheduleMonthDaysInput" placeholder="1,16" />
+                    </label>
+                  </div>
+                  <div class="field-grid customer-grid">
+                    <label class="field">
+                      <span>เปิดรับก่อนออกกี่วัน</span>
+                      <input id="scheduleOpenDaysBeforeInput" type="number" min="0" max="30" step="1" value="0" required />
+                    </label>
+                    <label class="field">
+                      <span>เวลาเปิดรับ</span>
+                      <input id="scheduleOpenTimeInput" type="time" required />
+                    </label>
+                    <label class="field">
+                      <span>เวลาออก</span>
+                      <input id="scheduleDrawTimeInput" type="time" required />
+                    </label>
+                  </div>
+                  <div class="field-grid customer-grid">
+                    <label class="field">
+                      <span>ปิดรับก่อนออกกี่นาที</span>
+                      <input id="scheduleCloseBeforeInput" type="number" min="0" max="1440" step="1" value="5" required />
+                    </label>
+                    <label class="field span-two">
+                      <span>ที่มา / หมายเหตุ</span>
+                      <input id="scheduleSourceNoteInput" maxlength="180" placeholder="เช่น ตารางทางการ หรือเวลาที่ใช้จริงในร้าน" />
+                    </label>
+                  </div>
+                  <label class="checkbox-field">
+                    <input id="scheduleActiveInput" type="checkbox" checked />
+                    <span>เปิดใช้งานตารางนี้</span>
+                  </label>
+                  <p class="helper-copy">วันในสัปดาห์ใช้ 0=อาทิตย์, 1=จันทร์ ... 6=เสาร์</p>
+                  <div class="form-actions">
+                    <button id="scheduleSubmitBtn" class="button button-primary" type="submit">บันทึกตารางเวลา</button>
+                    <button id="generateRoundsBtn" class="button button-secondary" type="button">สร้างงวดล่วงหน้า 14 วัน</button>
+                  </div>
+                </form>
+              </section>
+
               <section class="panel round-panel">
                 <div class="panel-heading">
                   <h2 id="roundFormTitle">สร้างงวด</h2>
@@ -574,6 +638,29 @@
               </section>
             </section>
 
+            <section class="panel schedule-table-panel">
+              <div class="panel-heading">
+                <h2>ตารางเวลารันอัตโนมัติ</h2>
+              </div>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>หวย</th>
+                      <th>ความถี่</th>
+                      <th>เปิดรับ</th>
+                      <th>เวลาออก</th>
+                      <th>ปิดรับก่อน</th>
+                      <th>สถานะ</th>
+                      <th>หมายเหตุ</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody id="scheduleTemplatesBody"></tbody>
+                </table>
+              </div>
+            </section>
+
             <section class="panel rounds-table-panel">
               <div class="panel-heading">
                 <h2>งวดทั้งหมด</h2>
@@ -584,6 +671,7 @@
                     <tr>
                       <th>หวย</th>
                       <th>งวด</th>
+                      <th>ที่มา</th>
                       <th>เวลาเปิดรับ</th>
                       <th>วันที่ออก</th>
                       <th>เวลาออก</th>
@@ -898,6 +986,6 @@
       </div>
     </template>
 
-    <script src="app.js"></script>
+    <script src="app.js?v=20260516-flagfix"></script>
   </body>
 </html>
