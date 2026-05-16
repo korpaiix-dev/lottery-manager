@@ -331,7 +331,8 @@
             <section class="split-grid">
               <section class="panel manager-panel">
                 <div class="panel-heading">
-                  <h2>เพิ่มหัวบ้าน</h2>
+                  <h2 id="headHouseFormTitle">เพิ่มหัวบ้าน</h2>
+                  <button id="resetHeadHouseBtn" class="text-button hidden" type="button">ยกเลิกแก้ไข</button>
                 </div>
                 <form id="headHouseForm" class="stack-form">
                   <div class="field-grid customer-grid">
@@ -339,13 +340,17 @@
                       <span>ชื่อหัวบ้าน</span>
                       <input id="headHouseNameInput" maxlength="80" placeholder="เช่น เจ๊แดง" required />
                     </label>
+                    <label class="field">
+                      <span>เปอร์เซ็นต์ส่วนแบ่งหัวบ้าน</span>
+                      <input id="headHouseCommissionInput" type="number" min="0" max="100" step="0.01" value="0" required />
+                    </label>
                   </div>
                   <label class="field">
                     <span>หมายเหตุ</span>
                     <input id="headHouseNoteInput" maxlength="160" placeholder="เช่น รับยอดจาก LINE กลุ่ม A" />
                   </label>
                   <p class="helper-copy">ระบบจะออกรหัสหัวบ้านให้อัตโนมัติ เช่น HB001</p>
-                  <button class="button button-primary" type="submit">เพิ่มหัวบ้าน</button>
+                  <button id="headHouseSubmitBtn" class="button button-primary" type="submit">เพิ่มหัวบ้าน</button>
                 </form>
               </section>
 
@@ -584,14 +589,15 @@
                   <strong id="headHouseReportPayout">฿0.00</strong>
                 </article>
                 <article class="metric metric-green">
-                  <span>สุทธิ</span>
-                  <strong id="headHouseReportProfit">฿0.00</strong>
+                  <span>ค่าคอมมิชชั่น</span>
+                  <strong id="headHouseReportCommission">฿0.00</strong>
                 </article>
                 <article class="metric metric-indigo">
-                  <span>จำนวนงวด</span>
-                  <strong id="headHouseReportRoundCount">0</strong>
+                  <span>ต้องจ่ายสุทธิ</span>
+                  <strong id="headHouseReportNetPayable">฿0.00</strong>
                 </article>
               </section>
+              <p id="headHouseReportFormula" class="helper-copy"></p>
               <div class="table-wrap">
                 <table>
                   <thead>
@@ -601,7 +607,8 @@
                       <th>วันออก</th>
                       <th>ยอดส่ง</th>
                       <th>ยอดจ่าย</th>
-                      <th>สุทธิ</th>
+                      <th>ค่าคอมมิชชั่น</th>
+                      <th>ต้องจ่ายสุทธิ</th>
                     </tr>
                   </thead>
                   <tbody id="headHouseReportBody"></tbody>

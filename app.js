@@ -43,6 +43,7 @@ const state = {
   users: [],
   editingEntryId: null,
   editingLimitId: null,
+  editingHeadHouseId: null,
   quickParsedEntries: [],
   latestViewerCredentials: null,
 };
@@ -116,8 +117,12 @@ const elements = {
   customerHeadHouse: document.querySelector("#customerHeadHouseInput"),
   customerList: document.querySelector("#customerList"),
   headHouseForm: document.querySelector("#headHouseForm"),
+  headHouseFormTitle: document.querySelector("#headHouseFormTitle"),
+  resetHeadHouseBtn: document.querySelector("#resetHeadHouseBtn"),
   headHouseName: document.querySelector("#headHouseNameInput"),
   headHouseNote: document.querySelector("#headHouseNoteInput"),
+  headHouseCommission: document.querySelector("#headHouseCommissionInput"),
+  headHouseSubmitBtn: document.querySelector("#headHouseSubmitBtn"),
   headHouseList: document.querySelector("#headHouseList"),
   viewerCredentialCard: document.querySelector("#viewerCredentialCard"),
   viewerCredentialSummary: document.querySelector("#viewerCredentialSummary"),
@@ -155,8 +160,9 @@ const elements = {
   headHouseReportSelect: document.querySelector("#headHouseReportSelect"),
   headHouseReportStake: document.querySelector("#headHouseReportStake"),
   headHouseReportPayout: document.querySelector("#headHouseReportPayout"),
-  headHouseReportProfit: document.querySelector("#headHouseReportProfit"),
-  headHouseReportRoundCount: document.querySelector("#headHouseReportRoundCount"),
+  headHouseReportCommission: document.querySelector("#headHouseReportCommission"),
+  headHouseReportNetPayable: document.querySelector("#headHouseReportNetPayable"),
+  headHouseReportFormula: document.querySelector("#headHouseReportFormula"),
   headHouseReportBody: document.querySelector("#headHouseReportBody"),
   userForm: document.querySelector("#userForm"),
   userUsername: document.querySelector("#userUsernameInput"),
@@ -212,6 +218,7 @@ function bindEvents() {
 
   elements.customerForm.addEventListener("submit", handleCustomerSubmit);
   elements.headHouseForm.addEventListener("submit", handleHeadHouseSubmit);
+  elements.resetHeadHouseBtn.addEventListener("click", resetHeadHouseForm);
   elements.copyViewerCredentialsBtn.addEventListener("click", copyViewerCredentials);
   elements.lotteryForm.addEventListener("submit", handleLotterySubmit);
   elements.roundForm.addEventListener("submit", handleRoundSubmit);
@@ -675,16 +682,18 @@ async function createCustomer(name, headHouseId) {
 
 async function handleHeadHouseSubmit(event) {
   event.preventDefault();
-  const created = await api("/api/head-houses", {
-    method: "POST",
+  const saved = await api(state.editingHeadHouseId ? `/api/head-houses/${state.editingHeadHouseId}` : "/api/head-houses", {
+    method: state.editingHeadHouseId ? "PUT" : "POST",
     body: {
       name: elements.headHouseName.value.trim(),
       note: elements.headHouseNote.value.trim(),
+      commissionPercent: Number(elements.headHouseCommission.value),
     },
   });
-  elements.headHouseForm.reset();
+  const wasEditing = Boolean(state.editingHeadHouseId);
+  resetHeadHouseForm();
   await refreshState();
-  alert(`สร้างหัวบ้านแล้ว รหัสคือ ${created.code}`);
+  alert(wasEditing ? "บันทึกข้อมูลหัวบ้านแล้ว" : `สร้างหัวบ้านแล้ว รหัสคือ ${saved.code}`);
 }
 
 function renderHeadHouses() {
@@ -705,11 +714,26 @@ function renderHeadHouses() {
           </div>
           <div class="head-house-actions">
             <small>${customers.toLocaleString("th-TH")} ลูกค้า · ${money(amount)}</small>
+            <small>ส่วนแบ่ง ${percentValue(headHouse.commission_percent)}</small>
             ${
               viewer
                 ? `<small>บัญชีดูยอด: ${escapeHtml(viewer.username)}</small>`
                 : `<button class="button button-secondary create-viewer-button" type="button" data-head-house-id="${escapeHtml(headHouse.id)}">สร้างบัญชีดูยอด</button>`
             }
+            <div class="mini-actions">
+              <button class="button button-secondary view-head-house-button" type="button" data-head-house-id="${escapeHtml(headHouse.id)}">ดูยอด</button>
+              <button class="button button-secondary edit-head-house-button" type="button" data-head-house-id="${escapeHtml(headHouse.id)}">แก้ไข</button>
+              ${
+                viewer
+                  ? `<button class="button button-secondary reset-viewer-password-button" type="button" data-head-house-id="${escapeHtml(headHouse.id)}">รีเซ็ตรหัสผ่าน</button>`
+                  : ""
+              }
+              ${
+                headHouse.id !== "direct"
+                  ? `<button class="button button-danger delete-head-house-button" type="button" data-head-house-id="${escapeHtml(headHouse.id)}">ลบ</button>`
+                  : ""
+              }
+            </div>
           </div>
         </article>
       `;
@@ -719,10 +743,27 @@ function renderHeadHouses() {
   elements.headHouseList.querySelectorAll(".create-viewer-button").forEach((button) => {
     button.addEventListener("click", () => provisionHeadHouseViewer(button.dataset.headHouseId));
   });
+  elements.headHouseList.querySelectorAll(".view-head-house-button").forEach((button) => {
+    button.addEventListener("click", () => viewHeadHouseReport(button.dataset.headHouseId));
+  });
+  elements.headHouseList.querySelectorAll(".edit-head-house-button").forEach((button) => {
+    button.addEventListener("click", () => beginHeadHouseEdit(button.dataset.headHouseId));
+  });
+  elements.headHouseList.querySelectorAll(".reset-viewer-password-button").forEach((button) => {
+    button.addEventListener("click", () => resetHeadHouseViewerPassword(button.dataset.headHouseId));
+  });
+  elements.headHouseList.querySelectorAll(".delete-head-house-button").forEach((button) => {
+    button.addEventListener("click", () => deleteHeadHouse(button.dataset.headHouseId));
+  });
 }
 
 async function provisionHeadHouseViewer(headHouseId) {
   const credentials = await api(`/api/head-houses/${headHouseId}/viewer-account`, { method: "POST" });
+  showViewerCredentials(credentials);
+  await refreshState();
+}
+
+function showViewerCredentials(credentials) {
   state.latestViewerCredentials = {
     username: credentials.username,
     password: credentials.password,
@@ -730,7 +771,6 @@ async function provisionHeadHouseViewer(headHouseId) {
   };
   elements.viewerCredentialSummary.textContent = `${credentials.username} / ${credentials.password}`;
   elements.viewerCredentialCard.classList.remove("hidden");
-  await refreshState();
 }
 
 async function copyViewerCredentials() {
@@ -742,6 +782,53 @@ async function copyViewerCredentials() {
     alert("คัดลอกข้อมูลแล้ว");
   } catch {
     alert(text);
+  }
+}
+
+function beginHeadHouseEdit(id) {
+  const headHouse = state.headHouses.find((item) => item.id === id);
+  if (!headHouse) return;
+  state.editingHeadHouseId = headHouse.id;
+  elements.headHouseName.value = headHouse.name;
+  elements.headHouseNote.value = headHouse.note;
+  elements.headHouseCommission.value = headHouse.commission_percent;
+  elements.headHouseFormTitle.textContent = `แก้ไข ${headHouse.code}`;
+  elements.headHouseSubmitBtn.textContent = "บันทึกการแก้ไข";
+  elements.resetHeadHouseBtn.classList.remove("hidden");
+}
+
+function resetHeadHouseForm() {
+  state.editingHeadHouseId = null;
+  elements.headHouseForm.reset();
+  elements.headHouseCommission.value = 0;
+  elements.headHouseFormTitle.textContent = "เพิ่มหัวบ้าน";
+  elements.headHouseSubmitBtn.textContent = "เพิ่มหัวบ้าน";
+  elements.resetHeadHouseBtn.classList.add("hidden");
+}
+
+function viewHeadHouseReport(id) {
+  elements.headHouseReportSelect.value = id;
+  activateView("headHouseReport");
+  renderHeadHouseReport();
+}
+
+async function resetHeadHouseViewerPassword(id) {
+  if (!confirm("รีเซ็ตรหัสผ่านบัญชีดูยอดของหัวบ้านนี้ใช่หรือไม่")) return;
+  const credentials = await api(`/api/head-houses/${id}/viewer-account/reset-password`, { method: "POST" });
+  showViewerCredentials(credentials);
+}
+
+async function deleteHeadHouse(id) {
+  if (!confirm("ลบหัวบ้านนี้ใช่หรือไม่")) return;
+  try {
+    await api(`/api/head-houses/${id}`, { method: "DELETE" });
+    await refreshState();
+  } catch (error) {
+    if (error?.payload?.error === "head_house_has_customers") {
+      alert("ลบไม่ได้ เพราะยังมีลูกค้าอยู่ใต้หัวบ้านนี้");
+      return;
+    }
+    alert("ลบหัวบ้านไม่สำเร็จ");
   }
 }
 
@@ -1020,8 +1107,9 @@ async function renderHeadHouseReport() {
   if (!headHouseId) {
     elements.headHouseReportStake.textContent = money(0);
     elements.headHouseReportPayout.textContent = money(0);
-    elements.headHouseReportProfit.textContent = money(0);
-    elements.headHouseReportRoundCount.textContent = "0";
+    elements.headHouseReportCommission.textContent = money(0);
+    elements.headHouseReportNetPayable.textContent = money(0);
+    elements.headHouseReportFormula.textContent = "";
     elements.headHouseReportBody.innerHTML = "";
     return;
   }
@@ -1030,8 +1118,9 @@ async function renderHeadHouseReport() {
     const summary = await api(`/api/head-house-summary?headHouseId=${encodeURIComponent(headHouseId)}`);
     elements.headHouseReportStake.textContent = money(summary.totalStake);
     elements.headHouseReportPayout.textContent = money(summary.totalPayout);
-    elements.headHouseReportProfit.textContent = money(summary.profit);
-    elements.headHouseReportRoundCount.textContent = summary.roundCount.toLocaleString("th-TH");
+    elements.headHouseReportCommission.textContent = money(summary.commissionAmount);
+    elements.headHouseReportNetPayable.textContent = money(summary.netPayable);
+    elements.headHouseReportFormula.textContent = `ส่วนแบ่งหัวบ้าน ${percentValue(summary.commissionPercent)} · สูตร: ยอดถูกรางวัล + ค่าคอมมิชชั่น - ยอดรับ`;
     elements.headHouseReportBody.innerHTML = summary.rounds
       .map(
         (round) => `
@@ -1041,7 +1130,8 @@ async function renderHeadHouseReport() {
             <td>${longDate(round.drawDate)} ${escapeHtml(round.drawTime)}</td>
             <td class="amount">${money(round.totalStake)}</td>
             <td class="amount">${money(round.totalPayout)}</td>
-            <td class="amount">${money(round.profit)}</td>
+            <td class="amount">${money(round.commissionAmount)}</td>
+            <td class="amount">${money(round.netPayable)}</td>
           </tr>
         `,
       )
@@ -1329,6 +1419,13 @@ function money(value) {
     currency: "THB",
     minimumFractionDigits: 2,
   }).format(Number(value || 0));
+}
+
+function percentValue(value) {
+  return `${Number(value || 0).toLocaleString("th-TH", {
+    minimumFractionDigits: Number(value) % 1 ? 2 : 0,
+    maximumFractionDigits: 2,
+  })}%`;
 }
 
 function percent(value) {

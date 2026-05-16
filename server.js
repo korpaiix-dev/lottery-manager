@@ -24,6 +24,7 @@ db.exec(`
     code TEXT NOT NULL UNIQUE,
     name TEXT NOT NULL,
     note TEXT NOT NULL DEFAULT '',
+    commission_percent REAL NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
   );
@@ -141,6 +142,7 @@ ensureColumn("rounds", "draw_time", "TEXT NOT NULL DEFAULT '00:00'");
 ensureColumn("rounds", "close_before_minutes", "INTEGER NOT NULL DEFAULT 0");
 ensureColumn("customers", "head_house_id", "TEXT");
 ensureColumn("users", "head_house_id", "TEXT");
+ensureColumn("head_houses", "commission_percent", "REAL NOT NULL DEFAULT 0");
 seedReferenceData();
 db.prepare("UPDATE customers SET head_house_id = 'direct' WHERE head_house_id IS NULL OR head_house_id = ''").run();
 
@@ -257,8 +259,9 @@ app.post("/api/users", requireAuth, requireAdmin, (req, res) => {
 app.post("/api/head-houses", requireAuth, requireAdmin, (req, res) => {
   const name = cleanText(req.body.name, 80);
   const note = cleanText(req.body.note, 160);
+  const commissionPercent = Number(req.body.commissionPercent || 0);
 
-  if (!name) {
+  if (!name || !Number.isFinite(commissionPercent) || commissionPercent < 0 || commissionPercent > 100) {
     return res.status(400).json({ error: "invalid_head_house_payload" });
   }
 
@@ -269,21 +272,69 @@ app.post("/api/head-houses", requireAuth, requireAdmin, (req, res) => {
     code,
     name,
     note,
+    commission_percent: commissionPercent,
     created_at: now,
     updated_at: now,
   };
 
   try {
     db.prepare(`
-      INSERT INTO head_houses (id, code, name, note, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `).run(headHouse.id, headHouse.code, headHouse.name, headHouse.note, headHouse.created_at, headHouse.updated_at);
+      INSERT INTO head_houses (id, code, name, note, commission_percent, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      headHouse.id,
+      headHouse.code,
+      headHouse.name,
+      headHouse.note,
+      headHouse.commission_percent,
+      headHouse.created_at,
+      headHouse.updated_at,
+    );
   } catch {
     return res.status(409).json({ error: "head_house_code_exists" });
   }
 
   logAudit(req.user.id, "create", "head_house", headHouse.id, headHouse);
   res.status(201).json(headHouse);
+});
+
+app.put("/api/head-houses/:id", requireAuth, requireAdmin, (req, res) => {
+  const headHouse = findHeadHouse(req.params.id);
+  if (!headHouse) return res.status(404).json({ error: "head_house_not_found" });
+
+  const name = cleanText(req.body.name, 80);
+  const note = cleanText(req.body.note, 160);
+  const commissionPercent = Number(req.body.commissionPercent);
+  if (!name || !Number.isFinite(commissionPercent) || commissionPercent < 0 || commissionPercent > 100) {
+    return res.status(400).json({ error: "invalid_head_house_payload" });
+  }
+
+  db.prepare(`
+    UPDATE head_houses
+    SET name = ?, note = ?, commission_percent = ?, updated_at = ?
+    WHERE id = ?
+  `).run(name, note, commissionPercent, nowIso(), headHouse.id);
+  const updated = findHeadHouse(headHouse.id);
+  logAudit(req.user.id, "update", "head_house", updated.id, updated);
+  res.json(updated);
+});
+
+app.delete("/api/head-houses/:id", requireAuth, requireAdmin, (req, res) => {
+  const headHouse = findHeadHouse(req.params.id);
+  if (!headHouse) return res.status(404).json({ error: "head_house_not_found" });
+  if (headHouse.id === "direct") return res.status(409).json({ error: "head_house_protected" });
+
+  const customerCount = db.prepare("SELECT COUNT(*) AS count FROM customers WHERE head_house_id = ?").get(headHouse.id).count;
+  if (customerCount > 0) {
+    return res.status(409).json({ error: "head_house_has_customers" });
+  }
+
+  withTransaction(() => {
+    db.prepare("DELETE FROM users WHERE role = 'head_house_viewer' AND head_house_id = ?").run(headHouse.id);
+    db.prepare("DELETE FROM head_houses WHERE id = ?").run(headHouse.id);
+  });
+  logAudit(req.user.id, "delete", "head_house", headHouse.id, headHouse);
+  res.status(204).end();
 });
 
 app.post("/api/head-houses/:id/viewer-account", requireAuth, requireAdmin, (req, res) => {
@@ -320,6 +371,27 @@ app.post("/api/head-houses/:id/viewer-account", requireAuth, requireAdmin, (req,
   res.status(201).json({
     user: publicUser(user),
     username,
+    password,
+    loginPath: "/",
+  });
+});
+
+app.post("/api/head-houses/:id/viewer-account/reset-password", requireAuth, requireAdmin, (req, res) => {
+  const headHouse = findHeadHouse(req.params.id);
+  if (!headHouse) return res.status(404).json({ error: "head_house_not_found" });
+
+  const viewer = db
+    .prepare("SELECT * FROM users WHERE role = 'head_house_viewer' AND head_house_id = ?")
+    .get(headHouse.id);
+  if (!viewer) return res.status(404).json({ error: "viewer_account_not_found" });
+
+  const password = generateTemporaryPassword();
+  db.prepare("UPDATE users SET password_hash = ? WHERE id = ?").run(bcrypt.hashSync(password, 12), viewer.id);
+  db.prepare("DELETE FROM sessions WHERE user_id = ?").run(viewer.id);
+  logAudit(req.user.id, "reset_password", "head_house_viewer", viewer.id, { headHouseId: headHouse.id });
+  res.json({
+    user: publicUser(viewer),
+    username: viewer.username,
     password,
     loginPath: "/",
   });
@@ -760,8 +832,8 @@ function seedReferenceData() {
   lotteries.forEach(([id, name]) => insertLottery.run(id, name, now, now));
 
   db.prepare(`
-    INSERT OR IGNORE INTO head_houses (id, code, name, note, created_at, updated_at)
-    VALUES ('direct', 'DIRECT', 'ไม่ผ่านหัวบ้าน', '', ?, ?)
+    INSERT OR IGNORE INTO head_houses (id, code, name, note, commission_percent, created_at, updated_at)
+    VALUES ('direct', 'DIRECT', 'ไม่ผ่านหัวบ้าน', '', 0, ?, ?)
   `).run(now, now);
 
   db.prepare(`
@@ -1109,22 +1181,28 @@ function buildHeadHouseSummary(headHouseId) {
       drawTime: entry.draw_time,
       totalStake: 0,
       totalPayout: 0,
-      profit: 0,
+      commissionAmount: 0,
+      netPayable: 0,
     };
     current.totalStake += entry.amount;
     current.totalPayout += entry.payout;
-    current.profit = current.totalStake - current.totalPayout;
+    current.commissionAmount = current.totalStake * (headHouse.commission_percent / 100);
+    current.netPayable = current.totalPayout + current.commissionAmount - current.totalStake;
     summaryByRound.set(key, current);
   });
 
   const totalStake = sum(enriched.map((entry) => entry.amount));
   const totalPayout = sum(enriched.map((entry) => entry.payout));
+  const commissionAmount = totalStake * (headHouse.commission_percent / 100);
+  const netPayable = totalPayout + commissionAmount - totalStake;
 
   return {
     headHouse,
     totalStake,
     totalPayout,
-    profit: totalStake - totalPayout,
+    commissionPercent: headHouse.commission_percent,
+    commissionAmount,
+    netPayable,
     roundCount: summaryByRound.size,
     rounds: [...summaryByRound.values()],
   };

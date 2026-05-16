@@ -324,6 +324,13 @@ small {
   gap: 6px;
 }
 
+.mini-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
 .field,
 .compact-field {
   display: grid;
@@ -387,6 +394,12 @@ textarea {
   background: #fff;
   border: 1px solid var(--line);
   color: var(--text);
+}
+
+.button-danger {
+  background: rgba(184, 52, 52, 0.1);
+  border: 1px solid rgba(184, 52, 52, 0.22);
+  color: #a02323;
 }
 
 .button:disabled {
@@ -941,6 +954,10 @@ td.amount {
 
   .head-house-actions {
     justify-items: start;
+  }
+
+  .mini-actions {
+    justify-content: flex-start;
   }
 
   .result-row,
