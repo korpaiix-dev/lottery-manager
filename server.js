@@ -78,6 +78,22 @@ db.exec(`
     UNIQUE(lottery_id, label)
   );
 
+  CREATE TABLE IF NOT EXISTS tickets (
+    id TEXT PRIMARY KEY,
+    code TEXT NOT NULL UNIQUE,
+    customer_id TEXT NOT NULL REFERENCES customers(id) ON DELETE RESTRICT,
+    round_id TEXT NOT NULL REFERENCES rounds(id) ON DELETE RESTRICT,
+    source_channel TEXT NOT NULL DEFAULT 'manual',
+    source_text TEXT NOT NULL DEFAULT '',
+    note TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL CHECK(status IN ('pending_review', 'approved', 'rejected', 'cancelled')) DEFAULT 'pending_review',
+    checked_by TEXT REFERENCES users(id) ON DELETE SET NULL,
+    checked_at TEXT,
+    created_by TEXT REFERENCES users(id) ON DELETE SET NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+
   CREATE TABLE IF NOT EXISTS schedule_templates (
     id TEXT PRIMARY KEY,
     lottery_id TEXT NOT NULL UNIQUE REFERENCES lotteries(id) ON DELETE CASCADE,
@@ -124,6 +140,7 @@ db.exec(`
 
   CREATE TABLE IF NOT EXISTS entries (
     id TEXT PRIMARY KEY,
+    ticket_id TEXT REFERENCES tickets(id) ON DELETE RESTRICT,
     customer_id TEXT NOT NULL REFERENCES customers(id) ON DELETE RESTRICT,
     round_id TEXT NOT NULL REFERENCES rounds(id) ON DELETE RESTRICT,
     bet_type_id TEXT NOT NULL REFERENCES bet_types(id) ON DELETE RESTRICT,
@@ -164,13 +181,18 @@ ensureColumn("rounds", "open_date", "TEXT");
 ensureColumn("rounds", "open_time", "TEXT");
 ensureColumn("rounds", "schedule_template_id", "TEXT");
 ensureColumn("rounds", "auto_generated", "INTEGER NOT NULL DEFAULT 0");
+ensureColumn("rounds", "result_status", "TEXT NOT NULL DEFAULT 'draft'");
+ensureColumn("rounds", "result_finalized_by", "TEXT");
+ensureColumn("rounds", "result_finalized_at", "TEXT");
 ensureColumn("customers", "head_house_id", "TEXT");
 ensureColumn("users", "head_house_id", "TEXT");
 ensureColumn("head_houses", "commission_percent", "REAL NOT NULL DEFAULT 0");
 ensureColumn("lotteries", "category", "TEXT NOT NULL DEFAULT 'other'");
 ensureColumn("lotteries", "display_order", "INTEGER NOT NULL DEFAULT 999");
+ensureColumn("entries", "ticket_id", "TEXT");
 seedReferenceData();
 db.prepare("UPDATE customers SET head_house_id = 'direct' WHERE head_house_id IS NULL OR head_house_id = ''").run();
+backfillLegacyTickets();
 ensureUpcomingRounds();
 
 const app = express();
@@ -939,9 +961,24 @@ app.post("/api/entries", requireAuth, requireWriteAccess, (req, res) => {
   const limitError = validateLimitCapacity(payload.value);
   if (limitError) return res.status(409).json(limitError);
 
-  const entry = insertEntry(payload.value, req.user.id);
-  logAudit(req.user.id, "create", "entry", entry.id, entry);
-  res.status(201).json(entry);
+  const created = withTransaction(() => {
+    const ticket = createTicket(
+      {
+        customer_id: payload.value.customer_id,
+        round_id: payload.value.round_id,
+        source_channel: cleanText(req.body.sourceChannel || "manual", 40),
+        source_text: payload.value.source_text,
+        note: payload.value.note,
+      },
+      req.user.id,
+    );
+    const entry = insertEntry(payload.value, req.user.id, ticket.id);
+    return { ticket, entry };
+  });
+
+  logAudit(req.user.id, "create", "ticket", created.ticket.id, created.ticket);
+  logAudit(req.user.id, "create", "entry", created.entry.id, created.entry);
+  res.status(201).json(created.entry);
 });
 
 app.post("/api/entries/batch", requireAuth, requireWriteAccess, (req, res) => {
@@ -958,17 +995,36 @@ app.post("/api/entries/batch", requireAuth, requireWriteAccess, (req, res) => {
   const batchLimitError = validateBatchLimitCapacity(normalized);
   if (batchLimitError) return res.status(409).json(batchLimitError);
 
-  const inserted = withTransaction(() =>
-    normalized.map((entryPayload) => insertEntry(entryPayload, req.user.id)),
+  const first = normalized[0];
+  const hasMixedTickets = normalized.some(
+    (entry) => entry.customer_id !== first.customer_id || entry.round_id !== first.round_id,
   );
+  if (hasMixedTickets) return res.status(400).json({ error: "ticket_must_share_customer_and_round" });
 
-  logAudit(req.user.id, "create_batch", "entry", inserted.map((entry) => entry.id).join(","), inserted);
-  res.status(201).json(inserted);
+  const created = withTransaction(() => {
+    const ticket = createTicket(
+      {
+        customer_id: first.customer_id,
+        round_id: first.round_id,
+        source_channel: cleanText(req.body.sourceChannel || "manual", 40),
+        source_text: cleanText(req.body.sourceText || first.source_text, 500),
+        note: cleanText(req.body.note || first.note, 240),
+      },
+      req.user.id,
+    );
+    const inserted = normalized.map((entryPayload) => insertEntry(entryPayload, req.user.id, ticket.id));
+    return { ticket, inserted };
+  });
+
+  logAudit(req.user.id, "create", "ticket", created.ticket.id, created.ticket);
+  logAudit(req.user.id, "create_batch", "entry", created.inserted.map((entry) => entry.id).join(","), created.inserted);
+  res.status(201).json(created.inserted);
 });
 
 app.put("/api/entries/:id", requireAuth, requireWriteAccess, (req, res) => {
   const existing = findEntry(req.params.id);
   if (!existing) return res.status(404).json({ error: "entry_not_found" });
+  if (ticketIsLocked(existing.ticket_id)) return res.status(409).json({ error: "ticket_locked" });
 
   const payload = normalizeEntryPayload(req.body);
   if (!payload.ok) return res.status(400).json({ error: payload.error });
@@ -1000,9 +1056,62 @@ app.put("/api/entries/:id", requireAuth, requireWriteAccess, (req, res) => {
 app.delete("/api/entries/:id", requireAuth, requireWriteAccess, (req, res) => {
   const existing = findEntry(req.params.id);
   if (!existing) return res.status(404).json({ error: "entry_not_found" });
+  if (ticketIsLocked(existing.ticket_id)) return res.status(409).json({ error: "ticket_locked" });
   db.prepare("DELETE FROM entries WHERE id = ?").run(existing.id);
   logAudit(req.user.id, "delete", "entry", existing.id, existing);
   res.status(204).end();
+});
+
+app.post("/api/tickets/:id/approve", requireAuth, requireAdmin, (req, res) => {
+  const ticket = findTicket(req.params.id);
+  if (!ticket) return res.status(404).json({ error: "ticket_not_found" });
+  if (ticket.status !== "pending_review") return res.status(409).json({ error: "ticket_not_pending" });
+
+  const now = nowIso();
+  db.prepare(`
+    UPDATE tickets
+    SET status = 'approved', checked_by = ?, checked_at = ?, updated_at = ?
+    WHERE id = ?
+  `).run(req.user.id, now, now, ticket.id);
+
+  const updated = findTicket(ticket.id);
+  logAudit(req.user.id, "approve", "ticket", ticket.id, updated);
+  res.json(updated);
+});
+
+app.post("/api/tickets/:id/reject", requireAuth, requireAdmin, (req, res) => {
+  const ticket = findTicket(req.params.id);
+  if (!ticket) return res.status(404).json({ error: "ticket_not_found" });
+  if (ticket.status !== "pending_review") return res.status(409).json({ error: "ticket_not_pending" });
+
+  const now = nowIso();
+  const reason = cleanText(req.body.reason, 240);
+  db.prepare(`
+    UPDATE tickets
+    SET status = 'rejected', checked_by = ?, checked_at = ?, note = ?, updated_at = ?
+    WHERE id = ?
+  `).run(req.user.id, now, reason || ticket.note, now, ticket.id);
+
+  const updated = findTicket(ticket.id);
+  logAudit(req.user.id, "reject", "ticket", ticket.id, { ...updated, reason });
+  res.json(updated);
+});
+
+app.post("/api/tickets/:id/cancel", requireAuth, requireAdmin, (req, res) => {
+  const ticket = findTicket(req.params.id);
+  if (!ticket) return res.status(404).json({ error: "ticket_not_found" });
+  if (ticket.status === "cancelled") return res.status(409).json({ error: "ticket_already_cancelled" });
+
+  const now = nowIso();
+  db.prepare(`
+    UPDATE tickets
+    SET status = 'cancelled', checked_by = ?, checked_at = ?, updated_at = ?
+    WHERE id = ?
+  `).run(req.user.id, now, now, ticket.id);
+
+  const updated = findTicket(ticket.id);
+  logAudit(req.user.id, "cancel", "ticket", ticket.id, updated);
+  res.json(updated);
 });
 
 app.post("/api/results", requireAuth, requireWriteAccess, (req, res) => {
@@ -1010,8 +1119,12 @@ app.post("/api/results", requireAuth, requireWriteAccess, (req, res) => {
   const betTypeId = cleanText(req.body.betTypeId, 80);
   const numbers = normalizeResultNumbers(req.body.numbers, betTypeId);
 
-  if (!findRound(roundId) || !findBetType(betTypeId) || !numbers.length) {
+  const round = findRound(roundId);
+  if (!round || !findBetType(betTypeId) || !numbers.length) {
     return res.status(400).json({ error: "invalid_result_payload" });
+  }
+  if (round.result_status === "finalized") {
+    return res.status(409).json({ error: "result_finalized" });
   }
 
   const now = nowIso();
@@ -1038,6 +1151,60 @@ app.post("/api/results", requireAuth, requireWriteAccess, (req, res) => {
 
   logAudit(req.user.id, "upsert", "result", `${roundId}:${betTypeId}`, inserted);
   res.json(inserted);
+});
+
+app.post("/api/results/:roundId/finalize", requireAuth, requireAdmin, (req, res) => {
+  const round = findRound(req.params.roundId);
+  if (!round) return res.status(404).json({ error: "round_not_found" });
+  if (round.result_status === "finalized") return res.status(409).json({ error: "result_already_finalized" });
+
+  const resultCount = db.prepare("SELECT COUNT(*) AS count FROM results WHERE round_id = ?").get(round.id).count;
+  if (!resultCount) return res.status(409).json({ error: "result_required_before_finalize" });
+
+  const soldBetTypes = db
+    .prepare(`
+      SELECT DISTINCT entries.bet_type_id
+      FROM entries
+      JOIN tickets ON tickets.id = entries.ticket_id
+      WHERE entries.round_id = ?
+        AND tickets.status = 'approved'
+    `)
+    .all(round.id)
+    .map((row) => row.bet_type_id);
+  const resultBetTypes = new Set(
+    db.prepare("SELECT DISTINCT bet_type_id FROM results WHERE round_id = ?").all(round.id).map((row) => row.bet_type_id),
+  );
+  const missingBetTypeIds = soldBetTypes.filter((betTypeId) => !resultBetTypes.has(betTypeId));
+  if (missingBetTypeIds.length) {
+    return res.status(409).json({ error: "result_incomplete", missingBetTypeIds });
+  }
+
+  const now = nowIso();
+  db.prepare(`
+    UPDATE rounds
+    SET result_status = 'finalized', result_finalized_by = ?, result_finalized_at = ?, updated_at = ?
+    WHERE id = ?
+  `).run(req.user.id, now, now, round.id);
+
+  const updated = findRound(round.id);
+  logAudit(req.user.id, "finalize", "result", round.id, updated);
+  res.json(presentRound(updated));
+});
+
+app.post("/api/results/:roundId/reopen", requireAuth, requireAdmin, (req, res) => {
+  const round = findRound(req.params.roundId);
+  if (!round) return res.status(404).json({ error: "round_not_found" });
+  if (round.result_status !== "finalized") return res.status(409).json({ error: "result_not_finalized" });
+
+  db.prepare(`
+    UPDATE rounds
+    SET result_status = 'draft', result_finalized_by = NULL, result_finalized_at = NULL, updated_at = ?
+    WHERE id = ?
+  `).run(nowIso(), round.id);
+
+  const updated = findRound(round.id);
+  logAudit(req.user.id, "reopen", "result", round.id, updated);
+  res.json(presentRound(updated));
 });
 
 app.get("/api/settlements", requireAuth, requireStaff, (req, res) => {
@@ -1204,8 +1371,10 @@ function getFullState(user) {
       betTypes: [],
       payoutRates: [],
       limits: [],
+      tickets: [],
       entries: [],
       results: [],
+      auditLogs: [],
       users: [],
     };
   }
@@ -1242,8 +1411,44 @@ function getFullState(user) {
     betTypes: getBetTypes(),
     payoutRates: db.prepare("SELECT * FROM payout_rates").all(),
     limits: db.prepare("SELECT * FROM limits ORDER BY created_at DESC").all(),
+    tickets: db
+      .prepare(`
+        SELECT tickets.*,
+               customers.code AS customer_code,
+               customers.name AS customer_name,
+               rounds.label AS round_label,
+               rounds.draw_date,
+               rounds.draw_time,
+               lotteries.name AS lottery_name,
+               creator.username AS created_by_username,
+               checker.username AS checked_by_username,
+               COUNT(entries.id) AS entry_count,
+               COALESCE(SUM(entries.amount), 0) AS total_amount
+        FROM tickets
+        JOIN customers ON customers.id = tickets.customer_id
+        JOIN rounds ON rounds.id = tickets.round_id
+        JOIN lotteries ON lotteries.id = rounds.lottery_id
+        LEFT JOIN users AS creator ON creator.id = tickets.created_by
+        LEFT JOIN users AS checker ON checker.id = tickets.checked_by
+        LEFT JOIN entries ON entries.ticket_id = tickets.id
+        GROUP BY tickets.id
+        ORDER BY tickets.created_at DESC
+      `)
+      .all(),
     entries: db.prepare("SELECT * FROM entries ORDER BY created_at DESC").all(),
     results: db.prepare("SELECT * FROM results ORDER BY created_at DESC").all(),
+    auditLogs:
+      user?.role === "admin"
+        ? db
+            .prepare(`
+              SELECT audit_logs.*, users.username
+              FROM audit_logs
+              LEFT JOIN users ON users.id = audit_logs.user_id
+              ORDER BY audit_logs.created_at DESC
+              LIMIT 80
+            `)
+            .all()
+        : [],
     users:
       user?.role === "admin"
         ? db
@@ -1315,6 +1520,10 @@ function findLimit(id) {
 
 function findEntry(id) {
   return db.prepare("SELECT * FROM entries WHERE id = ?").get(id);
+}
+
+function findTicket(id) {
+  return db.prepare("SELECT * FROM tickets WHERE id = ?").get(id);
 }
 
 function normalizeLimitPayload(body) {
@@ -1439,20 +1648,69 @@ function validateBatchLimitCapacity(entries) {
   return null;
 }
 
-function insertEntry(payload, userId) {
+function createTicket(payload, userId) {
+  const now = nowIso();
+  const ticket = {
+    id: crypto.randomUUID(),
+    code: nextSequentialCode("tickets", "P", 6),
+    customer_id: payload.customer_id,
+    round_id: payload.round_id,
+    source_channel: payload.source_channel || "manual",
+    source_text: payload.source_text || "",
+    note: payload.note || "",
+    status: "pending_review",
+    checked_by: null,
+    checked_at: null,
+    created_by: userId,
+    created_at: now,
+    updated_at: now,
+  };
+  db.prepare(`
+    INSERT INTO tickets (
+      id, code, customer_id, round_id, source_channel, source_text, note,
+      status, checked_by, checked_at, created_by, created_at, updated_at
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    ticket.id,
+    ticket.code,
+    ticket.customer_id,
+    ticket.round_id,
+    ticket.source_channel,
+    ticket.source_text,
+    ticket.note,
+    ticket.status,
+    ticket.checked_by,
+    ticket.checked_at,
+    ticket.created_by,
+    ticket.created_at,
+    ticket.updated_at,
+  );
+  return ticket;
+}
+
+function ticketIsLocked(ticketId) {
+  if (!ticketId) return false;
+  const ticket = findTicket(ticketId);
+  return Boolean(ticket && ticket.status !== "pending_review");
+}
+
+function insertEntry(payload, userId, ticketId = null) {
   const now = nowIso();
   const entry = {
     id: crypto.randomUUID(),
+    ticket_id: ticketId,
     ...payload,
     created_by: userId,
     created_at: now,
     updated_at: now,
   };
   db.prepare(`
-    INSERT INTO entries (id, customer_id, round_id, bet_type_id, number, amount, note, source_text, created_by, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO entries (id, ticket_id, customer_id, round_id, bet_type_id, number, amount, note, source_text, created_by, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     entry.id,
+    entry.ticket_id,
     entry.customer_id,
     entry.round_id,
     entry.bet_type_id,
@@ -1484,7 +1742,9 @@ function buildSettlement(roundId) {
     FROM entries
     JOIN customers ON customers.id = entries.customer_id
     JOIN bet_types ON bet_types.id = entries.bet_type_id
+    JOIN tickets ON tickets.id = entries.ticket_id
     WHERE entries.round_id = ?
+      AND tickets.status = 'approved'
   `).all(roundId);
   const results = db.prepare("SELECT * FROM results WHERE round_id = ?").all(roundId);
   const payoutRates = db.prepare("SELECT * FROM payout_rates WHERE lottery_id = ?").all(round.lottery_id);
@@ -1522,15 +1782,24 @@ function buildHeadHouseSummary(headHouseId) {
       SELECT entries.*, customers.code AS customer_code, customers.name AS customer_name,
              rounds.label AS round_label, rounds.draw_date, rounds.draw_time,
              lotteries.id AS lottery_id, lotteries.name AS lottery_name
-      FROM entries
-      JOIN customers ON customers.id = entries.customer_id
-      JOIN rounds ON rounds.id = entries.round_id
-      JOIN lotteries ON lotteries.id = rounds.lottery_id
-      WHERE customers.head_house_id = ?
-      ORDER BY rounds.draw_date DESC, rounds.draw_time DESC, entries.created_at DESC
+        FROM entries
+        JOIN tickets ON tickets.id = entries.ticket_id
+        JOIN customers ON customers.id = entries.customer_id
+        JOIN rounds ON rounds.id = entries.round_id
+        JOIN lotteries ON lotteries.id = rounds.lottery_id
+        WHERE customers.head_house_id = ?
+          AND tickets.status = 'approved'
+        ORDER BY rounds.draw_date DESC, rounds.draw_time DESC, entries.created_at DESC
     `)
     .all(headHouseId);
-  const resultRows = db.prepare("SELECT * FROM results").all();
+    const resultRows = db
+      .prepare(`
+        SELECT results.*
+        FROM results
+        JOIN rounds ON rounds.id = results.round_id
+        WHERE rounds.result_status = 'finalized'
+      `)
+      .all();
   const payoutRates = db.prepare("SELECT * FROM payout_rates").all();
 
   const enriched = entries.map((entry) => {
@@ -1813,6 +2082,37 @@ function ensureColumn(tableName, columnName, definition) {
   if (!columns.some((column) => column.name === columnName)) {
     db.exec(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${definition};`);
   }
+}
+
+function backfillLegacyTickets() {
+  const legacyEntries = db.prepare(`
+    SELECT *
+    FROM entries
+    WHERE ticket_id IS NULL OR ticket_id = ''
+    ORDER BY created_at ASC
+  `).all();
+  if (!legacyEntries.length) return;
+
+  withTransaction(() => {
+    legacyEntries.forEach((entry) => {
+      const ticket = createTicket(
+        {
+          customer_id: entry.customer_id,
+          round_id: entry.round_id,
+          source_channel: "legacy",
+          source_text: entry.source_text,
+          note: entry.note,
+        },
+        entry.created_by,
+      );
+      db.prepare(`
+        UPDATE tickets
+        SET status = 'approved', checked_by = ?, checked_at = ?, created_at = ?, updated_at = ?
+        WHERE id = ?
+      `).run(entry.created_by, entry.created_at, entry.created_at, entry.updated_at, ticket.id);
+      db.prepare("UPDATE entries SET ticket_id = ? WHERE id = ?").run(ticket.id, entry.id);
+    });
+  });
 }
 
 function cleanLotteryCategory(value) {
