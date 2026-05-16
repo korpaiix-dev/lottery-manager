@@ -3,6 +3,7 @@
 Back-office web app for managing:
 
 - customer codes
+- head houses
 - multiple lottery products
 - rounds
 - lottery entries
@@ -32,14 +33,18 @@ Then open `http://127.0.0.1:3001`.
 ## Current modules
 
 - Customer management
+- Head-house management
 - Lottery product management
 - Round management
 - Fast intake parser for pasted LINE-style messages
+- Customer-code detection inside pasted LINE messages
 - Manual entry recording
+- Round cutoff times that stop intake automatically before draw time
 - Number limit management
 - Payout configuration
 - Result entry
 - Settlement reports
+- Read-only head-house summary portal
 - Login and first-admin setup
 - Dashboard summaries
 - JSON export
@@ -74,6 +79,7 @@ Deployment files:
 ## Data model
 
 - `customers`
+- `head_houses`
 - `lotteries`
 - `rounds`
 - `bet_types`
@@ -104,9 +110,10 @@ Example cron:
 For common intake work, use `รับรายการ`:
 
 1. Select the customer once.
-2. Paste the LINE message, for example `01 02 03 04 05 06 ไทย 1000บาท`.
-3. Let the parser infer lottery, active round, bet type, amount, and numbers where possible.
-4. Review the generated rows.
-5. Save the whole batch in one action.
+2. If the customer is new, add them inline from the same screen.
+3. Paste the LINE message, for example `01 02 03 04 05 06 ไทย 1000บาท`.
+4. Let the parser infer lottery, active round, bet type, amount, and numbers where possible.
+5. Review the generated rows.
+6. Save the whole batch in one action.
 
 Use the detailed form only for exceptional cases that need manual correction.

@@ -19,11 +19,21 @@ const db = new DatabaseSync(DB_PATH);
 db.exec("PRAGMA foreign_keys = ON;");
 db.exec("PRAGMA journal_mode = WAL;");
 db.exec(`
+  CREATE TABLE IF NOT EXISTS head_houses (
+    id TEXT PRIMARY KEY,
+    code TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL,
+    note TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+
   CREATE TABLE IF NOT EXISTS users (
     id TEXT PRIMARY KEY,
     username TEXT NOT NULL UNIQUE,
     password_hash TEXT NOT NULL,
-    role TEXT NOT NULL CHECK(role IN ('admin', 'operator')),
+    role TEXT NOT NULL CHECK(role IN ('admin', 'operator', 'head_house_viewer')),
+    head_house_id TEXT REFERENCES head_houses(id) ON DELETE SET NULL,
     created_at TEXT NOT NULL
   );
 
@@ -38,6 +48,7 @@ db.exec(`
     id TEXT PRIMARY KEY,
     code TEXT NOT NULL UNIQUE,
     name TEXT NOT NULL DEFAULT '',
+    head_house_id TEXT NOT NULL REFERENCES head_houses(id) ON DELETE RESTRICT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
   );
@@ -54,6 +65,8 @@ db.exec(`
     lottery_id TEXT NOT NULL REFERENCES lotteries(id) ON DELETE CASCADE,
     label TEXT NOT NULL,
     draw_date TEXT NOT NULL,
+    draw_time TEXT NOT NULL DEFAULT '00:00',
+    close_before_minutes INTEGER NOT NULL DEFAULT 0,
     status TEXT NOT NULL CHECK(status IN ('open', 'closed')) DEFAULT 'open',
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
@@ -123,7 +136,13 @@ db.exec(`
   );
 `);
 
+migrateUsersTableIfNeeded();
+ensureColumn("rounds", "draw_time", "TEXT NOT NULL DEFAULT '00:00'");
+ensureColumn("rounds", "close_before_minutes", "INTEGER NOT NULL DEFAULT 0");
+ensureColumn("customers", "head_house_id", "TEXT");
+ensureColumn("users", "head_house_id", "TEXT");
 seedReferenceData();
+db.prepare("UPDATE customers SET head_house_id = 'direct' WHERE head_house_id IS NULL OR head_house_id = ''").run();
 
 const app = express();
 app.disable("x-powered-by");
@@ -201,9 +220,15 @@ app.get("/api/state", requireAuth, (req, res) => {
 app.post("/api/users", requireAuth, requireAdmin, (req, res) => {
   const username = cleanText(req.body.username, 40);
   const password = String(req.body.password || "");
-  const role = req.body.role === "operator" ? "operator" : "admin";
+  const role =
+    req.body.role === "operator"
+      ? "operator"
+      : req.body.role === "head_house_viewer"
+        ? "head_house_viewer"
+        : "admin";
+  const headHouseId = role === "head_house_viewer" ? cleanText(req.body.headHouseId, 80) : null;
 
-  if (!username || password.length < 8) {
+  if (!username || password.length < 8 || (role === "head_house_viewer" && !findHeadHouse(headHouseId))) {
     return res.status(400).json({ error: "invalid_user_payload" });
   }
 
@@ -212,14 +237,15 @@ app.post("/api/users", requireAuth, requireAdmin, (req, res) => {
     username,
     password_hash: bcrypt.hashSync(password, 12),
     role,
+    head_house_id: headHouseId,
     created_at: nowIso(),
   };
 
   try {
     db.prepare(`
-      INSERT INTO users (id, username, password_hash, role, created_at)
-      VALUES (?, ?, ?, ?, ?)
-    `).run(user.id, user.username, user.password_hash, user.role, user.created_at);
+      INSERT INTO users (id, username, password_hash, role, head_house_id, created_at)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(user.id, user.username, user.password_hash, user.role, user.head_house_id, user.created_at);
   } catch {
     return res.status(409).json({ error: "username_exists" });
   }
@@ -228,11 +254,44 @@ app.post("/api/users", requireAuth, requireAdmin, (req, res) => {
   res.status(201).json(publicUser(user));
 });
 
-app.post("/api/customers", requireAuth, (req, res) => {
+app.post("/api/head-houses", requireAuth, requireAdmin, (req, res) => {
   const code = cleanText(req.body.code, 24).toUpperCase();
   const name = cleanText(req.body.name, 80);
+  const note = cleanText(req.body.note, 160);
 
-  if (!code) {
+  if (!code || !name) {
+    return res.status(400).json({ error: "invalid_head_house_payload" });
+  }
+
+  const now = nowIso();
+  const headHouse = {
+    id: createSlugId("head-house", code),
+    code,
+    name,
+    note,
+    created_at: now,
+    updated_at: now,
+  };
+
+  try {
+    db.prepare(`
+      INSERT INTO head_houses (id, code, name, note, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(headHouse.id, headHouse.code, headHouse.name, headHouse.note, headHouse.created_at, headHouse.updated_at);
+  } catch {
+    return res.status(409).json({ error: "head_house_code_exists" });
+  }
+
+  logAudit(req.user.id, "create", "head_house", headHouse.id, headHouse);
+  res.status(201).json(headHouse);
+});
+
+app.post("/api/customers", requireAuth, requireWriteAccess, (req, res) => {
+  const code = cleanText(req.body.code, 24).toUpperCase();
+  const name = cleanText(req.body.name, 80);
+  const headHouseId = cleanText(req.body.headHouseId, 80);
+
+  if (!code || !findHeadHouse(headHouseId)) {
     return res.status(400).json({ error: "customer_code_required" });
   }
 
@@ -241,15 +300,23 @@ app.post("/api/customers", requireAuth, (req, res) => {
     id: createSlugId("customer", code),
     code,
     name,
+    head_house_id: headHouseId,
     created_at: now,
     updated_at: now,
   };
 
   try {
     db.prepare(`
-      INSERT INTO customers (id, code, name, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?)
-    `).run(customer.id, customer.code, customer.name, customer.created_at, customer.updated_at);
+      INSERT INTO customers (id, code, name, head_house_id, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(
+      customer.id,
+      customer.code,
+      customer.name,
+      customer.head_house_id,
+      customer.created_at,
+      customer.updated_at,
+    );
   } catch {
     return res.status(409).json({ error: "customer_code_exists" });
   }
@@ -258,7 +325,7 @@ app.post("/api/customers", requireAuth, (req, res) => {
   res.status(201).json(customer);
 });
 
-app.post("/api/lotteries", requireAuth, (req, res) => {
+app.post("/api/lotteries", requireAuth, requireWriteAccess, (req, res) => {
   const name = cleanText(req.body.name, 80);
   if (!name) {
     return res.status(400).json({ error: "lottery_name_required" });
@@ -286,13 +353,24 @@ app.post("/api/lotteries", requireAuth, (req, res) => {
   res.status(201).json(lottery);
 });
 
-app.post("/api/rounds", requireAuth, (req, res) => {
+app.post("/api/rounds", requireAuth, requireWriteAccess, (req, res) => {
   const lotteryId = cleanText(req.body.lotteryId, 80);
   const label = cleanText(req.body.label, 80);
   const drawDate = cleanText(req.body.drawDate, 20);
+  const drawTime = cleanText(req.body.drawTime, 5);
+  const closeBeforeMinutes = Number(req.body.closeBeforeMinutes);
   const status = req.body.status === "closed" ? "closed" : "open";
 
-  if (!lotteryId || !label || !isIsoDate(drawDate) || !findLottery(lotteryId)) {
+  if (
+    !lotteryId ||
+    !label ||
+    !isIsoDate(drawDate) ||
+    !isTimeOfDay(drawTime) ||
+    !Number.isInteger(closeBeforeMinutes) ||
+    closeBeforeMinutes < 0 ||
+    closeBeforeMinutes > 1440 ||
+    !findLottery(lotteryId)
+  ) {
     return res.status(400).json({ error: "invalid_round_payload" });
   }
 
@@ -302,6 +380,8 @@ app.post("/api/rounds", requireAuth, (req, res) => {
     lottery_id: lotteryId,
     label,
     draw_date: drawDate,
+    draw_time: drawTime,
+    close_before_minutes: closeBeforeMinutes,
     status,
     created_at: now,
     updated_at: now,
@@ -309,30 +389,59 @@ app.post("/api/rounds", requireAuth, (req, res) => {
 
   try {
     db.prepare(`
-      INSERT INTO rounds (id, lottery_id, label, draw_date, status, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).run(round.id, round.lottery_id, round.label, round.draw_date, round.status, round.created_at, round.updated_at);
+      INSERT INTO rounds (id, lottery_id, label, draw_date, draw_time, close_before_minutes, status, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      round.id,
+      round.lottery_id,
+      round.label,
+      round.draw_date,
+      round.draw_time,
+      round.close_before_minutes,
+      round.status,
+      round.created_at,
+      round.updated_at,
+    );
   } catch {
     return res.status(409).json({ error: "round_exists" });
   }
 
   logAudit(req.user.id, "create", "round", round.id, round);
-  res.status(201).json(round);
+  res.status(201).json(presentRound(round));
 });
 
-app.put("/api/rounds/:id", requireAuth, (req, res) => {
+app.put("/api/rounds/:id", requireAuth, requireWriteAccess, (req, res) => {
   const round = findRound(req.params.id);
   if (!round) return res.status(404).json({ error: "round_not_found" });
 
   const status = req.body.status === "closed" ? "closed" : "open";
+  const drawDate = req.body.drawDate ? cleanText(req.body.drawDate, 20) : round.draw_date;
+  const drawTime = req.body.drawTime ? cleanText(req.body.drawTime, 5) : round.draw_time;
+  const closeBeforeMinutes =
+    req.body.closeBeforeMinutes === undefined ? round.close_before_minutes : Number(req.body.closeBeforeMinutes);
+
+  if (
+    !isIsoDate(drawDate) ||
+    !isTimeOfDay(drawTime) ||
+    !Number.isInteger(closeBeforeMinutes) ||
+    closeBeforeMinutes < 0 ||
+    closeBeforeMinutes > 1440
+  ) {
+    return res.status(400).json({ error: "invalid_round_payload" });
+  }
+
   const updatedAt = nowIso();
-  db.prepare("UPDATE rounds SET status = ?, updated_at = ? WHERE id = ?").run(status, updatedAt, round.id);
+  db.prepare(`
+    UPDATE rounds
+    SET status = ?, draw_date = ?, draw_time = ?, close_before_minutes = ?, updated_at = ?
+    WHERE id = ?
+  `).run(status, drawDate, drawTime, closeBeforeMinutes, updatedAt, round.id);
   const updated = findRound(round.id);
   logAudit(req.user.id, "update", "round", round.id, { status });
-  res.json(updated);
+  res.json(presentRound(updated));
 });
 
-app.post("/api/payout-rates", requireAuth, (req, res) => {
+app.post("/api/payout-rates", requireAuth, requireWriteAccess, (req, res) => {
   const lotteryId = cleanText(req.body.lotteryId, 80);
   const betTypeId = cleanText(req.body.betTypeId, 80);
   const rate = Number(req.body.rate);
@@ -377,7 +486,7 @@ app.post("/api/payout-rates", requireAuth, (req, res) => {
   res.status(201).json(payoutRate);
 });
 
-app.post("/api/limits", requireAuth, (req, res) => {
+app.post("/api/limits", requireAuth, requireWriteAccess, (req, res) => {
   const payload = normalizeLimitPayload(req.body);
   if (!payload.ok) return res.status(400).json({ error: payload.error });
 
@@ -402,7 +511,7 @@ app.post("/api/limits", requireAuth, (req, res) => {
   res.status(201).json(limit);
 });
 
-app.put("/api/limits/:id", requireAuth, (req, res) => {
+app.put("/api/limits/:id", requireAuth, requireWriteAccess, (req, res) => {
   const existing = findLimit(req.params.id);
   if (!existing) return res.status(404).json({ error: "limit_not_found" });
 
@@ -431,7 +540,7 @@ app.put("/api/limits/:id", requireAuth, (req, res) => {
   res.json(updated);
 });
 
-app.delete("/api/limits/:id", requireAuth, (req, res) => {
+app.delete("/api/limits/:id", requireAuth, requireWriteAccess, (req, res) => {
   const existing = findLimit(req.params.id);
   if (!existing) return res.status(404).json({ error: "limit_not_found" });
   db.prepare("DELETE FROM limits WHERE id = ?").run(existing.id);
@@ -439,7 +548,7 @@ app.delete("/api/limits/:id", requireAuth, (req, res) => {
   res.status(204).end();
 });
 
-app.post("/api/entries", requireAuth, (req, res) => {
+app.post("/api/entries", requireAuth, requireWriteAccess, (req, res) => {
   const payload = normalizeEntryPayload(req.body);
   if (!payload.ok) return res.status(400).json({ error: payload.error });
 
@@ -451,7 +560,7 @@ app.post("/api/entries", requireAuth, (req, res) => {
   res.status(201).json(entry);
 });
 
-app.post("/api/entries/batch", requireAuth, (req, res) => {
+app.post("/api/entries/batch", requireAuth, requireWriteAccess, (req, res) => {
   const items = Array.isArray(req.body.entries) ? req.body.entries : [];
   if (!items.length) return res.status(400).json({ error: "entries_required" });
 
@@ -473,7 +582,7 @@ app.post("/api/entries/batch", requireAuth, (req, res) => {
   res.status(201).json(inserted);
 });
 
-app.put("/api/entries/:id", requireAuth, (req, res) => {
+app.put("/api/entries/:id", requireAuth, requireWriteAccess, (req, res) => {
   const existing = findEntry(req.params.id);
   if (!existing) return res.status(404).json({ error: "entry_not_found" });
 
@@ -504,7 +613,7 @@ app.put("/api/entries/:id", requireAuth, (req, res) => {
   res.json(updated);
 });
 
-app.delete("/api/entries/:id", requireAuth, (req, res) => {
+app.delete("/api/entries/:id", requireAuth, requireWriteAccess, (req, res) => {
   const existing = findEntry(req.params.id);
   if (!existing) return res.status(404).json({ error: "entry_not_found" });
   db.prepare("DELETE FROM entries WHERE id = ?").run(existing.id);
@@ -512,7 +621,7 @@ app.delete("/api/entries/:id", requireAuth, (req, res) => {
   res.status(204).end();
 });
 
-app.post("/api/results", requireAuth, (req, res) => {
+app.post("/api/results", requireAuth, requireWriteAccess, (req, res) => {
   const roundId = cleanText(req.body.roundId, 80);
   const betTypeId = cleanText(req.body.betTypeId, 80);
   const numbers = normalizeResultNumbers(req.body.numbers, betTypeId);
@@ -547,17 +656,28 @@ app.post("/api/results", requireAuth, (req, res) => {
   res.json(inserted);
 });
 
-app.get("/api/settlements", requireAuth, (req, res) => {
+app.get("/api/settlements", requireAuth, requireStaff, (req, res) => {
   const roundId = cleanText(req.query.roundId, 80);
   if (!findRound(roundId)) return res.status(404).json({ error: "round_not_found" });
   res.json(buildSettlement(roundId));
 });
 
-app.get("/api/export", requireAuth, (req, res) => {
+app.get("/api/head-house-summary", requireAuth, (req, res) => {
+  const requestedId = cleanText(req.query.headHouseId, 80);
+  const headHouseId = req.user.role === "head_house_viewer" ? req.user.head_house_id : requestedId;
+
+  if (!headHouseId || !findHeadHouse(headHouseId)) {
+    return res.status(404).json({ error: "head_house_not_found" });
+  }
+
+  res.json(buildHeadHouseSummary(headHouseId));
+});
+
+app.get("/api/export", requireAuth, requireStaff, (req, res) => {
   res.json(getFullState(req.user));
 });
 
-app.post("/api/import", requireAuth, (req, res) => {
+app.post("/api/import", requireAuth, requireWriteAccess, (req, res) => {
   const payload = req.body;
   if (!payload || typeof payload !== "object") {
     return res.status(400).json({ error: "invalid_import_payload" });
@@ -601,8 +721,13 @@ function seedReferenceData() {
   lotteries.forEach(([id, name]) => insertLottery.run(id, name, now, now));
 
   db.prepare(`
-    INSERT OR IGNORE INTO customers (id, code, name, created_at, updated_at)
-    VALUES ('walkin', 'WALKIN', 'ไม่ระบุชื่อ', ?, ?)
+    INSERT OR IGNORE INTO head_houses (id, code, name, note, created_at, updated_at)
+    VALUES ('direct', 'DIRECT', 'ไม่ผ่านหัวบ้าน', '', ?, ?)
+  `).run(now, now);
+
+  db.prepare(`
+    INSERT OR IGNORE INTO customers (id, code, name, head_house_id, created_at, updated_at)
+    VALUES ('walkin', 'WALKIN', 'ไม่ระบุชื่อ', 'direct', ?, ?)
   `).run(now, now);
 
   lotteries.forEach(([id]) => seedPayoutRatesForLottery(id));
@@ -620,15 +745,41 @@ function seedPayoutRatesForLottery(lotteryId) {
 }
 
 function getFullState(user) {
+  if (user?.role === "head_house_viewer") {
+    return {
+      headHouses: user.head_house_id ? [findHeadHouse(user.head_house_id)].filter(Boolean) : [],
+      lotteries: [],
+      customers: [],
+      rounds: [],
+      betTypes: [],
+      payoutRates: [],
+      limits: [],
+      entries: [],
+      results: [],
+      users: [],
+    };
+  }
+
   return {
+    headHouses: db.prepare("SELECT * FROM head_houses ORDER BY code").all(),
     lotteries: db.prepare("SELECT * FROM lotteries ORDER BY name").all(),
-    customers: db.prepare("SELECT * FROM customers ORDER BY code").all(),
-    rounds: db.prepare(`
-      SELECT rounds.*, lotteries.name AS lottery_name
-      FROM rounds
-      JOIN lotteries ON lotteries.id = rounds.lottery_id
-      ORDER BY draw_date DESC, created_at DESC
-    `).all(),
+    customers: db
+      .prepare(`
+        SELECT customers.*, head_houses.code AS head_house_code, head_houses.name AS head_house_name
+        FROM customers
+        JOIN head_houses ON head_houses.id = customers.head_house_id
+        ORDER BY customers.code
+      `)
+      .all(),
+    rounds: db
+      .prepare(`
+        SELECT rounds.*, lotteries.name AS lottery_name
+        FROM rounds
+        JOIN lotteries ON lotteries.id = rounds.lottery_id
+        ORDER BY draw_date DESC, draw_time DESC, created_at DESC
+      `)
+      .all()
+      .map(presentRound),
     betTypes: getBetTypes(),
     payoutRates: db.prepare("SELECT * FROM payout_rates").all(),
     limits: db.prepare("SELECT * FROM limits ORDER BY created_at DESC").all(),
@@ -636,7 +787,15 @@ function getFullState(user) {
     results: db.prepare("SELECT * FROM results ORDER BY created_at DESC").all(),
     users:
       user?.role === "admin"
-        ? db.prepare("SELECT id, username, role, created_at FROM users ORDER BY created_at DESC").all()
+        ? db
+            .prepare(`
+              SELECT users.id, users.username, users.role, users.head_house_id, users.created_at,
+                     head_houses.code AS head_house_code, head_houses.name AS head_house_name
+              FROM users
+              LEFT JOIN head_houses ON head_houses.id = users.head_house_id
+              ORDER BY users.created_at DESC
+            `)
+            .all()
         : [],
   };
 }
@@ -651,6 +810,10 @@ function countRows(table) {
 
 function findLottery(id) {
   return db.prepare("SELECT * FROM lotteries WHERE id = ?").get(id);
+}
+
+function findHeadHouse(id) {
+  return db.prepare("SELECT * FROM head_houses WHERE id = ?").get(id);
 }
 
 function findRound(id) {
@@ -700,16 +863,21 @@ function normalizeEntryPayload(body) {
   const note = cleanText(body.note, 240);
   const sourceText = cleanText(body.sourceText, 500);
   const betType = findBetType(betTypeId);
+  const round = findRound(roundId);
 
   if (
     !db.prepare("SELECT 1 FROM customers WHERE id = ?").get(customerId) ||
-    !findRound(roundId) ||
+    !round ||
     !betType ||
     !isNumberValidForBetType(number, betType) ||
     !Number.isFinite(amount) ||
     amount <= 0
   ) {
     return { ok: false, error: "invalid_entry_payload" };
+  }
+
+  if (!roundAcceptsEntries(round)) {
+    return { ok: false, error: "round_not_accepting" };
   }
 
   return {
@@ -862,6 +1030,67 @@ function buildSettlement(roundId) {
   };
 }
 
+function buildHeadHouseSummary(headHouseId) {
+  const headHouse = findHeadHouse(headHouseId);
+  const entries = db
+    .prepare(`
+      SELECT entries.*, customers.code AS customer_code, customers.name AS customer_name,
+             rounds.label AS round_label, rounds.draw_date, rounds.draw_time,
+             lotteries.id AS lottery_id, lotteries.name AS lottery_name
+      FROM entries
+      JOIN customers ON customers.id = entries.customer_id
+      JOIN rounds ON rounds.id = entries.round_id
+      JOIN lotteries ON lotteries.id = rounds.lottery_id
+      WHERE customers.head_house_id = ?
+      ORDER BY rounds.draw_date DESC, rounds.draw_time DESC, entries.created_at DESC
+    `)
+    .all(headHouseId);
+  const resultRows = db.prepare("SELECT * FROM results").all();
+  const payoutRates = db.prepare("SELECT * FROM payout_rates").all();
+
+  const enriched = entries.map((entry) => {
+    const matched = resultRows.some((result) => result.round_id === entry.round_id && isWinningEntry(entry, result));
+    const rate = payoutRates.find(
+      (item) => item.lottery_id === entry.lottery_id && item.bet_type_id === entry.bet_type_id,
+    )?.rate || 0;
+    return {
+      ...entry,
+      payout: matched ? entry.amount * rate : 0,
+    };
+  });
+
+  const summaryByRound = new Map();
+  enriched.forEach((entry) => {
+    const key = entry.round_id;
+    const current = summaryByRound.get(key) || {
+      roundId: entry.round_id,
+      lotteryName: entry.lottery_name,
+      roundLabel: entry.round_label,
+      drawDate: entry.draw_date,
+      drawTime: entry.draw_time,
+      totalStake: 0,
+      totalPayout: 0,
+      profit: 0,
+    };
+    current.totalStake += entry.amount;
+    current.totalPayout += entry.payout;
+    current.profit = current.totalStake - current.totalPayout;
+    summaryByRound.set(key, current);
+  });
+
+  const totalStake = sum(enriched.map((entry) => entry.amount));
+  const totalPayout = sum(enriched.map((entry) => entry.payout));
+
+  return {
+    headHouse,
+    totalStake,
+    totalPayout,
+    profit: totalStake - totalPayout,
+    roundCount: summaryByRound.size,
+    rounds: [...summaryByRound.values()],
+  };
+}
+
 function isWinningEntry(entry, result) {
   if (entry.bet_type_id !== result.bet_type_id) return false;
   if (entry.bet_type_id === "three_tod") {
@@ -876,8 +1105,8 @@ function importLegacyPayload(payload, userId) {
 
   if (Array.isArray(payload.customers)) {
     const insertCustomer = db.prepare(`
-      INSERT OR IGNORE INTO customers (id, code, name, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?)
+      INSERT OR IGNORE INTO customers (id, code, name, head_house_id, created_at, updated_at)
+      VALUES (?, ?, ?, 'direct', ?, ?)
     `);
     payload.customers.forEach((customer) => {
       if (!customer?.id || !customer?.code) return;
@@ -910,7 +1139,7 @@ function requireAuth(req, res, next) {
 
   const tokenHash = hashToken(token);
   const session = db.prepare(`
-    SELECT sessions.*, users.username, users.role, users.created_at AS user_created_at
+    SELECT sessions.*, users.username, users.role, users.head_house_id, users.created_at AS user_created_at
     FROM sessions
     JOIN users ON users.id = sessions.user_id
     WHERE sessions.token_hash = ?
@@ -926,6 +1155,7 @@ function requireAuth(req, res, next) {
     id: session.user_id,
     username: session.username,
     role: session.role,
+    head_house_id: session.head_house_id,
     created_at: session.user_created_at,
   };
   next();
@@ -933,6 +1163,20 @@ function requireAuth(req, res, next) {
 
 function requireAdmin(req, res, next) {
   if (req.user.role !== "admin") {
+    return res.status(403).json({ error: "forbidden" });
+  }
+  next();
+}
+
+function requireStaff(req, res, next) {
+  if (req.user.role === "head_house_viewer") {
+    return res.status(403).json({ error: "forbidden" });
+  }
+  next();
+}
+
+function requireWriteAccess(req, res, next) {
+  if (req.user.role === "head_house_viewer") {
     return res.status(403).json({ error: "forbidden" });
   }
   next();
@@ -985,6 +1229,7 @@ function publicUser(user) {
     id: user.id,
     username: user.username,
     role: user.role,
+    headHouseId: user.head_house_id || null,
     createdAt: user.created_at,
   };
 }
@@ -1046,4 +1291,66 @@ function hashToken(token) {
 
 function nowIso() {
   return new Date().toISOString();
+}
+
+function ensureColumn(tableName, columnName, definition) {
+  const columns = db.prepare(`PRAGMA table_info(${tableName})`).all();
+  if (!columns.some((column) => column.name === columnName)) {
+    db.exec(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${definition};`);
+  }
+}
+
+function migrateUsersTableIfNeeded() {
+  const usersSql = db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'users'").get()?.sql || "";
+  const hasViewerRole = usersSql.includes("head_house_viewer");
+  const hasHeadHouseColumn = db.prepare("PRAGMA table_info(users)").all().some((column) => column.name === "head_house_id");
+
+  if (hasViewerRole && hasHeadHouseColumn) return;
+
+  db.exec("PRAGMA foreign_keys = OFF;");
+  db.exec(`
+    BEGIN TRANSACTION;
+    CREATE TABLE users_new (
+      id TEXT PRIMARY KEY,
+      username TEXT NOT NULL UNIQUE,
+      password_hash TEXT NOT NULL,
+      role TEXT NOT NULL CHECK(role IN ('admin', 'operator', 'head_house_viewer')),
+      head_house_id TEXT REFERENCES head_houses(id) ON DELETE SET NULL,
+      created_at TEXT NOT NULL
+    );
+    INSERT INTO users_new (id, username, password_hash, role, created_at)
+    SELECT id, username, password_hash, role, created_at FROM users;
+    DROP TABLE users;
+    ALTER TABLE users_new RENAME TO users;
+    COMMIT;
+  `);
+  db.exec("PRAGMA foreign_keys = ON;");
+}
+
+function presentRound(round) {
+  const drawAt = getRoundDrawAt(round);
+  const closeAt = getRoundCloseAt(round);
+  return {
+    ...round,
+    draw_at: drawAt.toISOString(),
+    close_at: closeAt.toISOString(),
+    accepting: roundAcceptsEntries(round),
+  };
+}
+
+function roundAcceptsEntries(round) {
+  return round.status === "open" && Date.now() < getRoundCloseAt(round).getTime();
+}
+
+function getRoundDrawAt(round) {
+  return new Date(`${round.draw_date}T${round.draw_time || "00:00"}:00+07:00`);
+}
+
+function getRoundCloseAt(round) {
+  const closeBeforeMinutes = Math.max(0, Number(round.close_before_minutes) || 0);
+  return new Date(getRoundDrawAt(round).getTime() - closeBeforeMinutes * 60_000);
+}
+
+function isTimeOfDay(value) {
+  return /^\d{2}:\d{2}$/.test(value) && Number(value.slice(0, 2)) < 24 && Number(value.slice(3, 5)) < 60;
 }

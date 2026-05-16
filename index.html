@@ -51,12 +51,14 @@
           <button class="nav-button is-active" type="button" data-view-target="dashboard">แดชบอร์ด</button>
           <button class="nav-button" type="button" data-view-target="intake">รับรายการ</button>
           <button class="nav-button" type="button" data-view-target="entries">รายการ</button>
+          <button class="nav-button" type="button" data-view-target="headHouses">หัวบ้าน</button>
           <button class="nav-button" type="button" data-view-target="customers">ลูกค้า</button>
           <button class="nav-button" type="button" data-view-target="lotteries">หวยและงวด</button>
           <button class="nav-button" type="button" data-view-target="limits">อั้นเลข</button>
           <button class="nav-button" type="button" data-view-target="payouts">อัตราจ่าย</button>
           <button class="nav-button" type="button" data-view-target="results">ผลรางวัล</button>
           <button class="nav-button" type="button" data-view-target="reports">รายงาน</button>
+          <button class="nav-button" type="button" data-view-target="headHouseReport">ยอดหัวบ้าน</button>
           <button class="nav-button" type="button" data-view-target="users">ผู้ใช้</button>
         </nav>
       </aside>
@@ -143,10 +145,13 @@
               </div>
 
               <div class="quick-grid">
-                <label class="field">
-                  <span>ลูกค้า</span>
-                  <select id="quickCustomer"></select>
-                </label>
+                <div class="quick-customer-field">
+                  <label class="field">
+                    <span>ลูกค้า</span>
+                    <select id="quickCustomer"></select>
+                  </label>
+                  <button id="toggleQuickCustomerBtn" class="text-button inline-action" type="button">เพิ่มลูกค้าใหม่</button>
+                </div>
                 <label class="field">
                   <span>หวยสำรอง</span>
                   <select id="quickLottery"></select>
@@ -164,6 +169,22 @@
                   <input id="quickAmount" inputmode="decimal" placeholder="0.00" />
                 </label>
               </div>
+
+              <form id="quickCustomerForm" class="inline-create-form hidden">
+                <label class="field">
+                  <span>รหัสลูกค้า</span>
+                  <input id="quickCustomerCodeInput" maxlength="24" placeholder="เช่น C001" required />
+                </label>
+                <label class="field">
+                  <span>ชื่อเล่น / หมายเหตุ</span>
+                  <input id="quickCustomerNameInput" maxlength="80" placeholder="เช่น ลูกค้าไลน์ A" />
+                </label>
+                <label class="field">
+                  <span>หัวบ้าน</span>
+                  <select id="quickCustomerHeadHouseInput" required></select>
+                </label>
+                <button class="button button-secondary" type="submit">บันทึกลูกค้า</button>
+              </form>
 
               <label class="field">
                 <span>ข้อความจาก LINE</span>
@@ -302,10 +323,48 @@
                     <span>ชื่อเล่น / หมายเหตุ</span>
                     <input id="customerNameInput" maxlength="80" placeholder="เช่น ลูกค้าไลน์ A" />
                   </label>
+                  <label class="field">
+                    <span>หัวบ้าน</span>
+                    <select id="customerHeadHouseInput" required></select>
+                  </label>
                 </div>
                 <button class="button button-primary" type="submit">เพิ่มลูกค้า</button>
               </form>
               <div id="customerList" class="customer-list"></div>
+            </section>
+          </section>
+
+          <section class="view" data-view="headHouses" hidden>
+            <section class="split-grid">
+              <section class="panel manager-panel">
+                <div class="panel-heading">
+                  <h2>เพิ่มหัวบ้าน</h2>
+                </div>
+                <form id="headHouseForm" class="stack-form">
+                  <div class="field-grid customer-grid">
+                    <label class="field">
+                      <span>รหัสหัวบ้าน</span>
+                      <input id="headHouseCodeInput" maxlength="24" placeholder="เช่น HB001" required />
+                    </label>
+                    <label class="field">
+                      <span>ชื่อหัวบ้าน</span>
+                      <input id="headHouseNameInput" maxlength="80" placeholder="เช่น เจ๊แดง" required />
+                    </label>
+                  </div>
+                  <label class="field">
+                    <span>หมายเหตุ</span>
+                    <input id="headHouseNoteInput" maxlength="160" placeholder="เช่น รับยอดจาก LINE กลุ่ม A" />
+                  </label>
+                  <button class="button button-primary" type="submit">เพิ่มหัวบ้าน</button>
+                </form>
+              </section>
+
+              <section class="panel manager-panel">
+                <div class="panel-heading">
+                  <h2>หัวบ้านทั้งหมด</h2>
+                </div>
+                <div id="headHouseList" class="customer-list"></div>
+              </section>
             </section>
           </section>
 
@@ -339,11 +398,21 @@
                       <span>วันที่ออก</span>
                       <input id="roundDateInput" type="date" required />
                     </label>
+                    <label class="field">
+                      <span>เวลาออก</span>
+                      <input id="roundTimeInput" type="time" required />
+                    </label>
                   </div>
-                  <label class="field">
-                    <span>ชื่องวด</span>
-                    <input id="roundLabelInput" maxlength="80" placeholder="เช่น 16 พ.ค. 69" required />
-                  </label>
+                  <div class="field-grid customer-grid">
+                    <label class="field">
+                      <span>ชื่องวด</span>
+                      <input id="roundLabelInput" maxlength="80" placeholder="เช่น 16 พ.ค. 69" required />
+                    </label>
+                    <label class="field">
+                      <span>ปิดรับก่อนออกกี่นาที</span>
+                      <input id="roundCloseBeforeInput" type="number" min="0" max="1440" step="1" value="15" required />
+                    </label>
+                  </div>
                   <button class="button button-primary" type="submit">เพิ่มงวด</button>
                 </form>
               </section>
@@ -360,6 +429,9 @@
                       <th>หวย</th>
                       <th>งวด</th>
                       <th>วันที่ออก</th>
+                      <th>เวลาออก</th>
+                      <th>ปิดรับก่อน</th>
+                      <th>เวลาปิดรับ</th>
                       <th>สถานะ</th>
                       <th></th>
                     </tr>
@@ -494,6 +566,51 @@
             </section>
           </section>
 
+          <section class="view" data-view="headHouseReport" hidden>
+            <section class="panel settlement-panel">
+              <div class="panel-heading">
+                <h2>ยอดหัวบ้าน</h2>
+              </div>
+              <label id="headHouseReportPickerWrap" class="field result-round-field">
+                <span>หัวบ้าน</span>
+                <select id="headHouseReportSelect"></select>
+              </label>
+              <section class="summary-grid report-grid">
+                <article class="metric metric-blue">
+                  <span>ยอดส่งรวม</span>
+                  <strong id="headHouseReportStake">฿0.00</strong>
+                </article>
+                <article class="metric metric-red">
+                  <span>ยอดจ่าย</span>
+                  <strong id="headHouseReportPayout">฿0.00</strong>
+                </article>
+                <article class="metric metric-green">
+                  <span>สุทธิ</span>
+                  <strong id="headHouseReportProfit">฿0.00</strong>
+                </article>
+                <article class="metric metric-indigo">
+                  <span>จำนวนงวด</span>
+                  <strong id="headHouseReportRoundCount">0</strong>
+                </article>
+              </section>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>หวย</th>
+                      <th>งวด</th>
+                      <th>วันออก</th>
+                      <th>ยอดส่ง</th>
+                      <th>ยอดจ่าย</th>
+                      <th>สุทธิ</th>
+                    </tr>
+                  </thead>
+                  <tbody id="headHouseReportBody"></tbody>
+                </table>
+              </div>
+            </section>
+          </section>
+
           <section class="view" data-view="users" hidden>
             <section class="split-grid">
               <section class="panel user-panel">
@@ -513,8 +630,13 @@
                     <span>สิทธิ์</span>
                     <select id="userRoleInput">
                       <option value="operator">operator</option>
+                      <option value="head_house_viewer">head_house_viewer</option>
                       <option value="admin">admin</option>
                     </select>
+                  </label>
+                  <label id="userHeadHouseWrap" class="field hidden">
+                    <span>หัวบ้าน</span>
+                    <select id="userHeadHouseInput"></select>
                   </label>
                   <button class="button button-primary" type="submit">เพิ่มผู้ใช้</button>
                 </form>
@@ -530,6 +652,7 @@
                       <tr>
                         <th>ชื่อผู้ใช้</th>
                         <th>สิทธิ์</th>
+                        <th>หัวบ้าน</th>
                         <th>วันที่สร้าง</th>
                       </tr>
                     </thead>

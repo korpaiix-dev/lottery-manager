@@ -276,6 +276,22 @@ small {
   gap: 14px;
 }
 
+.quick-customer-field {
+  display: grid;
+  gap: 8px;
+}
+
+.inline-action {
+  justify-self: start;
+}
+
+.inline-create-form {
+  display: grid;
+  grid-template-columns: minmax(140px, 0.7fr) minmax(180px, 1fr) minmax(160px, 0.8fr) auto;
+  gap: 12px;
+  align-items: end;
+}
+
 .field,
 .compact-field {
   display: grid;
@@ -874,6 +890,7 @@ td.amount {
   .analytics-grid,
   .field-grid,
   .quick-grid,
+  .inline-create-form,
   .customer-grid,
   .filters,
   .payout-matrix,

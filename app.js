@@ -2,12 +2,14 @@ const VIEW_META = {
   dashboard: { eyebrow: "ศูนย์ควบคุมงานหลังบ้าน", title: "แดชบอร์ด" },
   intake: { eyebrow: "ลดงานกรอกซ้ำ", title: "รับรายการ" },
   entries: { eyebrow: "ตรวจสอบรายการทั้งหมด", title: "รายการ" },
+  headHouses: { eyebrow: "เครือข่ายผู้ส่งยอด", title: "หัวบ้าน" },
   customers: { eyebrow: "ข้อมูลผู้ส่งรายการ", title: "ลูกค้า" },
   lotteries: { eyebrow: "ตั้งค่าหวยและงวด", title: "หวยและงวด" },
   limits: { eyebrow: "ควบคุมเพดานรับ", title: "อั้นเลข" },
   payouts: { eyebrow: "ตั้งค่าอัตราจ่าย", title: "อัตราจ่าย" },
   results: { eyebrow: "บันทึกผลที่ออก", title: "ผลรางวัล" },
   reports: { eyebrow: "สรุปผลกำไรขาดทุน", title: "รายงาน" },
+  headHouseReport: { eyebrow: "ยอดรวมแบบอ่านอย่างเดียว", title: "ยอดหัวบ้าน" },
   users: { eyebrow: "สิทธิ์การใช้งาน", title: "ผู้ใช้" },
 };
 
@@ -29,6 +31,7 @@ const BET_TYPE_PATTERNS = [
 
 const state = {
   user: null,
+  headHouses: [],
   lotteries: [],
   customers: [],
   rounds: [],
@@ -59,6 +62,12 @@ const elements = {
   currentUserLabel: document.querySelector("#currentUserLabel"),
   usersNavButton: document.querySelector('[data-view-target="users"]'),
   usersView: document.querySelector('[data-view="users"]'),
+  headHousesNavButton: document.querySelector('[data-view-target="headHouses"]'),
+  headHousesView: document.querySelector('[data-view="headHouses"]'),
+  headHouseReportNavButton: document.querySelector('[data-view-target="headHouseReport"]'),
+  staffOnlyNavButtons: document.querySelectorAll(
+    '[data-view-target="dashboard"], [data-view-target="intake"], [data-view-target="entries"], [data-view-target="customers"], [data-view-target="lotteries"], [data-view-target="limits"], [data-view-target="payouts"], [data-view-target="results"], [data-view-target="reports"]',
+  ),
   exportBtn: document.querySelector("#exportBtn"),
   logoutBtn: document.querySelector("#logoutBtn"),
   totalAmount: document.querySelector("#totalAmount"),
@@ -70,6 +79,11 @@ const elements = {
   limitWatchList: document.querySelector("#limitWatchList"),
   recentEntriesList: document.querySelector("#recentEntriesList"),
   quickCustomer: document.querySelector("#quickCustomer"),
+  toggleQuickCustomerBtn: document.querySelector("#toggleQuickCustomerBtn"),
+  quickCustomerForm: document.querySelector("#quickCustomerForm"),
+  quickCustomerCode: document.querySelector("#quickCustomerCodeInput"),
+  quickCustomerName: document.querySelector("#quickCustomerNameInput"),
+  quickCustomerHeadHouse: document.querySelector("#quickCustomerHeadHouseInput"),
   quickLottery: document.querySelector("#quickLottery"),
   quickRound: document.querySelector("#quickRound"),
   quickBetType: document.querySelector("#quickBetType"),
@@ -100,14 +114,22 @@ const elements = {
   customerForm: document.querySelector("#customerForm"),
   customerCode: document.querySelector("#customerCodeInput"),
   customerName: document.querySelector("#customerNameInput"),
+  customerHeadHouse: document.querySelector("#customerHeadHouseInput"),
   customerList: document.querySelector("#customerList"),
+  headHouseForm: document.querySelector("#headHouseForm"),
+  headHouseCode: document.querySelector("#headHouseCodeInput"),
+  headHouseName: document.querySelector("#headHouseNameInput"),
+  headHouseNote: document.querySelector("#headHouseNoteInput"),
+  headHouseList: document.querySelector("#headHouseList"),
   lotteryForm: document.querySelector("#lotteryForm"),
   lotteryName: document.querySelector("#lotteryNameInput"),
   lotteryChips: document.querySelector("#lotteryChips"),
   roundForm: document.querySelector("#roundForm"),
   roundLottery: document.querySelector("#roundLotteryInput"),
   roundDate: document.querySelector("#roundDateInput"),
+  roundTime: document.querySelector("#roundTimeInput"),
   roundLabel: document.querySelector("#roundLabelInput"),
+  roundCloseBefore: document.querySelector("#roundCloseBeforeInput"),
   roundsBody: document.querySelector("#roundsBody"),
   limitForm: document.querySelector("#limitForm"),
   limitFormTitle: document.querySelector("#limitFormTitle"),
@@ -128,10 +150,19 @@ const elements = {
   reportProfit: document.querySelector("#reportProfit"),
   reportWinnerCount: document.querySelector("#reportWinnerCount"),
   winnersBody: document.querySelector("#winnersBody"),
+  headHouseReportPickerWrap: document.querySelector("#headHouseReportPickerWrap"),
+  headHouseReportSelect: document.querySelector("#headHouseReportSelect"),
+  headHouseReportStake: document.querySelector("#headHouseReportStake"),
+  headHouseReportPayout: document.querySelector("#headHouseReportPayout"),
+  headHouseReportProfit: document.querySelector("#headHouseReportProfit"),
+  headHouseReportRoundCount: document.querySelector("#headHouseReportRoundCount"),
+  headHouseReportBody: document.querySelector("#headHouseReportBody"),
   userForm: document.querySelector("#userForm"),
   userUsername: document.querySelector("#userUsernameInput"),
   userPassword: document.querySelector("#userPasswordInput"),
   userRole: document.querySelector("#userRoleInput"),
+  userHeadHouseWrap: document.querySelector("#userHeadHouseWrap"),
+  userHeadHouse: document.querySelector("#userHeadHouseInput"),
   usersBody: document.querySelector("#usersBody"),
   recordActionsTemplate: document.querySelector("#recordActionsTemplate"),
   limitActionsTemplate: document.querySelector("#limitActionsTemplate"),
@@ -159,6 +190,8 @@ function bindEvents() {
   elements.clearQuickBtn.addEventListener("click", clearQuickIntake);
   elements.saveQuickBatchBtn.addEventListener("click", saveQuickBatch);
   elements.quickLottery.addEventListener("change", renderQuickRoundOptions);
+  elements.toggleQuickCustomerBtn.addEventListener("click", toggleQuickCustomerForm);
+  elements.quickCustomerForm.addEventListener("submit", handleQuickCustomerSubmit);
 
   elements.entryForm.addEventListener("submit", handleEntrySubmit);
   elements.resetBtn.addEventListener("click", resetEntryForm);
@@ -177,6 +210,7 @@ function bindEvents() {
   elements.searchInput.addEventListener("input", renderEntries);
 
   elements.customerForm.addEventListener("submit", handleCustomerSubmit);
+  elements.headHouseForm.addEventListener("submit", handleHeadHouseSubmit);
   elements.lotteryForm.addEventListener("submit", handleLotterySubmit);
   elements.roundForm.addEventListener("submit", handleRoundSubmit);
 
@@ -187,6 +221,8 @@ function bindEvents() {
   elements.resultRound.addEventListener("change", renderResultEditor);
   elements.reportRound.addEventListener("change", renderSettlement);
   elements.userForm.addEventListener("submit", handleUserSubmit);
+  elements.userRole.addEventListener("change", syncUserHeadHouseField);
+  elements.headHouseReportSelect.addEventListener("change", renderHeadHouseReport);
 }
 
 async function bootAuth() {
@@ -249,7 +285,7 @@ async function enterApp() {
   elements.currentUserLabel.textContent = state.user.username;
   configureRoleAccess();
   await refreshState();
-  activateView("dashboard", false);
+  activateView(state.user.role === "head_house_viewer" ? "headHouseReport" : "dashboard", false);
 }
 
 async function refreshState() {
@@ -276,6 +312,7 @@ function render() {
   renderSelects();
   renderDashboard();
   renderEntries();
+  renderHeadHouses();
   renderCustomers();
   renderLotteries();
   renderRounds();
@@ -283,35 +320,42 @@ function render() {
   renderPayouts();
   renderResultEditor();
   renderSettlement();
+  renderHeadHouseReport();
   renderUsers();
   renderQuickPreview();
   renderLimitPreview();
+  syncUserHeadHouseField();
 }
 
 function renderSelects() {
+  const headHouseOptions = state.headHouses.map((headHouse) => option(headHouse.id, formatHeadHouse(headHouse))).join("");
   const customerOptions = state.customers.map((customer) => option(customer.id, formatCustomer(customer))).join("");
   const lotteryOptions = state.lotteries.map((lottery) => option(lottery.id, lottery.name)).join("");
   const roundOptions = state.rounds.map((round) => option(round.id, formatRound(round))).join("");
-  const openRoundOptions = state.rounds
-    .filter((round) => round.status === "open")
+  const acceptingRoundOptions = state.rounds
+    .filter((round) => round.accepting)
     .map((round) => option(round.id, formatRound(round)))
     .join("");
   const betTypeOptions = state.betTypes.map((betType) => option(betType.id, betType.name)).join("");
 
   preserveSelect(elements.quickCustomer, customerOptions);
+  preserveSelect(elements.quickCustomerHeadHouse, headHouseOptions, "direct");
   preserveSelect(elements.customer, customerOptions);
+  preserveSelect(elements.customerHeadHouse, headHouseOptions, "direct");
   preserveSelect(elements.filterCustomer, option("all", "ทั้งหมด") + customerOptions, "all");
   preserveSelect(elements.quickLottery, lotteryOptions);
   preserveSelect(elements.roundLottery, lotteryOptions);
   preserveSelect(elements.quickBetType, betTypeOptions, "two_top");
   preserveSelect(elements.betType, betTypeOptions, "two_top");
   preserveSelect(elements.filterBetType, option("all", "ทั้งหมด") + betTypeOptions, "all");
-  preserveSelect(elements.round, openRoundOptions || roundOptions);
+  preserveSelect(elements.round, acceptingRoundOptions || option("", "ยังไม่มีงวดที่เปิดรับ"));
   preserveSelect(elements.filterRound, option("all", "ทั้งหมด") + roundOptions, "all");
-  preserveSelect(elements.limitRound, openRoundOptions || roundOptions);
+  preserveSelect(elements.limitRound, acceptingRoundOptions || roundOptions);
   preserveSelect(elements.limitBetType, betTypeOptions, "two_top");
   preserveSelect(elements.resultRound, roundOptions);
   preserveSelect(elements.reportRound, roundOptions);
+  preserveSelect(elements.userHeadHouse, headHouseOptions);
+  preserveSelect(elements.headHouseReportSelect, headHouseOptions);
 
   renderQuickRoundOptions();
   syncNumberLength(elements.number, elements.betType.value);
@@ -321,10 +365,10 @@ function renderSelects() {
 function renderQuickRoundOptions() {
   const lotteryId = elements.quickLottery.value || state.lotteries[0]?.id;
   const options = state.rounds
-    .filter((round) => round.lottery_id === lotteryId && round.status === "open")
+    .filter((round) => round.lottery_id === lotteryId && round.accepting)
     .map((round) => option(round.id, formatRound(round)))
     .join("");
-  preserveSelect(elements.quickRound, options);
+  preserveSelect(elements.quickRound, options || option("", "ยังไม่มีงวดที่เปิดรับ"));
 }
 
 function renderDashboard() {
@@ -390,6 +434,7 @@ function parseQuickMessage() {
 
   const inferredLottery = inferLottery(raw) || elements.quickLottery.value;
   const inferredRound = findLatestOpenRound(inferredLottery)?.id || elements.quickRound.value;
+  const inferredCustomer = inferCustomer(raw) || elements.quickCustomer.value;
   const inferredBetType = inferBetType(raw);
   const amountMatch = raw.match(/(\d+(?:,\d{3})*(?:\.\d+)?)\s*(?:บาท|บ)/i);
   const inferredAmount = amountMatch ? parseAmount(amountMatch[1]) : parseAmount(elements.quickAmount.value);
@@ -398,8 +443,8 @@ function parseQuickMessage() {
   const numbers = [...stripped.matchAll(/\b\d{1,3}\b/g)].map((match) => match[0]);
   const entries = numbers.map((number) => {
     const betTypeId = inferredBetType || inferBetTypeFromDigits(number.length) || elements.quickBetType.value;
-    return {
-      customerId: elements.quickCustomer.value,
+      return {
+        customerId: inferredCustomer,
       roundId: inferredRound,
       betTypeId,
       number,
@@ -409,6 +454,9 @@ function parseQuickMessage() {
   });
 
   state.quickParsedEntries = entries;
+  if (inferredCustomer) {
+    elements.quickCustomer.value = inferredCustomer;
+  }
   renderQuickPreview({
     inferredLottery,
     inferredRound,
@@ -481,10 +529,32 @@ function clearQuickIntake() {
   renderQuickPreview();
 }
 
+function toggleQuickCustomerForm() {
+  elements.quickCustomerForm.classList.toggle("hidden");
+  if (!elements.quickCustomerForm.classList.contains("hidden")) {
+    elements.quickCustomerCode.focus();
+  }
+}
+
+async function handleQuickCustomerSubmit(event) {
+  event.preventDefault();
+  const created = await createCustomer(
+    elements.quickCustomerCode.value.trim(),
+    elements.quickCustomerName.value.trim(),
+    elements.quickCustomerHeadHouse.value,
+  );
+  elements.quickCustomerForm.reset();
+  elements.quickCustomerForm.classList.add("hidden");
+  await refreshState();
+  elements.quickCustomer.value = created.id;
+  elements.customer.value = created.id;
+}
+
 function getQuickEntryIssues(entry) {
   const issues = [];
   if (!entry.customerId) issues.push("ไม่มีลูกค้า");
   if (!entry.roundId) issues.push("ไม่มีงวด");
+  if (entry.roundId && !getRound(entry.roundId)?.accepting) issues.push("งวดปิดรับแล้ว");
   if (!entry.betTypeId) issues.push("ไม่มีประเภท");
   const betType = getBetType(entry.betTypeId);
   if (!betType || !isValidNumber(entry.number, betType.digits)) issues.push("เลขไม่ตรงประเภท");
@@ -588,15 +658,52 @@ async function deleteEntry(id) {
 
 async function handleCustomerSubmit(event) {
   event.preventDefault();
-  await api("/api/customers", {
-    method: "POST",
-    body: {
-      code: elements.customerCode.value.trim(),
-      name: elements.customerName.value.trim(),
-    },
-  });
+  await createCustomer(elements.customerCode.value.trim(), elements.customerName.value.trim(), elements.customerHeadHouse.value);
   elements.customerForm.reset();
   await refreshState();
+}
+
+async function createCustomer(code, name, headHouseId) {
+  return api("/api/customers", {
+    method: "POST",
+    body: { code, name, headHouseId },
+  });
+}
+
+async function handleHeadHouseSubmit(event) {
+  event.preventDefault();
+  await api("/api/head-houses", {
+    method: "POST",
+    body: {
+      code: elements.headHouseCode.value.trim(),
+      name: elements.headHouseName.value.trim(),
+      note: elements.headHouseNote.value.trim(),
+    },
+  });
+  elements.headHouseForm.reset();
+  await refreshState();
+}
+
+function renderHeadHouses() {
+  elements.headHouseList.innerHTML = state.headHouses
+    .map((headHouse) => {
+      const customers = state.customers.filter((customer) => customer.head_house_id === headHouse.id).length;
+      const amount = sum(
+        state.entries
+          .filter((entry) => getCustomer(entry.customer_id)?.head_house_id === headHouse.id)
+          .map((entry) => entry.amount),
+      );
+      return `
+        <article class="customer-item">
+          <div>
+            <strong>${escapeHtml(headHouse.code)} · ${escapeHtml(headHouse.name)}</strong>
+            <span>${escapeHtml(headHouse.note || "ไม่มีหมายเหตุ")}</span>
+          </div>
+          <small>${customers.toLocaleString("th-TH")} ลูกค้า · ${money(amount)}</small>
+        </article>
+      `;
+    })
+    .join("");
 }
 
 function renderCustomers() {
@@ -607,7 +714,7 @@ function renderCustomers() {
         <article class="customer-item">
           <div>
             <strong>${escapeHtml(customer.code)}</strong>
-            <span>${escapeHtml(customer.name || "ยังไม่มีชื่อ")}</span>
+            <span>${escapeHtml(customer.name || "ยังไม่มีชื่อ")} · ${escapeHtml(customer.head_house_code || "-")}</span>
           </div>
           <small>${count.toLocaleString("th-TH")} รายการ</small>
         </article>
@@ -642,11 +749,14 @@ async function handleRoundSubmit(event) {
     body: {
       lotteryId: elements.roundLottery.value,
       drawDate: elements.roundDate.value,
+      drawTime: elements.roundTime.value,
       label: elements.roundLabel.value.trim(),
+      closeBeforeMinutes: Number(elements.roundCloseBefore.value),
     },
   });
   elements.roundForm.reset();
   elements.roundDate.value = today();
+  elements.roundCloseBefore.value = 15;
   await refreshState();
 }
 
@@ -658,7 +768,10 @@ function renderRounds() {
       <td>${escapeHtml(getLotteryName(round.lottery_id))}</td>
       <td>${escapeHtml(round.label)}</td>
       <td>${longDate(round.draw_date)}</td>
-      <td><span class="status-pill ${round.status === "open" ? "normal" : "full"}">${round.status === "open" ? "เปิด" : "ปิด"}</span></td>
+      <td>${escapeHtml(round.draw_time)}</td>
+      <td>${round.close_before_minutes.toLocaleString("th-TH")} นาที</td>
+      <td>${escapeHtml(formatRoundCutoff(round))}</td>
+      <td><span class="status-pill ${roundStatusClass(round)}">${roundStatusLabel(round)}</span></td>
       <td><button class="icon-button toggle-round-button" type="button">${round.status === "open" ? "ปิดงวด" : "เปิดงวด"}</button></td>
     `;
     row.querySelector(".toggle-round-button").addEventListener("click", async () => {
@@ -861,6 +974,44 @@ async function renderSettlement() {
   }
 }
 
+async function renderHeadHouseReport() {
+  const headHouseId =
+    state.user?.role === "head_house_viewer" ? state.user.headHouseId : elements.headHouseReportSelect.value;
+
+  if (!headHouseId) {
+    elements.headHouseReportStake.textContent = money(0);
+    elements.headHouseReportPayout.textContent = money(0);
+    elements.headHouseReportProfit.textContent = money(0);
+    elements.headHouseReportRoundCount.textContent = "0";
+    elements.headHouseReportBody.innerHTML = "";
+    return;
+  }
+
+  try {
+    const summary = await api(`/api/head-house-summary?headHouseId=${encodeURIComponent(headHouseId)}`);
+    elements.headHouseReportStake.textContent = money(summary.totalStake);
+    elements.headHouseReportPayout.textContent = money(summary.totalPayout);
+    elements.headHouseReportProfit.textContent = money(summary.profit);
+    elements.headHouseReportRoundCount.textContent = summary.roundCount.toLocaleString("th-TH");
+    elements.headHouseReportBody.innerHTML = summary.rounds
+      .map(
+        (round) => `
+          <tr>
+            <td>${escapeHtml(round.lotteryName)}</td>
+            <td>${escapeHtml(round.roundLabel)}</td>
+            <td>${longDate(round.drawDate)} ${escapeHtml(round.drawTime)}</td>
+            <td class="amount">${money(round.totalStake)}</td>
+            <td class="amount">${money(round.totalPayout)}</td>
+            <td class="amount">${money(round.profit)}</td>
+          </tr>
+        `,
+      )
+      .join("");
+  } catch {
+    elements.headHouseReportBody.innerHTML = "";
+  }
+}
+
 async function handleUserSubmit(event) {
   event.preventDefault();
   await api("/api/users", {
@@ -869,9 +1020,11 @@ async function handleUserSubmit(event) {
       username: elements.userUsername.value.trim(),
       password: elements.userPassword.value,
       role: elements.userRole.value,
+      headHouseId: elements.userRole.value === "head_house_viewer" ? elements.userHeadHouse.value : null,
     },
   });
   elements.userForm.reset();
+  syncUserHeadHouseField();
   await refreshState();
 }
 
@@ -887,6 +1040,7 @@ function renderUsers() {
         <tr>
           <td>${escapeHtml(user.username)}</td>
           <td>${escapeHtml(user.role)}</td>
+          <td>${escapeHtml(user.head_house_code || "-")}</td>
           <td>${longDate(user.created_at.slice(0, 10))}</td>
         </tr>
       `,
@@ -896,8 +1050,18 @@ function renderUsers() {
 
 function configureRoleAccess() {
   const canManageUsers = state.user?.role === "admin";
+  const isHeadHouseViewer = state.user?.role === "head_house_viewer";
   elements.usersNavButton.classList.toggle("hidden", !canManageUsers);
   elements.usersView.hidden = !canManageUsers;
+  elements.headHousesNavButton.classList.toggle("hidden", !canManageUsers);
+  elements.headHousesView.hidden = !canManageUsers;
+  elements.headHouseReportPickerWrap.classList.toggle("hidden", isHeadHouseViewer);
+  elements.exportBtn.classList.toggle("hidden", isHeadHouseViewer);
+  elements.staffOnlyNavButtons.forEach((button) => button.classList.toggle("hidden", isHeadHouseViewer));
+}
+
+function syncUserHeadHouseField() {
+  elements.userHeadHouseWrap.classList.toggle("hidden", elements.userRole.value !== "head_house_viewer");
 }
 
 function renderLimitPreview() {
@@ -977,6 +1141,11 @@ function inferLottery(text) {
   return "";
 }
 
+function inferCustomer(text) {
+  const normalized = text.toUpperCase();
+  return state.customers.find((customer) => new RegExp(`\\b${escapeRegExp(customer.code)}\\b`, "i").test(normalized))?.id || "";
+}
+
 function inferBetType(text) {
   return BET_TYPE_PATTERNS.find((item) => item.patterns.some((pattern) => pattern.test(text)))?.id || "";
 }
@@ -1003,12 +1172,19 @@ function stripParserNoise(text) {
   state.lotteries.forEach((lottery) => {
     stripped = stripped.replaceAll(lottery.name, " ");
   });
+  state.customers.forEach((customer) => {
+    stripped = stripped.replace(new RegExp(`\\b${escapeRegExp(customer.code)}\\b`, "gi"), " ");
+  });
   return stripped;
 }
 
 function handleLimitError(error) {
   if (error?.payload?.error === "limit_exceeded") {
     alert("เลขนี้เกินเพดานอั้นแล้ว ต้องเพิ่มเพดานก่อนจึงจะรับต่อได้");
+    return;
+  }
+  if (error?.payload?.error === "round_not_accepting") {
+    alert("งวดนี้ปิดรับแล้ว เลือกงวดที่ยังเปิดรับหรือแก้เวลาในหน้างวดก่อน");
     return;
   }
   alert("บันทึกไม่สำเร็จ");
@@ -1052,20 +1228,29 @@ function option(value, label) {
 }
 
 function formatCustomer(customer) {
-  return customer.name ? `${customer.code} · ${customer.name}` : customer.code;
+  const headHouse = customer.head_house_code ? ` · ${customer.head_house_code}` : "";
+  return customer.name ? `${customer.code} · ${customer.name}${headHouse}` : `${customer.code}${headHouse}`;
+}
+
+function formatHeadHouse(headHouse) {
+  return `${headHouse.code} · ${headHouse.name}`;
 }
 
 function formatRound(round) {
   if (!round) return "-";
-  return `${round.lottery_name || getLotteryName(round.lottery_id)} · ${round.label}`;
+  return `${round.lottery_name || getLotteryName(round.lottery_id)} · ${round.label} · ${shortDate(round.draw_date)} ${round.draw_time}`;
 }
 
 function findLatestOpenRound(lotteryId) {
-  return state.rounds.find((round) => round.lottery_id === lotteryId && round.status === "open");
+  return state.rounds.find((round) => round.lottery_id === lotteryId && round.accepting);
 }
 
 function getRound(id) {
   return state.rounds.find((round) => round.id === id);
+}
+
+function getCustomer(id) {
+  return state.customers.find((customer) => customer.id === id);
 }
 
 function getBetType(id) {
@@ -1122,6 +1307,33 @@ function longDate(value) {
   }).format(new Date(`${value}T00:00:00`));
 }
 
+function shortDate(value) {
+  return new Intl.DateTimeFormat("th-TH", {
+    day: "numeric",
+    month: "short",
+  }).format(new Date(`${value}T00:00:00`));
+}
+
+function formatRoundCutoff(round) {
+  return new Intl.DateTimeFormat("th-TH", {
+    day: "numeric",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: "Asia/Bangkok",
+  }).format(new Date(round.close_at));
+}
+
+function roundStatusLabel(round) {
+  if (round.accepting) return "เปิดรับ";
+  return round.status === "closed" ? "ปิดงวด" : "ปิดรับแล้ว";
+}
+
+function roundStatusClass(round) {
+  if (round.accepting) return "normal";
+  return round.status === "closed" ? "full" : "warning";
+}
+
 function today() {
   const current = new Date();
   const offset = current.getTimezoneOffset();
@@ -1145,4 +1357,8 @@ function escapeHtml(value) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
+}
+
+function escapeRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
