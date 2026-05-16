@@ -40,10 +40,12 @@ Then open `http://127.0.0.1:3001`.
 - Fast intake parser for pasted LINE-style messages
 - Customer-code detection inside pasted LINE messages
 - Manual entry recording
+- Ticket-level review workflow with pending/approved/rejected/cancelled states
 - Round cutoff times that stop intake automatically before draw time
 - Number limit management
 - Payout configuration
 - Result entry
+- Result finalization and reopen flow
 - Settlement reports
 - Read-only head-house summary portal
 - Login and first-admin setup
@@ -86,6 +88,7 @@ Deployment files:
 - `bet_types`
 - `payout_rates`
 - `limits`
+- `tickets`
 - `entries`
 - `results`
 - `users`
@@ -115,6 +118,18 @@ For common intake work, use `รับรายการ`:
 3. Paste the LINE message, for example `01 02 03 04 05 06 ไทย 1000บาท`.
 4. Let the parser infer lottery, active round, bet type, amount, and numbers where possible.
 5. Review the generated rows.
-6. Save the whole batch in one action.
+6. Save the whole batch in one action and use the generated ticket code for follow-up.
+7. A supervisor reviews the full ticket in `ตรวจงาน` before it is counted in official totals.
+8. After draw time, record results and finalize the round before payouts become official.
 
 Use the detailed form only for exceptional cases that need manual correction.
+
+## QA
+
+Run the repeatable end-to-end smoke test:
+
+```powershell
+npm.cmd run smoke
+```
+
+The smoke test covers ticket capture, supervisor approval, approved-ticket locking, result finalization, settlement totals, head-house totals, and audit logging.

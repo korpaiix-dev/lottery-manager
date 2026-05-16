@@ -1,6 +1,7 @@
 const VIEW_META = {
   dashboard: { eyebrow: "ศูนย์ควบคุมงานหลังบ้าน", title: "แดชบอร์ด" },
   intake: { eyebrow: "ลดงานกรอกซ้ำ", title: "รับรายการ" },
+  review: { eyebrow: "ตรวจโพยก่อนคิดยอดจริง", title: "ตรวจงาน" },
   entries: { eyebrow: "ตรวจสอบรายการทั้งหมด", title: "รายการ" },
   headHouses: { eyebrow: "เครือข่ายผู้ส่งยอด", title: "หัวบ้าน" },
   customers: { eyebrow: "ข้อมูลผู้ส่งรายการ", title: "ลูกค้า" },
@@ -49,8 +50,10 @@ const state = {
   betTypes: [],
   payoutRates: [],
   limits: [],
+  tickets: [],
   entries: [],
   results: [],
+  auditLogs: [],
   users: [],
   editingEntryId: null,
   editingLimitId: null,
@@ -87,11 +90,13 @@ const elements = {
   sidebarLogoutBtn: document.querySelector("#sidebarLogoutBtn"),
   usersNavButton: document.querySelector('[data-view-target="users"]'),
   usersView: document.querySelector('[data-view="users"]'),
+  reviewNavButton: document.querySelector('[data-view-target="review"]'),
+  reviewView: document.querySelector('[data-view="review"]'),
   headHousesNavButton: document.querySelector('[data-view-target="headHouses"]'),
   headHousesView: document.querySelector('[data-view="headHouses"]'),
   headHouseReportNavButton: document.querySelector('[data-view-target="headHouseReport"]'),
   staffOnlyNavButtons: document.querySelectorAll(
-    '[data-view-target="dashboard"], [data-view-target="intake"], [data-view-target="entries"], [data-view-target="customers"], [data-view-target="lotteries"], [data-view-target="limits"], [data-view-target="payouts"], [data-view-target="results"], [data-view-target="reports"]',
+    '[data-view-target="dashboard"], [data-view-target="intake"], [data-view-target="review"], [data-view-target="entries"], [data-view-target="customers"], [data-view-target="lotteries"], [data-view-target="limits"], [data-view-target="payouts"], [data-view-target="results"], [data-view-target="reports"]',
   ),
   exportBtn: document.querySelector("#exportBtn"),
   logoutBtn: document.querySelector("#logoutBtn"),
@@ -101,9 +106,12 @@ const elements = {
   openRoundsCount: document.querySelector("#openRoundsCount"),
   totalLimits: document.querySelector("#totalLimits"),
   nearLimitCount: document.querySelector("#nearLimitCount"),
+  pendingTicketCount: document.querySelector("#pendingTicketCount"),
+  pendingResultCount: document.querySelector("#pendingResultCount"),
   marketSummary: document.querySelector("#marketSummary"),
   lotteryBoard: document.querySelector("#lotteryBoard"),
   closingSoonBanner: document.querySelector("#closingSoonBanner"),
+  taskQueueList: document.querySelector("#taskQueueList"),
   limitWatchList: document.querySelector("#limitWatchList"),
   recentEntriesList: document.querySelector("#recentEntriesList"),
   ticketCountdown: document.querySelector("#ticketCountdown"),
@@ -227,6 +235,11 @@ const elements = {
   resultRound: document.querySelector("#resultRoundInput"),
   resultEditor: document.querySelector("#resultEditor"),
   resultsOverviewBody: document.querySelector("#resultsOverviewBody"),
+  resultStatusBar: document.querySelector("#resultStatusBar"),
+  pendingTicketsBody: document.querySelector("#pendingTicketsBody"),
+  pendingTicketsEmpty: document.querySelector("#pendingTicketsEmpty"),
+  pendingResultsList: document.querySelector("#pendingResultsList"),
+  auditLogList: document.querySelector("#auditLogList"),
   reportRound: document.querySelector("#reportRoundInput"),
   ledgerDebit: document.querySelector("#ledgerDebit"),
   ledgerCredit: document.querySelector("#ledgerCredit"),
@@ -293,6 +306,9 @@ function bindEvents() {
   elements.addTicketEntryBtn.addEventListener("click", addTicketDraftEntry);
   elements.clearTicketBtn.addEventListener("click", clearTicketDraft);
   elements.saveTicketBtn.addEventListener("click", saveTicketDraft);
+  document.querySelectorAll("[data-intake-mode]").forEach((button) => {
+    button.addEventListener("click", () => activateIntakeMode(button.dataset.intakeMode));
+  });
 
   elements.parseQuickBtn.addEventListener("click", parseQuickMessage);
   elements.clearQuickBtn.addEventListener("click", clearQuickIntake);
@@ -431,6 +447,7 @@ function render() {
   renderSelects();
   renderDashboard();
   renderTicketWorkbench();
+  renderReview();
   renderEntries();
   renderHeadHouses();
   renderCustomers();
@@ -499,13 +516,19 @@ function renderQuickRoundOptions() {
 
 function renderDashboard() {
   const limitStatuses = getLimitStatuses();
-  elements.totalAmount.textContent = money(sum(state.entries.map((entry) => entry.amount)));
-  elements.totalEntries.textContent = state.entries.length.toLocaleString("th-TH");
+  const approvedEntries = getApprovedEntries();
+  const pendingTickets = state.tickets.filter((ticket) => ticket.status === "pending_review");
+  const pendingResults = getRoundsPendingResultReview();
+  elements.totalAmount.textContent = money(sum(approvedEntries.map((entry) => entry.amount)));
+  elements.totalEntries.textContent = approvedEntries.length.toLocaleString("th-TH");
   elements.totalCustomers.textContent = state.customers.length.toLocaleString("th-TH");
   elements.openRoundsCount.textContent = state.rounds.filter((round) => round.accepting).length.toLocaleString("th-TH");
   elements.totalLimits.textContent = state.limits.length.toLocaleString("th-TH");
   elements.nearLimitCount.textContent = limitStatuses.filter((item) => item.status !== "normal").length.toLocaleString("th-TH");
+  elements.pendingTicketCount.textContent = pendingTickets.length.toLocaleString("th-TH");
+  elements.pendingResultCount.textContent = pendingResults.length.toLocaleString("th-TH");
 
+  renderTaskQueue(pendingTickets, pendingResults);
   renderLimitWatchList(limitStatuses);
   renderRecentEntries();
   renderMarketSummary();
@@ -529,7 +552,51 @@ function renderMarketSummary() {
 }
 
 function renderSidebarSummary() {
-  elements.sidebarBalance.textContent = money(sum(state.entries.map((entry) => entry.amount)));
+  elements.sidebarBalance.textContent = money(sum(getApprovedEntries().map((entry) => entry.amount)));
+}
+
+function renderTaskQueue(pendingTickets, pendingResults) {
+  const zeroRateCount = state.payoutRates.filter((rate) => Number(rate.rate) <= 0).length;
+  const tasks = [];
+  if (pendingTickets.length) {
+    tasks.push({
+      tone: "warning",
+      title: `${pendingTickets.length.toLocaleString("th-TH")} โพยรอตรวจ`,
+      detail: "ตรวจและอนุมัติก่อนนำไปคิดยอดจริง",
+    });
+  }
+  if (pendingResults.length) {
+    tasks.push({
+      tone: "warning",
+      title: `${pendingResults.length.toLocaleString("th-TH")} งวดรอยืนยันผล`,
+      detail: "บันทึกผลแล้วแต่ยังไม่ปิดงาน",
+    });
+  }
+  if (zeroRateCount) {
+    tasks.push({
+      tone: "danger",
+      title: `${zeroRateCount.toLocaleString("th-TH")} อัตราจ่ายยังเป็นศูนย์`,
+      detail: "ควรตั้งค่าก่อนรับยอดจริง",
+    });
+  }
+  if (!tasks.length) {
+    tasks.push({
+      tone: "",
+      title: "ไม่มีงานค้างสำคัญ",
+      detail: "ระบบพร้อมรับรายการ",
+    });
+  }
+
+  elements.taskQueueList.innerHTML = tasks
+    .map(
+      (task) => `
+        <article class="task-item ${task.tone}">
+          <strong>${escapeHtml(task.title)}</strong>
+          <span>${escapeHtml(task.detail)}</span>
+        </article>
+      `,
+    )
+    .join("");
 }
 
 function renderLotteryBoard() {
@@ -603,8 +670,9 @@ function renderLimitWatchList(statuses = getLimitStatuses()) {
 }
 
 function renderRecentEntries() {
-  elements.recentEntriesList.innerHTML = state.entries.length
-    ? state.entries
+  const recentEntries = getApprovedEntries();
+  elements.recentEntriesList.innerHTML = recentEntries.length
+    ? recentEntries
         .slice(0, 6)
         .map(
           (entry) => `
@@ -629,6 +697,26 @@ function renderTicketWorkbench() {
   renderTicketHistory();
   renderTicketLimits();
   renderTicketRecentEntries();
+}
+
+function activateIntakeMode(mode) {
+  document.querySelectorAll("[data-intake-mode]").forEach((button) => {
+    button.classList.toggle("is-active", button.dataset.intakeMode === mode);
+  });
+
+  if (mode === "paste") {
+    document.querySelector("#quickPanel")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    elements.quickMessage.focus();
+    return;
+  }
+
+  if (mode === "classic") {
+    document.querySelector("#entryPanel")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    elements.number.focus();
+    return;
+  }
+
+  elements.ticketNumber.focus();
 }
 
 function renderTicketHeader() {
@@ -721,14 +809,26 @@ function addTicketDraftEntry() {
     return;
   }
 
-  state.ticketDraftEntries.push({
-    id: crypto.randomUUID(),
-    customerId,
-    roundId,
-    betTypeId,
-    number,
-    amount,
-  });
+  const duplicate = state.ticketDraftEntries.find(
+    (entry) =>
+      entry.customerId === customerId &&
+      entry.roundId === roundId &&
+      entry.betTypeId === betTypeId &&
+      entry.number === number,
+  );
+
+  if (duplicate) {
+    duplicate.amount += amount;
+  } else {
+    state.ticketDraftEntries.push({
+      id: crypto.randomUUID(),
+      customerId,
+      roundId,
+      betTypeId,
+      number,
+      amount,
+    });
+  }
   elements.ticketNumber.value = "";
   elements.ticketNumber.focus();
   renderTicketWorkbench();
@@ -784,9 +884,11 @@ async function saveTicketDraft() {
   }
 
   try {
-    await api("/api/entries/batch", {
+    const inserted = await api("/api/entries/batch", {
       method: "POST",
       body: {
+        sourceChannel: "manual",
+        note: elements.ticketNote.value.trim(),
         entries: state.ticketDraftEntries.map((entry) => ({
           customerId: entry.customerId,
           roundId: entry.roundId,
@@ -800,7 +902,8 @@ async function saveTicketDraft() {
     state.ticketDraftEntries = [];
     elements.ticketNote.value = "";
     await refreshState();
-    alert("บันทึกโพยแล้ว");
+    const ticketCode = getTicket(inserted[0]?.ticket_id)?.code;
+    alert(ticketCode ? `บันทึกโพยแล้ว รหัสโพย ${ticketCode}` : "บันทึกโพยแล้ว");
   } catch (error) {
     handleLimitError(error);
   }
@@ -952,11 +1055,12 @@ function renderQuickPreview(meta = null) {
     return;
   }
 
+  const duplicateKeys = getDuplicateQuickEntryKeys(entries);
   const issueCount = entries.filter((entry) => getQuickEntryIssues(entry).length).length;
   elements.quickParseSummary.className = `parse-summary ${issueCount ? "warning" : "success"}`;
   elements.quickParseSummary.innerHTML = issueCount
     ? `พบ ${entries.length.toLocaleString("th-TH")} รายการ แต่ยังมี ${issueCount.toLocaleString("th-TH")} รายการที่ต้องแก้ก่อนบันทึก`
-    : `พร้อมบันทึก ${entries.length.toLocaleString("th-TH")} รายการ${meta?.inferredLottery ? ` จาก ${escapeHtml(getLotteryName(meta.inferredLottery))}` : ""}`;
+    : `พร้อมบันทึก ${entries.length.toLocaleString("th-TH")} รายการ${meta?.inferredLottery ? ` จาก ${escapeHtml(getLotteryName(meta.inferredLottery))}` : ""}${duplicateKeys.size ? ` · พบเลขซ้ำ ${duplicateKeys.size.toLocaleString("th-TH")} ชุด ระบบจะรวมยอดให้ตอนบันทึก` : ""}`;
 
   entries.forEach((entry) => {
     const issues = getQuickEntryIssues(entry);
@@ -989,11 +1093,21 @@ async function saveQuickBatch() {
     amount: entry.amount,
     sourceText: entry.sourceText,
   }));
+  const normalizedEntries = mergeDuplicateQuickEntries(entries);
 
   try {
-    await api("/api/entries/batch", { method: "POST", body: { entries } });
+    const inserted = await api("/api/entries/batch", {
+      method: "POST",
+      body: {
+        sourceChannel: "line",
+        sourceText: elements.quickMessage.value.trim(),
+        entries: normalizedEntries,
+      },
+    });
     clearQuickIntake();
     await refreshState();
+    const ticketCode = getTicket(inserted[0]?.ticket_id)?.code;
+    if (ticketCode) alert(`บันทึกโพยแล้ว รหัสโพย ${ticketCode}`);
     activateView("entries");
   } catch (error) {
     handleLimitError(error);
@@ -1040,6 +1154,29 @@ function getQuickEntryIssues(entry) {
   return issues;
 }
 
+function getDuplicateQuickEntryKeys(entries) {
+  const counts = new Map();
+  entries.forEach((entry) => {
+    const key = [entry.customerId, entry.roundId, entry.betTypeId, entry.number].join(":");
+    counts.set(key, (counts.get(key) || 0) + 1);
+  });
+  return new Set([...counts.entries()].filter(([, count]) => count > 1).map(([key]) => key));
+}
+
+function mergeDuplicateQuickEntries(entries) {
+  const merged = new Map();
+  entries.forEach((entry) => {
+    const key = [entry.customerId, entry.roundId, entry.betTypeId, entry.number].join(":");
+    const current = merged.get(key);
+    if (current) {
+      current.amount += entry.amount;
+    } else {
+      merged.set(key, { ...entry });
+    }
+  });
+  return [...merged.values()];
+}
+
 async function handleEntrySubmit(event) {
   event.preventDefault();
   const payload = {
@@ -1075,13 +1212,24 @@ function resetEntryForm() {
 }
 
 function renderEntries() {
-  const search = elements.searchInput.value.trim();
+  const search = elements.searchInput.value.trim().toLowerCase();
   const customer = elements.filterCustomer.value || "all";
   const round = elements.filterRound.value || "all";
   const betType = elements.filterBetType.value || "all";
   const visible = state.entries.filter((entry) => {
+    const ticket = getTicket(entry.ticket_id);
+    const searchable = [
+      entry.number,
+      entry.note,
+      getCustomerCode(entry.customer_id),
+      getCustomerName(entry.customer_id),
+      ticket?.code,
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
     return (
-      (!search || entry.number.includes(search)) &&
+      (!search || searchable.includes(search)) &&
       (customer === "all" || entry.customer_id === customer) &&
       (round === "all" || entry.round_id === round) &&
       (betType === "all" || entry.bet_type_id === betType)
@@ -1104,10 +1252,12 @@ function renderEntries() {
             <table>
               <thead>
                 <tr>
+                  <th>โพย</th>
                   <th>ลูกค้า</th>
                   <th>ประเภท</th>
                   <th>เลข</th>
                   <th>ยอดเงิน</th>
+                  <th>สถานะตรวจ</th>
                   <th>บันทึก</th>
                   <th></th>
                 </tr>
@@ -1115,21 +1265,27 @@ function renderEntries() {
               <tbody>
                 ${entries
                   .map(
-                    (entry) => `
+                    (entry) => {
+                      const ticket = getTicket(entry.ticket_id);
+                      const locked = ticket && ticket.status !== "pending_review";
+                      return `
                       <tr>
+                        <td>${escapeHtml(getTicket(entry.ticket_id)?.code || "-")}</td>
                         <td>${escapeHtml(getCustomerCode(entry.customer_id))}</td>
                         <td>${escapeHtml(getBetTypeName(entry.bet_type_id))}</td>
                         <td><span class="number-pill">${escapeHtml(entry.number)}</span></td>
                         <td class="amount">${money(entry.amount)}</td>
+                        <td><span class="status-pill ${ticketStatusClass(getTicket(entry.ticket_id)?.status)}">${escapeHtml(ticketStatusLabel(getTicket(entry.ticket_id)?.status))}</span></td>
                         <td>${escapeHtml(entry.note || "-")}</td>
                         <td>
                           <div class="row-actions">
-                            <button class="icon-button edit-entry-button" type="button" data-entry-id="${escapeHtml(entry.id)}">แก้ไข</button>
-                            <button class="icon-button delete-entry-button" type="button" data-entry-id="${escapeHtml(entry.id)}">ลบ</button>
+                            <button class="icon-button edit-entry-button" type="button" data-entry-id="${escapeHtml(entry.id)}" ${locked ? "disabled" : ""}>แก้ไข</button>
+                            <button class="icon-button delete-entry-button" type="button" data-entry-id="${escapeHtml(entry.id)}" ${locked ? "disabled" : ""}>ลบ</button>
                           </div>
                         </td>
                       </tr>
-                    `,
+                    `;
+                    },
                   )
                   .join("")}
               </tbody>
@@ -1167,8 +1323,12 @@ function beginEntryEdit(id) {
 
 async function deleteEntry(id) {
   if (!confirm("ลบรายการนี้ใช่หรือไม่")) return;
-  await api(`/api/entries/${id}`, { method: "DELETE" });
-  await refreshState();
+  try {
+    await api(`/api/entries/${id}`, { method: "DELETE" });
+    await refreshState();
+  } catch (error) {
+    handleLimitError(error);
+  }
 }
 
 async function handleCustomerSubmit(event) {
@@ -1787,9 +1947,26 @@ function renderPayouts() {
 function renderResultEditor() {
   const roundId = elements.resultRound.value || state.rounds[0]?.id;
   if (!roundId) {
+    elements.resultStatusBar.innerHTML = "";
     elements.resultEditor.innerHTML = '<div class="empty-state">ยังไม่มีงวด</div>';
     return;
   }
+
+  const round = getRound(roundId);
+  const isFinalized = round?.result_status === "finalized";
+  elements.resultStatusBar.innerHTML = `
+    <div class="result-status-copy">
+      <strong>${isFinalized ? "ผลยืนยันแล้ว" : "ผลยังเป็นร่าง"}</strong>
+      <span>${isFinalized ? `ยืนยันเมื่อ ${escapeHtml(formatDateTime(round.result_finalized_at))}` : "บันทึกผลครบแล้วจึงกดยืนยันเพื่อใช้เป็นยอดจริง"}</span>
+    </div>
+    <div class="review-actions">
+      ${
+        isFinalized
+          ? '<button id="reopenResultBtn" class="button button-secondary" type="button">เปิดแก้ผลอีกครั้ง</button>'
+          : '<button id="finalizeResultBtn" class="button button-primary" type="button">ยืนยันผลรางวัล</button>'
+      }
+    </div>
+  `;
 
   elements.resultEditor.innerHTML = state.betTypes
     .map((betType) => {
@@ -1800,8 +1977,8 @@ function renderResultEditor() {
       return `
         <label class="result-row">
           <span>${escapeHtml(betType.name)}</span>
-          <input data-bet-type-id="${betType.id}" value="${escapeHtml(numbers)}" placeholder="คั่นหลายเลขด้วยช่องว่าง" />
-          <button class="button button-secondary save-result-button" type="button">บันทึก</button>
+          <input data-bet-type-id="${betType.id}" value="${escapeHtml(numbers)}" placeholder="คั่นหลายเลขด้วยช่องว่าง" ${isFinalized ? "disabled" : ""} />
+          <button class="button button-secondary save-result-button" type="button" ${isFinalized ? "disabled" : ""}>บันทึก</button>
         </label>
       `;
     })
@@ -1811,16 +1988,42 @@ function renderResultEditor() {
     button.addEventListener("click", async () => {
       const row = button.closest(".result-row");
       const input = row.querySelector("input");
-      await api("/api/results", {
-        method: "POST",
-        body: {
-          roundId,
-          betTypeId: input.dataset.betTypeId,
-          numbers: input.value,
-        },
-      });
-      await refreshState();
+      try {
+        await api("/api/results", {
+          method: "POST",
+          body: {
+            roundId,
+            betTypeId: input.dataset.betTypeId,
+            numbers: input.value,
+          },
+        });
+        await refreshState();
+      } catch (error) {
+        handleLimitError(error);
+      }
     });
+  });
+
+  document.querySelector("#finalizeResultBtn")?.addEventListener("click", async () => {
+    try {
+      await api(`/api/results/${encodeURIComponent(roundId)}/finalize`, { method: "POST" });
+      await refreshState();
+    } catch (error) {
+      if (error?.payload?.error === "result_incomplete") {
+        alert("ยังยืนยันผลไม่ได้ เพราะยังกรอกผลไม่ครบทุกประเภทเลขที่มีการขายในงวดนี้");
+        return;
+      }
+      alert("ยังยืนยันผลไม่ได้ ตรวจว่ามีผลรางวัลครบแล้ว");
+    }
+  });
+  document.querySelector("#reopenResultBtn")?.addEventListener("click", async () => {
+    if (!confirm("เปิดผลรางวัลกลับมาแก้ไขอีกครั้งใช่หรือไม่")) return;
+    try {
+      await api(`/api/results/${encodeURIComponent(roundId)}/reopen`, { method: "POST" });
+      await refreshState();
+    } catch {
+      alert("เปิดผลกลับมาแก้ไม่ได้");
+    }
   });
 }
 
@@ -1837,13 +2040,120 @@ function renderResultsOverview() {
           <td>${escapeHtml(resultNumbers(round.id, "three_top") || "-")}</td>
           <td>${escapeHtml(resultNumbers(round.id, "two_top") || "-")}</td>
           <td>${escapeHtml(resultNumbers(round.id, "two_bottom") || "-")}</td>
-          <td><span class="status-pill ${roundStatusClass(round)}">${roundStatusLabel(round)}</span></td>
+          <td><span class="status-pill ${resultStatusClass(round)}">${resultStatusLabel(round)}</span></td>
         </tr>
       `;
     })
     .join("");
 
   elements.resultsOverviewBody.innerHTML = rows || '<tr><td colspan="7">ยังไม่มีงวด</td></tr>';
+}
+
+function renderReview() {
+  const pendingTickets = state.tickets.filter((ticket) => ticket.status === "pending_review");
+  elements.pendingTicketsEmpty.classList.toggle("hidden", pendingTickets.length > 0);
+  elements.pendingTicketsBody.innerHTML = pendingTickets
+    .map((ticket) => {
+      const ticketEntries = state.entries.filter((entry) => entry.ticket_id === ticket.id);
+      return `
+        <tr>
+          <td>${escapeHtml(ticket.code)}</td>
+          <td>${escapeHtml(ticket.customer_code)}${ticket.customer_name ? ` · ${escapeHtml(ticket.customer_name)}` : ""}</td>
+          <td>${escapeHtml(ticket.lottery_name)} · ${escapeHtml(ticket.round_label)}</td>
+          <td>${ticket.entry_count.toLocaleString("th-TH")}</td>
+          <td class="amount">${money(ticket.total_amount)}</td>
+          <td>${escapeHtml(ticket.created_by_username || "-")}</td>
+          <td>${escapeHtml(formatDateTime(ticket.created_at))}</td>
+          <td>
+            <div class="review-actions">
+              <button class="button button-secondary toggle-ticket-details-button" type="button" data-ticket-id="${escapeHtml(ticket.id)}">ดูโพย</button>
+              <button class="button button-primary approve-ticket-button" type="button" data-ticket-id="${escapeHtml(ticket.id)}">อนุมัติ</button>
+              <button class="button button-secondary reject-ticket-button" type="button" data-ticket-id="${escapeHtml(ticket.id)}">ตีกลับ</button>
+              <button class="button button-danger cancel-ticket-button" type="button" data-ticket-id="${escapeHtml(ticket.id)}">ยกเลิก</button>
+            </div>
+          </td>
+        </tr>
+        <tr id="ticket-detail-${escapeHtml(ticket.id)}" class="ticket-detail-row hidden">
+          <td colspan="8">
+            <div class="ticket-detail-card">
+              <div>
+                <strong>รายการในโพย</strong>
+                <span>${escapeHtml(ticketEntries.map((entry) => `${entry.number} ${getBetTypeName(entry.bet_type_id)} ${money(entry.amount)}`).join(" · "))}</span>
+              </div>
+              <div>
+                <strong>ต้นทาง</strong>
+                <span>${escapeHtml(ticket.source_channel || "manual")}${ticket.source_text ? ` · ${escapeHtml(ticket.source_text)}` : ""}</span>
+              </div>
+              <div>
+                <strong>หมายเหตุ</strong>
+                <span>${escapeHtml(ticket.note || "-")}</span>
+              </div>
+            </div>
+          </td>
+        </tr>
+      `;
+    })
+    .join("");
+
+  elements.pendingTicketsBody.querySelectorAll(".toggle-ticket-details-button").forEach((button) => {
+    button.addEventListener("click", () => {
+      document.querySelector(`#ticket-detail-${CSS.escape(button.dataset.ticketId)}`)?.classList.toggle("hidden");
+    });
+  });
+  elements.pendingTicketsBody.querySelectorAll(".approve-ticket-button").forEach((button) => {
+    button.addEventListener("click", () => reviewTicket(button.dataset.ticketId, "approve"));
+  });
+  elements.pendingTicketsBody.querySelectorAll(".reject-ticket-button").forEach((button) => {
+    button.addEventListener("click", () => reviewTicket(button.dataset.ticketId, "reject"));
+  });
+  elements.pendingTicketsBody.querySelectorAll(".cancel-ticket-button").forEach((button) => {
+    button.addEventListener("click", () => reviewTicket(button.dataset.ticketId, "cancel"));
+  });
+
+  const pendingResults = getRoundsPendingResultReview();
+  elements.pendingResultsList.innerHTML = pendingResults.length
+    ? pendingResults
+        .map(
+          (round) => `
+            <article class="compact-row">
+              <strong>${escapeHtml(getLotteryName(round.lottery_id))} · ${escapeHtml(round.label)}</strong>
+              <span>${escapeHtml(resultNumbers(round.id, "three_top") || "-")} / ${escapeHtml(resultNumbers(round.id, "two_top") || "-")} / ${escapeHtml(resultNumbers(round.id, "two_bottom") || "-")}</span>
+            </article>
+          `,
+        )
+        .join("")
+    : '<div class="empty-state">ไม่มีผลที่รอยืนยัน</div>';
+
+  elements.auditLogList.innerHTML = state.auditLogs.length
+    ? state.auditLogs
+        .slice(0, 8)
+        .map(
+          (log) => `
+            <article class="compact-row">
+              <strong>${escapeHtml(formatAuditAction(log))}</strong>
+              <span>${escapeHtml(log.username || "system")} · ${escapeHtml(formatDateTime(log.created_at))}</span>
+            </article>
+          `,
+        )
+        .join("")
+    : '<div class="empty-state">ยังไม่มีบันทึกกิจกรรม</div>';
+}
+
+async function reviewTicket(ticketId, action) {
+  if (!ticketId) return;
+  const body = {};
+  if (action === "reject") {
+    const reason = prompt("ระบุเหตุผลที่ตีกลับโพย");
+    if (reason === null) return;
+    body.reason = reason.trim();
+  }
+  if (action === "cancel" && !confirm("ยกเลิกโพยนี้ใช่หรือไม่")) return;
+  try {
+    await api(`/api/tickets/${encodeURIComponent(ticketId)}/${action}`, { method: "POST", body });
+    await refreshState();
+  } catch {
+    alert("ดำเนินการกับโพยไม่สำเร็จ");
+  }
 }
 
 async function renderSettlement() {
@@ -1906,7 +2216,7 @@ function renderFinanceLedger() {
 
 function buildFinanceLedger() {
   const rows = [];
-  state.entries.forEach((entry) => {
+  getApprovedEntries().forEach((entry) => {
     const round = getRound(entry.round_id);
     rows.push({
       createdAt: entry.created_at,
@@ -1937,7 +2247,7 @@ function buildFinanceLedger() {
 
 function getEntryPayout(entry) {
   const round = getRound(entry.round_id);
-  if (!round) return 0;
+  if (!round || round.result_status !== "finalized") return 0;
   const matchingResults = state.results.filter(
     (result) => result.round_id === entry.round_id && result.bet_type_id === entry.bet_type_id,
   );
@@ -2070,6 +2380,8 @@ function renderUsers() {
 function configureRoleAccess() {
   const canManageUsers = state.user?.role === "admin";
   const isHeadHouseViewer = state.user?.role === "head_house_viewer";
+  elements.reviewNavButton.classList.toggle("hidden", !canManageUsers);
+  elements.reviewView.hidden = !canManageUsers;
   elements.usersNavButton.classList.toggle("hidden", !canManageUsers);
   elements.usersView.hidden = !canManageUsers;
   elements.sidebarProfileBtn.classList.toggle("hidden", !canManageUsers);
@@ -2195,6 +2507,65 @@ function getLimitStatuses() {
   });
 }
 
+function getApprovedEntries() {
+  return state.entries.filter((entry) => getTicket(entry.ticket_id)?.status === "approved");
+}
+
+function getRoundsPendingResultReview() {
+  return state.rounds.filter(
+    (round) =>
+      round.result_status !== "finalized" &&
+      state.results.some((result) => result.round_id === round.id),
+  );
+}
+
+function getTicket(id) {
+  return state.tickets.find((ticket) => ticket.id === id);
+}
+
+function getCustomerName(id) {
+  return state.customers.find((customer) => customer.id === id)?.name || "";
+}
+
+function ticketStatusLabel(status) {
+  if (status === "approved") return "อนุมัติแล้ว";
+  if (status === "rejected") return "ตีกลับ";
+  if (status === "cancelled") return "ยกเลิก";
+  return "รอตรวจ";
+}
+
+function ticketStatusClass(status) {
+  if (status === "approved") return "normal";
+  if (status === "rejected" || status === "cancelled") return "full";
+  return "warning";
+}
+
+function resultStatusLabel(round) {
+  return round?.result_status === "finalized" ? "ยืนยันแล้ว" : "รอปิดงาน";
+}
+
+function resultStatusClass(round) {
+  return round?.result_status === "finalized" ? "normal" : "warning";
+}
+
+function formatAuditAction(log) {
+  const labels = {
+    create: "สร้าง",
+    create_batch: "สร้างชุด",
+    update: "แก้ไข",
+    delete: "ลบ",
+    approve: "อนุมัติ",
+    reject: "ตีกลับ",
+    cancel: "ยกเลิก",
+    upsert: "บันทึก",
+    finalize: "ยืนยัน",
+    reopen: "เปิดแก้",
+    login: "เข้าสู่ระบบ",
+    logout: "ออกจากระบบ",
+  };
+  return `${labels[log.action] || log.action} ${log.entity_type}`;
+}
+
 async function exportData() {
   const payload = await api("/api/export");
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
@@ -2261,6 +2632,14 @@ function handleLimitError(error) {
   }
   if (error?.payload?.error === "round_not_accepting") {
     alert("งวดนี้ปิดรับแล้ว เลือกงวดที่ยังเปิดรับหรือแก้เวลาในหน้างวดก่อน");
+    return;
+  }
+  if (error?.payload?.error === "ticket_locked") {
+    alert("โพยนี้ผ่านการตรวจแล้ว จึงแก้หรือยกเลิกรายการเดี่ยวไม่ได้");
+    return;
+  }
+  if (error?.payload?.error === "result_finalized") {
+    alert("ผลรางวัลงวดนี้ยืนยันแล้ว หากต้องแก้ต้องเปิดผลกลับมาก่อน");
     return;
   }
   alert("บันทึกไม่สำเร็จ");

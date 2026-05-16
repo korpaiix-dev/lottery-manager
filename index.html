@@ -67,6 +67,7 @@
           <nav class="top-nav" aria-label="หมวดงานหลัก">
             <button class="nav-button is-active" type="button" data-view-target="dashboard">แทงหวย</button>
             <button class="nav-button" type="button" data-view-target="intake">คีย์โพย</button>
+            <button class="nav-button" type="button" data-view-target="review">ตรวจงาน</button>
             <button class="nav-button" type="button" data-view-target="entries">รายการแทง</button>
             <button class="nav-button" type="button" data-view-target="results">ตรวจรางวัล</button>
             <button class="nav-button" type="button" data-view-target="reports">บัญชีการเงิน</button>
@@ -136,11 +137,26 @@
                 <span>เลขใกล้เต็ม / เต็ม</span>
                 <strong id="nearLimitCount">0</strong>
               </article>
+              <article class="metric metric-amber">
+                <span>โพยรอตรวจ</span>
+                <strong id="pendingTicketCount">0</strong>
+              </article>
+              <article class="metric metric-indigo">
+                <span>ผลรอปิดงาน</span>
+                <strong id="pendingResultCount">0</strong>
+              </article>
             </section>
 
             <section id="lotteryBoard" class="lottery-board"></section>
 
             <section class="dashboard-grid">
+              <section class="panel task-panel">
+                <div class="panel-heading">
+                  <h2>งานที่ต้องทำตอนนี้</h2>
+                </div>
+                <div id="taskQueueList" class="task-list"></div>
+              </section>
+
               <section class="panel watch-panel">
                 <div class="panel-heading">
                   <h2>เลขใกล้เต็ม</h2>
@@ -189,9 +205,9 @@
                 </div>
 
                 <div class="ticket-mode-tabs" aria-label="โหมดการคีย์">
-                  <button class="ticket-mode-tab is-active" type="button">แทงเร็ว</button>
-                  <button class="ticket-mode-tab" type="button">แทงแบบคลาสสิค</button>
-                  <button class="ticket-mode-tab" type="button">วางโพย</button>
+                  <button class="ticket-mode-tab is-active" type="button" data-intake-mode="fast">แทงเร็ว</button>
+                  <button class="ticket-mode-tab" type="button" data-intake-mode="classic">แทงแบบคลาสสิค</button>
+                  <button class="ticket-mode-tab" type="button" data-intake-mode="paste">วางโพย</button>
                 </div>
 
                 <section class="ticket-compose-board">
@@ -280,7 +296,7 @@
               </aside>
             </section>
 
-            <section class="panel quick-panel">
+            <section id="quickPanel" class="panel quick-panel">
               <div class="panel-heading">
                 <div>
                   <h2>รับจากข้อความ LINE</h2>
@@ -359,7 +375,7 @@
               </div>
             </section>
 
-            <section class="panel entry-panel">
+            <section id="entryPanel" class="panel entry-panel">
               <div class="panel-heading">
                 <h2 id="formTitle">กรอก / แก้ไขรายการเดี่ยว</h2>
                 <button id="resetBtn" class="text-button" type="button">ล้างฟอร์ม</button>
@@ -403,6 +419,51 @@
             </section>
           </section>
 
+          <section class="view" data-view="review" hidden>
+            <section class="panel review-panel">
+              <div class="panel-heading">
+                <div>
+                  <h2>โพยรอตรวจ</h2>
+                  <p class="helper-copy">หัวหน้างานตรวจโพยทั้งชุดก่อนนำไปคิดยอดจริง</p>
+                </div>
+              </div>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>รหัสโพย</th>
+                      <th>ลูกค้า</th>
+                      <th>งวด</th>
+                      <th>รายการ</th>
+                      <th>ยอดรวม</th>
+                      <th>ผู้คีย์</th>
+                      <th>เวลา</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody id="pendingTicketsBody"></tbody>
+                </table>
+              </div>
+              <div id="pendingTicketsEmpty" class="empty-state">ไม่มีโพยรอตรวจ</div>
+            </section>
+
+            <section class="split-grid">
+              <section class="panel review-panel">
+                <div class="panel-heading">
+                  <h2>ผลรางวัลที่ยังไม่ยืนยัน</h2>
+                </div>
+                <div id="pendingResultsList" class="compact-table-list"></div>
+              </section>
+
+              <section class="panel review-panel">
+                <div class="panel-heading">
+                  <h2>บันทึกกิจกรรมล่าสุด</h2>
+                </div>
+                <div id="auditLogList" class="compact-table-list"></div>
+              </section>
+            </section>
+          </section>
+
           <section class="view" data-view="entries" hidden>
             <section class="panel records-panel">
               <div class="panel-heading records-heading">
@@ -420,10 +481,10 @@
                     <span>ประเภท</span>
                     <select id="filterBetType"></select>
                   </label>
-                  <label class="compact-field">
-                    <span>ค้นหาเลข</span>
-                    <input id="searchInput" type="search" placeholder="45" />
-                  </label>
+                    <label class="compact-field">
+                      <span>ค้นหา</span>
+                      <input id="searchInput" type="search" placeholder="เลข / รหัสโพย / ลูกค้า" />
+                    </label>
                 </div>
               </div>
 
@@ -762,6 +823,7 @@
                 <span>งวด</span>
                 <select id="resultRoundInput"></select>
               </label>
+              <div id="resultStatusBar" class="result-status-bar"></div>
               <div id="resultEditor" class="result-editor"></div>
             </section>
 
