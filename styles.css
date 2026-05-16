@@ -428,9 +428,146 @@ small {
 .lottery-card-flag {
   grid-row: span 4;
   align-self: start;
-  font-size: 28px;
-  line-height: 1;
   margin-right: 4px;
+}
+
+.flag,
+.lottery-card-flag {
+  position: relative;
+  display: inline-block;
+  width: 44px;
+  height: 28px;
+  overflow: hidden;
+  border: 1px solid rgba(15, 23, 42, 0.14);
+  background: #e5e7eb;
+}
+
+.large-flag {
+  width: 48px;
+  height: 30px;
+}
+
+.flag-th {
+  background: linear-gradient(
+    180deg,
+    #a51931 0 20%,
+    #f8fafc 20% 40%,
+    #244aa5 40% 60%,
+    #f8fafc 60% 80%,
+    #a51931 80% 100%
+  );
+}
+
+.flag-la {
+  background: linear-gradient(180deg, #ce1126 0 25%, #002868 25% 75%, #ce1126 75% 100%);
+}
+
+.flag-la::after {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: #fff;
+  content: "";
+  transform: translate(-50%, -50%);
+}
+
+.flag-vn {
+  background: #da251d;
+}
+
+.flag-vn::after {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  color: #ffdf00;
+  content: "★";
+  font-size: 17px;
+  line-height: 1;
+  transform: translate(-50%, -54%);
+}
+
+.flag-my {
+  background:
+    linear-gradient(180deg, transparent 0 7.69%, #fff 7.69% 15.38%, transparent 15.38% 23.07%, #fff 23.07% 30.76%, transparent 30.76% 38.45%, #fff 38.45% 46.14%, transparent 46.14% 53.83%, #fff 53.83% 61.52%, transparent 61.52% 69.21%, #fff 69.21% 76.9%, transparent 76.9% 84.59%, #fff 84.59% 92.28%, transparent 92.28% 100%),
+    #cc0001;
+}
+
+.flag-my::before {
+  position: absolute;
+  inset: 0 auto auto 0;
+  width: 48%;
+  height: 54%;
+  background: #010066;
+  content: "";
+}
+
+.flag-jp {
+  background: #fff;
+}
+
+.flag-jp::after {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #bc002d;
+  content: "";
+  transform: translate(-50%, -50%);
+}
+
+.flag-cn {
+  background: #de2910;
+}
+
+.flag-cn::after {
+  position: absolute;
+  top: 4px;
+  left: 5px;
+  color: #ffde00;
+  content: "★";
+  font-size: 12px;
+  line-height: 1;
+}
+
+.flag-hk {
+  background: #de2910;
+}
+
+.flag-hk::after {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  color: #fff;
+  content: "✿";
+  font-size: 18px;
+  line-height: 1;
+  transform: translate(-50%, -52%);
+}
+
+.flag-stock::after {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: #2563eb;
+  content: "↗";
+  font-size: 22px;
+  font-weight: 700;
+}
+
+.flag-generic::after {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: #64748b;
+  content: "•";
+  font-size: 20px;
 }
 
 .lottery-card strong {

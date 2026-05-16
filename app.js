@@ -530,7 +530,7 @@ function renderLotteryBoard() {
                   data-lottery-id="${escapeHtml(lottery.id)}"
                   ${round ? "" : "disabled"}
                 >
-                  <span class="lottery-card-flag">${getLotteryFlag(lottery.id)}</span>
+                  <span class="lottery-card-flag ${getLotteryFlagClass(lottery.id)}" aria-hidden="true"></span>
                   <strong>${escapeHtml(lottery.name)}</strong>
                   <span>${round ? escapeHtml(round.label) : "ยังไม่มีงวด"}</span>
                   <small>${round ? `ปิดรับ ${formatRoundCloseTime(round)}` : "-"}</small>
@@ -615,7 +615,7 @@ function renderTicketHeader() {
     elements.ticketAcceptingState.className = "status-pill warning";
     elements.ticketAcceptingState.textContent = "รอเลือกงวด";
     elements.ticketRateLabel.textContent = "-";
-    elements.ticketFlag.textContent = "🏳️";
+    elements.ticketFlag.className = "flag flag-generic large-flag";
     elements.ticketComposeRoundLabel.textContent = "-";
     elements.ticketComposeDate.textContent = "-";
     elements.ticketSummaryRoundLabel.textContent = "-";
@@ -628,7 +628,7 @@ function renderTicketHeader() {
   elements.ticketAcceptingState.textContent = roundStatusLabel(round);
   elements.ticketCountdown.textContent = formatCountdown(round);
   elements.ticketRateLabel.textContent = `${getBetTypeName(state.ticketBetTypeId)} บาทละ ${formatRate(getPayoutRate(round.lottery_id, state.ticketBetTypeId))}`;
-  elements.ticketFlag.textContent = getLotteryFlag(round.lottery_id);
+  elements.ticketFlag.className = `flag ${getLotteryFlagClass(round.lottery_id)} large-flag`;
   elements.ticketComposeRoundLabel.textContent = `${getLotteryName(round.lottery_id)} · ${round.label}`;
   elements.ticketComposeDate.textContent = shortDate(round.draw_date);
   elements.ticketSummaryRoundLabel.textContent = `${getLotteryName(round.lottery_id)} · ${round.label}`;
@@ -2251,17 +2251,16 @@ function getLotteryCategoryLabel(id) {
   return LOTTERY_CATEGORIES.find((category) => category.id === id)?.label || "หวยอื่น ๆ";
 }
 
-function getLotteryFlag(id) {
-  if (id === "thai" || id === "omsin" || id === "baac") return "🇹🇭";
-  if (id.startsWith("lao")) return "🇱🇦";
-  if (id.startsWith("hanoi")) return "🇻🇳";
-  if (id === "malaysia") return "🇲🇾";
-  if (id === "yamoey") return "🇻🇳";
-  if (id === "stock") return "📈";
-  if (id.includes("nikkei")) return "🇯🇵";
-  if (id.includes("china")) return "🇨🇳";
-  if (id.includes("hangseng")) return "🇭🇰";
-  return "🏳️";
+function getLotteryFlagClass(id) {
+  if (id === "thai" || id === "omsin" || id === "baac") return "flag-th";
+  if (id.startsWith("lao")) return "flag-la";
+  if (id.startsWith("hanoi") || id === "yamoey") return "flag-vn";
+  if (id === "malaysia") return "flag-my";
+  if (id === "stock") return "flag-stock";
+  if (id.includes("nikkei")) return "flag-jp";
+  if (id.includes("china")) return "flag-cn";
+  if (id.includes("hangseng")) return "flag-hk";
+  return "flag-generic";
 }
 
 function syncNumberLength(input, betTypeId) {
