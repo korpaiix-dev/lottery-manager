@@ -48,6 +48,8 @@ const state = {
   editingRoundId: null,
   editingUserId: null,
   quickParsedEntries: [],
+  ticketDraftEntries: [],
+  ticketBetTypeId: "two_top",
   latestViewerCredentials: null,
 };
 
@@ -83,6 +85,27 @@ const elements = {
   nearLimitCount: document.querySelector("#nearLimitCount"),
   limitWatchList: document.querySelector("#limitWatchList"),
   recentEntriesList: document.querySelector("#recentEntriesList"),
+  ticketCountdown: document.querySelector("#ticketCountdown"),
+  ticketAcceptingState: document.querySelector("#ticketAcceptingState"),
+  ticketRoundTitle: document.querySelector("#ticketRoundTitle"),
+  ticketRoundDate: document.querySelector("#ticketRoundDate"),
+  ticketCustomer: document.querySelector("#ticketCustomerInput"),
+  ticketRound: document.querySelector("#ticketRoundInput"),
+  ticketRateLabel: document.querySelector("#ticketRateLabel"),
+  ticketBetTypeTabs: document.querySelector("#ticketBetTypeTabs"),
+  ticketNumber: document.querySelector("#ticketNumberInput"),
+  ticketAmount: document.querySelector("#ticketAmountInput"),
+  addTicketEntryBtn: document.querySelector("#addTicketEntryBtn"),
+  ticketLimitPreview: document.querySelector("#ticketLimitPreview"),
+  ticketDraftBody: document.querySelector("#ticketDraftBody"),
+  ticketDraftEmpty: document.querySelector("#ticketDraftEmpty"),
+  clearTicketBtn: document.querySelector("#clearTicketBtn"),
+  ticketNote: document.querySelector("#ticketNoteInput"),
+  ticketTotalAmount: document.querySelector("#ticketTotalAmount"),
+  saveTicketBtn: document.querySelector("#saveTicketBtn"),
+  ticketHistoryList: document.querySelector("#ticketHistoryList"),
+  ticketLimitList: document.querySelector("#ticketLimitList"),
+  ticketRecentList: document.querySelector("#ticketRecentList"),
   quickCustomer: document.querySelector("#quickCustomer"),
   toggleQuickCustomerBtn: document.querySelector("#toggleQuickCustomerBtn"),
   quickCustomerForm: document.querySelector("#quickCustomerForm"),
@@ -193,6 +216,7 @@ initialize();
 async function initialize() {
   bindEvents();
   elements.roundDate.value = today();
+  window.setInterval(renderTicketHeader, 1000);
   await bootAuth();
 }
 
@@ -205,6 +229,16 @@ function bindEvents() {
   elements.navButtons.forEach((button) => {
     button.addEventListener("click", () => activateView(button.dataset.viewTarget));
   });
+
+  elements.ticketCustomer.addEventListener("change", renderTicketWorkbench);
+  elements.ticketRound.addEventListener("change", renderTicketWorkbench);
+  elements.ticketNumber.addEventListener("input", renderTicketLimitPreview);
+  elements.ticketAmount.addEventListener("input", renderTicketLimitPreview);
+  elements.ticketNumber.addEventListener("keydown", handleTicketNumberKeydown);
+  elements.ticketAmount.addEventListener("keydown", handleTicketAmountKeydown);
+  elements.addTicketEntryBtn.addEventListener("click", addTicketDraftEntry);
+  elements.clearTicketBtn.addEventListener("click", clearTicketDraft);
+  elements.saveTicketBtn.addEventListener("click", saveTicketDraft);
 
   elements.parseQuickBtn.addEventListener("click", parseQuickMessage);
   elements.clearQuickBtn.addEventListener("click", clearQuickIntake);
@@ -336,6 +370,7 @@ function activateView(viewName, shouldScroll = true) {
 function render() {
   renderSelects();
   renderDashboard();
+  renderTicketWorkbench();
   renderEntries();
   renderHeadHouses();
   renderCustomers();
@@ -363,6 +398,7 @@ function renderSelects() {
   const betTypeOptions = state.betTypes.map((betType) => option(betType.id, betType.name)).join("");
 
   preserveSelect(elements.quickCustomer, customerOptions);
+  preserveSelect(elements.ticketCustomer, customerOptions);
   preserveSelect(elements.quickCustomerHeadHouse, headHouseOptions, "direct");
   preserveSelect(elements.customer, customerOptions);
   preserveSelect(elements.customerHeadHouse, headHouseOptions, "direct");
@@ -373,6 +409,7 @@ function renderSelects() {
   preserveSelect(elements.betType, betTypeOptions, "two_top");
   preserveSelect(elements.filterBetType, option("all", "ทั้งหมด") + betTypeOptions, "all");
   preserveSelect(elements.round, acceptingRoundOptions || option("", "ยังไม่มีงวดที่เปิดรับ"));
+  preserveSelect(elements.ticketRound, acceptingRoundOptions || option("", "ยังไม่มีงวดที่เปิดรับ"));
   preserveSelect(elements.filterRound, option("all", "ทั้งหมด") + roundOptions, "all");
   preserveSelect(elements.limitRound, acceptingRoundOptions || roundOptions);
   preserveSelect(elements.limitBetType, betTypeOptions, "two_top");
@@ -384,6 +421,7 @@ function renderSelects() {
   renderQuickRoundOptions();
   syncNumberLength(elements.number, elements.betType.value);
   syncNumberLength(elements.limitNumber, elements.limitBetType.value);
+  syncNumberLength(elements.ticketNumber, state.ticketBetTypeId);
 }
 
 function renderQuickRoundOptions() {
@@ -446,6 +484,279 @@ function renderRecentEntries() {
         )
         .join("")
     : '<div class="empty-state">ยังไม่มีรายการ</div>';
+}
+
+function renderTicketWorkbench() {
+  renderTicketBetTypeTabs();
+  renderTicketHeader();
+  renderTicketDraft();
+  renderTicketLimitPreview();
+  renderTicketHistory();
+  renderTicketLimits();
+  renderTicketRecentEntries();
+}
+
+function renderTicketHeader() {
+  const round = getRound(elements.ticketRound.value);
+  if (!round) {
+    elements.ticketRoundTitle.textContent = "เลือกงวดที่ต้องการรับรายการ";
+    elements.ticketRoundDate.textContent = "-";
+    elements.ticketCountdown.textContent = "ยังไม่เลือกงวด";
+    elements.ticketAcceptingState.className = "status-pill warning";
+    elements.ticketAcceptingState.textContent = "รอเลือกงวด";
+    elements.ticketRateLabel.textContent = "-";
+    return;
+  }
+
+  elements.ticketRoundTitle.textContent = `${getLotteryName(round.lottery_id)} · ${round.label}`;
+  elements.ticketRoundDate.textContent = `${longDate(round.draw_date)} ${round.draw_time}`;
+  elements.ticketAcceptingState.className = `status-pill ${roundStatusClass(round)}`;
+  elements.ticketAcceptingState.textContent = roundStatusLabel(round);
+  elements.ticketCountdown.textContent = formatCountdown(round);
+  elements.ticketRateLabel.textContent = `${getBetTypeName(state.ticketBetTypeId)} บาทละ ${formatRate(getPayoutRate(round.lottery_id, state.ticketBetTypeId))}`;
+}
+
+function renderTicketBetTypeTabs() {
+  elements.ticketBetTypeTabs.innerHTML = state.betTypes
+    .map(
+      (betType) => `
+        <button
+          class="ticket-tab ${betType.id === state.ticketBetTypeId ? "is-active" : ""}"
+          type="button"
+          data-ticket-bet-type="${escapeHtml(betType.id)}"
+        >
+          ${escapeHtml(shortBetTypeName(betType))}
+        </button>
+      `,
+    )
+    .join("");
+
+  elements.ticketBetTypeTabs.querySelectorAll("[data-ticket-bet-type]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.ticketBetTypeId = button.dataset.ticketBetType;
+      syncNumberLength(elements.ticketNumber, state.ticketBetTypeId);
+      renderTicketWorkbench();
+      elements.ticketNumber.focus();
+    });
+  });
+}
+
+function handleTicketNumberKeydown(event) {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    if (elements.ticketAmount.value.trim()) {
+      addTicketDraftEntry();
+    } else {
+      elements.ticketAmount.focus();
+    }
+  }
+}
+
+function handleTicketAmountKeydown(event) {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    addTicketDraftEntry();
+  }
+}
+
+function addTicketDraftEntry() {
+  const customerId = elements.ticketCustomer.value;
+  const roundId = elements.ticketRound.value;
+  const betTypeId = state.ticketBetTypeId;
+  const number = elements.ticketNumber.value.trim();
+  const amount = parseAmount(elements.ticketAmount.value);
+  const issues = getDraftIssues({ customerId, roundId, betTypeId, number, amount });
+
+  if (issues.length) {
+    alert(issues.join(", "));
+    return;
+  }
+
+  const firstEntry = state.ticketDraftEntries[0];
+  if (firstEntry && (firstEntry.customerId !== customerId || firstEntry.roundId !== roundId)) {
+    alert("หนึ่งโพยต้องเป็นลูกค้าและงวดเดียวกัน");
+    return;
+  }
+
+  state.ticketDraftEntries.push({
+    id: crypto.randomUUID(),
+    customerId,
+    roundId,
+    betTypeId,
+    number,
+    amount,
+  });
+  elements.ticketNumber.value = "";
+  elements.ticketNumber.focus();
+  renderTicketWorkbench();
+}
+
+function getDraftIssues(entry) {
+  const issues = [];
+  if (!entry.customerId) issues.push("ยังไม่เลือกลูกค้า");
+  if (!entry.roundId) issues.push("ยังไม่เลือกงวด");
+  if (entry.roundId && !getRound(entry.roundId)?.accepting) issues.push("งวดนี้ปิดรับแล้ว");
+  const betType = getBetType(entry.betTypeId);
+  if (!betType || !isValidNumber(entry.number, betType.digits)) issues.push("เลขไม่ตรงประเภท");
+  if (!Number.isFinite(entry.amount) || entry.amount <= 0) issues.push("ยอดต้องมากกว่า 0");
+  return issues;
+}
+
+function renderTicketDraft() {
+  elements.ticketDraftBody.innerHTML = "";
+  elements.ticketDraftEmpty.classList.toggle("hidden", state.ticketDraftEntries.length > 0);
+  elements.ticketTotalAmount.textContent = money(sum(state.ticketDraftEntries.map((entry) => entry.amount)));
+  elements.saveTicketBtn.disabled = !state.ticketDraftEntries.length;
+
+  state.ticketDraftEntries.forEach((entry) => {
+    const row = document.createElement("tr");
+    row.innerHTML = `
+      <td><span class="number-pill">${escapeHtml(entry.number)}</span></td>
+      <td>${escapeHtml(getBetTypeName(entry.betTypeId))}</td>
+      <td class="amount">${money(entry.amount)}</td>
+      <td><button class="icon-button remove-ticket-entry-button" type="button">ลบ</button></td>
+    `;
+    row.querySelector(".remove-ticket-entry-button").addEventListener("click", () => {
+      state.ticketDraftEntries = state.ticketDraftEntries.filter((item) => item.id !== entry.id);
+      renderTicketWorkbench();
+    });
+    elements.ticketDraftBody.appendChild(row);
+  });
+}
+
+function clearTicketDraft() {
+  if (!state.ticketDraftEntries.length) return;
+  if (!confirm("ล้างรายการในโพยทั้งหมดใช่หรือไม่")) return;
+  state.ticketDraftEntries = [];
+  renderTicketWorkbench();
+}
+
+async function saveTicketDraft() {
+  if (!state.ticketDraftEntries.length) return;
+
+  const groupedIssues = state.ticketDraftEntries.flatMap((entry) => getDraftIssues(entry));
+  if (groupedIssues.length) {
+    alert("ยังมีรายการที่ข้อมูลไม่ครบ");
+    return;
+  }
+
+  try {
+    await api("/api/entries/batch", {
+      method: "POST",
+      body: {
+        entries: state.ticketDraftEntries.map((entry) => ({
+          customerId: entry.customerId,
+          roundId: entry.roundId,
+          betTypeId: entry.betTypeId,
+          number: entry.number,
+          amount: entry.amount,
+          note: elements.ticketNote.value.trim(),
+        })),
+      },
+    });
+    state.ticketDraftEntries = [];
+    elements.ticketNote.value = "";
+    await refreshState();
+    alert("บันทึกโพยแล้ว");
+  } catch (error) {
+    handleLimitError(error);
+  }
+}
+
+function renderTicketLimitPreview() {
+  const roundId = elements.ticketRound.value;
+  const betTypeId = state.ticketBetTypeId;
+  const number = elements.ticketNumber.value.trim();
+  const amount = parseAmount(elements.ticketAmount.value);
+  const betType = getBetType(betTypeId);
+
+  if (!roundId || !betType || !isValidNumber(number, betType.digits)) {
+    elements.ticketLimitPreview.classList.add("hidden");
+    return;
+  }
+
+  const item = getLimitStatuses().find(
+    (status) => status.limit.round_id === roundId && status.limit.bet_type_id === betTypeId && status.limit.number === number,
+  );
+  if (!item) {
+    elements.ticketLimitPreview.classList.add("hidden");
+    return;
+  }
+
+  const sameDraftAmount = sum(
+    state.ticketDraftEntries
+      .filter((entry) => entry.roundId === roundId && entry.betTypeId === betTypeId && entry.number === number)
+      .map((entry) => entry.amount),
+  );
+  const projected = item.currentAmount + sameDraftAmount + (Number.isFinite(amount) ? amount : 0);
+  const ratio = item.limit.max_amount ? projected / item.limit.max_amount : 0;
+  const status = ratio >= 1 ? "full" : ratio >= 0.8 ? "warning" : "normal";
+  elements.ticketLimitPreview.className = `limit-preview ${status}`;
+  elements.ticketLimitPreview.innerHTML = `
+    <strong>มีอั้นเลขตรงกัน</strong>
+    <span>ปัจจุบัน ${money(item.currentAmount)} / เพดาน ${money(item.limit.max_amount)}</span>
+    <span>รวมโพยนี้แล้ว ${money(projected)} (${percent(ratio)})</span>
+  `;
+}
+
+function renderTicketHistory() {
+  const round = getRound(elements.ticketRound.value);
+  if (!round) {
+    elements.ticketHistoryList.innerHTML = '<div class="empty-state">ยังไม่เลือกงวด</div>';
+    return;
+  }
+
+  const rows = state.rounds
+    .filter((item) => item.lottery_id === round.lottery_id && item.id !== round.id)
+    .slice(0, 5)
+    .map((item) => {
+      const twoTop = resultNumbers(item.id, "two_top");
+      const twoBottom = resultNumbers(item.id, "two_bottom");
+      const threeTop = resultNumbers(item.id, "three_top");
+      return `
+        <article class="compact-row">
+          <strong>${escapeHtml(item.label)}</strong>
+          <span>3บน ${escapeHtml(threeTop || "-")} · 2บน ${escapeHtml(twoTop || "-")} · 2ล่าง ${escapeHtml(twoBottom || "-")}</span>
+        </article>
+      `;
+    })
+    .join("");
+  elements.ticketHistoryList.innerHTML = rows || '<div class="empty-state">ยังไม่มีผลย้อนหลัง</div>';
+}
+
+function renderTicketLimits() {
+  const roundId = elements.ticketRound.value;
+  const statuses = getLimitStatuses().filter((item) => item.limit.round_id === roundId);
+  elements.ticketLimitList.innerHTML = statuses.length
+    ? statuses
+        .slice(0, 6)
+        .map(
+          (item) => `
+            <article class="compact-row">
+              <strong>${escapeHtml(item.limit.number)} · ${escapeHtml(getBetTypeName(item.limit.bet_type_id))}</strong>
+              <span>${money(item.currentAmount)} / ${money(item.limit.max_amount)}</span>
+            </article>
+          `,
+        )
+        .join("")
+    : '<div class="empty-state">ยังไม่มีเลขอั้นในงวดนี้</div>';
+}
+
+function renderTicketRecentEntries() {
+  const roundId = elements.ticketRound.value;
+  const recent = state.entries.filter((entry) => entry.round_id === roundId).slice(0, 6);
+  elements.ticketRecentList.innerHTML = recent.length
+    ? recent
+        .map(
+          (entry) => `
+            <article class="compact-row">
+              <strong>${escapeHtml(entry.number)} · ${escapeHtml(getBetTypeName(entry.bet_type_id))}</strong>
+              <span>${escapeHtml(getCustomerCode(entry.customer_id))} · ${money(entry.amount)}</span>
+            </article>
+          `,
+        )
+        .join("")
+    : '<div class="empty-state">ยังไม่มีรายการในงวดนี้</div>';
 }
 
 function parseQuickMessage() {
@@ -569,6 +880,7 @@ async function handleQuickCustomerSubmit(event) {
   elements.quickCustomerForm.classList.add("hidden");
   await refreshState();
   elements.quickCustomer.value = created.id;
+  elements.ticketCustomer.value = created.id;
   elements.customer.value = created.id;
   alert(`สร้างลูกค้าแล้ว รหัสคือ ${created.code}`);
 }
@@ -613,7 +925,7 @@ async function handleEntrySubmit(event) {
 function resetEntryForm() {
   state.editingEntryId = null;
   elements.entryForm.reset();
-  elements.formTitle.textContent = "กรอกแบบละเอียด";
+  elements.formTitle.textContent = "กรอก / แก้ไขรายการเดี่ยว";
   elements.submitBtn.textContent = "บันทึกรายการ";
   renderSelects();
   renderLimitPreview();
@@ -1610,6 +1922,38 @@ function getAcceptingRounds(lotteryId = "") {
   return state.rounds
     .filter((round) => round.accepting && (!lotteryId || round.lottery_id === lotteryId))
     .sort((a, b) => new Date(a.close_at) - new Date(b.close_at));
+}
+
+function getPayoutRate(lotteryId, betTypeId) {
+  return state.payoutRates.find((rate) => rate.lottery_id === lotteryId && rate.bet_type_id === betTypeId)?.rate || 0;
+}
+
+function formatRate(value) {
+  return Number(value || 0).toLocaleString("th-TH", {
+    maximumFractionDigits: 2,
+  });
+}
+
+function shortBetTypeName(betType) {
+  return betType.name;
+}
+
+function resultNumbers(roundId, betTypeId) {
+  return state.results
+    .filter((result) => result.round_id === roundId && result.bet_type_id === betTypeId)
+    .map((result) => result.number)
+    .join(" ");
+}
+
+function formatCountdown(round) {
+  if (!round) return "ยังไม่เลือกงวด";
+  const remainingMs = new Date(round.close_at).getTime() - Date.now();
+  if (remainingMs <= 0) return "ปิดรับแล้ว";
+  const totalSeconds = Math.floor(remainingMs / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  return `เหลือเวลา ${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
 }
 
 function getRound(id) {

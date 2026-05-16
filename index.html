@@ -136,10 +136,115 @@
           </section>
 
           <section class="view" data-view="intake" hidden>
+            <section class="intake-workbench">
+              <section class="panel ticket-panel">
+                <div class="ticket-topline">
+                  <strong id="ticketCountdown">ยังไม่เลือกงวด</strong>
+                  <span id="ticketAcceptingState" class="status-pill warning">รอเลือกงวด</span>
+                </div>
+
+                <div class="ticket-header">
+                  <div>
+                    <p class="eyebrow">คีย์โพย</p>
+                    <h2 id="ticketRoundTitle">เลือกงวดที่ต้องการรับรายการ</h2>
+                  </div>
+                  <strong id="ticketRoundDate">-</strong>
+                </div>
+
+                <div class="ticket-context-grid">
+                  <label class="field">
+                    <span>ลูกค้า</span>
+                    <select id="ticketCustomerInput"></select>
+                  </label>
+                  <label class="field">
+                    <span>งวดที่รับ</span>
+                    <select id="ticketRoundInput"></select>
+                  </label>
+                  <label class="field">
+                    <span>อัตราจ่าย</span>
+                    <div id="ticketRateLabel" class="readonly-field">-</div>
+                  </label>
+                </div>
+
+                <div id="ticketBetTypeTabs" class="ticket-tabs" aria-label="ประเภทเลข"></div>
+
+                <div class="ticket-entry-grid">
+                  <label class="field">
+                    <span>ใส่เลข</span>
+                    <input id="ticketNumberInput" inputmode="numeric" maxlength="3" placeholder="เช่น 45" />
+                  </label>
+                  <label class="field">
+                    <span>ยอดต่อเลข</span>
+                    <input id="ticketAmountInput" inputmode="decimal" placeholder="0.00" />
+                  </label>
+                  <button id="addTicketEntryBtn" class="button button-primary" type="button">+ เพิ่มลงโพย</button>
+                </div>
+
+                <div id="ticketLimitPreview" class="limit-preview hidden"></div>
+
+                <div class="ticket-draft-wrap">
+                  <div class="panel-heading compact-heading">
+                    <h3>รายการในโพย</h3>
+                    <button id="clearTicketBtn" class="text-button" type="button">ล้างโพย</button>
+                  </div>
+                  <div class="table-wrap">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>เลข</th>
+                          <th>ประเภท</th>
+                          <th>ยอด</th>
+                          <th></th>
+                        </tr>
+                      </thead>
+                      <tbody id="ticketDraftBody"></tbody>
+                    </table>
+                  </div>
+                  <div id="ticketDraftEmpty" class="empty-state">ยังไม่มีรายการในโพย</div>
+                </div>
+
+                <label class="field">
+                  <span>หมายเหตุ</span>
+                  <input id="ticketNoteInput" maxlength="240" placeholder="รายละเอียดเพิ่มเติมถ้ามี" />
+                </label>
+
+                <div class="ticket-summary-row">
+                  <div>
+                    <span>รวมทั้งโพย</span>
+                    <strong id="ticketTotalAmount">฿0.00</strong>
+                  </div>
+                  <button id="saveTicketBtn" class="button button-primary" type="button">บันทึกโพย</button>
+                </div>
+              </section>
+
+              <aside class="intake-side-stack">
+                <section class="panel intake-side-panel">
+                  <div class="panel-heading compact-heading">
+                    <h3>ผลย้อนหลัง</h3>
+                  </div>
+                  <div id="ticketHistoryList" class="compact-table-list"></div>
+                </section>
+
+                <section class="panel intake-side-panel">
+                  <div class="panel-heading compact-heading">
+                    <h3>เลขอั้นของงวดนี้</h3>
+                  </div>
+                  <div id="ticketLimitList" class="compact-table-list"></div>
+                </section>
+
+                <section class="panel intake-side-panel">
+                  <div class="panel-heading compact-heading">
+                    <h3>รายการล่าสุดของงวดนี้</h3>
+                  </div>
+                  <div id="ticketRecentList" class="compact-table-list"></div>
+                </section>
+              </aside>
+            </section>
+
             <section class="panel quick-panel">
               <div class="panel-heading">
                 <div>
-                  <h2>รับรายการแบบเร็ว</h2>
+                  <h2>รับจากข้อความ LINE</h2>
                   <p class="helper-copy">วางข้อความจาก LINE แล้วให้ระบบช่วยแยกข้อมูลก่อนบันทึกเป็นชุด</p>
                 </div>
               </div>
@@ -217,7 +322,7 @@
 
             <section class="panel entry-panel">
               <div class="panel-heading">
-                <h2 id="formTitle">กรอกแบบละเอียด</h2>
+                <h2 id="formTitle">กรอก / แก้ไขรายการเดี่ยว</h2>
                 <button id="resetBtn" class="text-button" type="button">ล้างฟอร์ม</button>
               </div>
 
