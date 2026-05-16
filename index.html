@@ -3,11 +3,44 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>ระบบจัดการข้อมูลหวยหลายประเภท</title>
+    <title>ระบบจัดการหวยหลายประเภท</title>
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
-    <div class="app-frame">
+    <section id="authShell" class="auth-shell">
+      <div class="auth-card">
+        <p class="eyebrow">ระบบหลังบ้าน</p>
+        <h1>จัดการหวย</h1>
+
+        <form id="setupForm" class="auth-form hidden">
+          <h2>ตั้งค่าผู้ดูแลคนแรก</h2>
+          <label class="field">
+            <span>ชื่อผู้ใช้</span>
+            <input id="setupUsername" autocomplete="username" required />
+          </label>
+          <label class="field">
+            <span>รหัสผ่าน</span>
+            <input id="setupPassword" type="password" autocomplete="new-password" minlength="8" required />
+          </label>
+          <button class="button button-primary" type="submit">สร้างผู้ดูแล</button>
+        </form>
+
+        <form id="loginForm" class="auth-form hidden">
+          <h2>เข้าสู่ระบบ</h2>
+          <label class="field">
+            <span>ชื่อผู้ใช้</span>
+            <input id="loginUsername" autocomplete="username" required />
+          </label>
+          <label class="field">
+            <span>รหัสผ่าน</span>
+            <input id="loginPassword" type="password" autocomplete="current-password" required />
+          </label>
+          <button class="button button-primary" type="submit">เข้าสู่ระบบ</button>
+        </form>
+      </div>
+    </section>
+
+    <div id="appShell" class="app-frame hidden">
       <aside class="sidebar">
         <div class="brand-block">
           <p class="eyebrow">ระบบหลังบ้าน</p>
@@ -16,11 +49,15 @@
 
         <nav class="sidebar-nav" aria-label="หมวดงานหลัก">
           <button class="nav-button is-active" type="button" data-view-target="dashboard">แดชบอร์ด</button>
-          <button class="nav-button" type="button" data-view-target="entries">รับรายการ</button>
+          <button class="nav-button" type="button" data-view-target="intake">รับรายการ</button>
+          <button class="nav-button" type="button" data-view-target="entries">รายการ</button>
           <button class="nav-button" type="button" data-view-target="customers">ลูกค้า</button>
-          <button class="nav-button" type="button" data-view-target="lotteries">หวย</button>
+          <button class="nav-button" type="button" data-view-target="lotteries">หวยและงวด</button>
           <button class="nav-button" type="button" data-view-target="limits">อั้นเลข</button>
+          <button class="nav-button" type="button" data-view-target="payouts">อัตราจ่าย</button>
+          <button class="nav-button" type="button" data-view-target="results">ผลรางวัล</button>
           <button class="nav-button" type="button" data-view-target="reports">รายงาน</button>
+          <button class="nav-button" type="button" data-view-target="users">ผู้ใช้</button>
         </nav>
       </aside>
 
@@ -31,11 +68,9 @@
             <h2 id="currentViewTitle">แดชบอร์ด</h2>
           </div>
           <div class="topbar-actions">
+            <span id="currentUserLabel" class="user-pill"></span>
             <button id="exportBtn" class="button button-secondary" type="button">ส่งออกข้อมูล</button>
-            <label class="button button-secondary file-button">
-              นำเข้าข้อมูล
-              <input id="importInput" type="file" accept=".json,application/json" />
-            </label>
+            <button id="logoutBtn" class="button button-secondary" type="button">ออกจากระบบ</button>
           </div>
         </header>
 
@@ -44,19 +79,19 @@
             <section class="hero-panel">
               <div>
                 <p class="eyebrow">ศูนย์ควบคุมงานหลังบ้าน</p>
-                <h2>รับรายการ ตรวจยอด คุมเลขอั้น</h2>
+                <h2>รับรายการไว ตรวจยอดทัน คุมเลขอั้นได้</h2>
               </div>
               <div class="hero-steps" aria-label="ขั้นตอนการทำงาน">
-                <span>1 ลูกค้า</span>
-                <span>2 รายการ</span>
-                <span>3 อั้นเลข</span>
-                <span>4 รายงาน</span>
+                <span>1 รับข้อความ</span>
+                <span>2 ตรวจทาน</span>
+                <span>3 บันทึก</span>
+                <span>4 เคลียร์งวด</span>
               </div>
             </section>
 
             <section class="summary-grid" aria-label="สรุปภาพรวม">
               <article class="metric metric-blue">
-                <span>ยอดรวมทั้งหมด</span>
+                <span>ยอดรับทั้งหมด</span>
                 <strong id="totalAmount">฿0.00</strong>
               </article>
               <article class="metric">
@@ -68,8 +103,8 @@
                 <strong id="totalCustomers">0</strong>
               </article>
               <article class="metric metric-green">
-                <span>ประเภทหวย</span>
-                <strong id="totalLotteries">0</strong>
+                <span>งวดที่เปิดอยู่</span>
+                <strong id="openRoundsCount">0</strong>
               </article>
               <article class="metric metric-amber">
                 <span>เลขที่ตั้งอั้นไว้</span>
@@ -81,64 +116,115 @@
               </article>
             </section>
 
-            <section class="panel watch-panel">
-              <div class="panel-heading">
-                <h2>เลขใกล้เต็ม</h2>
-              </div>
-              <div id="limitWatchList" class="watch-list"></div>
+            <section class="dashboard-grid">
+              <section class="panel watch-panel">
+                <div class="panel-heading">
+                  <h2>เลขใกล้เต็ม</h2>
+                </div>
+                <div id="limitWatchList" class="watch-list"></div>
+              </section>
+
+              <section class="panel recent-panel">
+                <div class="panel-heading">
+                  <h2>รายการล่าสุด</h2>
+                </div>
+                <div id="recentEntriesList" class="recent-list"></div>
+              </section>
             </section>
           </section>
 
-          <section class="view" data-view="entries" hidden>
+          <section class="view" data-view="intake" hidden>
+            <section class="panel quick-panel">
+              <div class="panel-heading">
+                <div>
+                  <h2>รับรายการแบบเร็ว</h2>
+                  <p class="helper-copy">วางข้อความจาก LINE แล้วให้ระบบช่วยแยกข้อมูลก่อนบันทึกเป็นชุด</p>
+                </div>
+              </div>
+
+              <div class="quick-grid">
+                <label class="field">
+                  <span>ลูกค้า</span>
+                  <select id="quickCustomer"></select>
+                </label>
+                <label class="field">
+                  <span>หวยสำรอง</span>
+                  <select id="quickLottery"></select>
+                </label>
+                <label class="field">
+                  <span>งวดสำรอง</span>
+                  <select id="quickRound"></select>
+                </label>
+                <label class="field">
+                  <span>ประเภทเลขสำรอง</span>
+                  <select id="quickBetType"></select>
+                </label>
+                <label class="field">
+                  <span>ยอดต่อเลขสำรอง</span>
+                  <input id="quickAmount" inputmode="decimal" placeholder="0.00" />
+                </label>
+              </div>
+
+              <label class="field">
+                <span>ข้อความจาก LINE</span>
+                <textarea id="quickMessage" rows="4" placeholder="เช่น 01 02 03 04 05 06 ไทย 1000บาท"></textarea>
+              </label>
+
+              <div class="form-actions">
+                <button id="parseQuickBtn" class="button button-primary" type="button">แยกรายการ</button>
+                <button id="clearQuickBtn" class="button button-secondary" type="button">ล้าง</button>
+              </div>
+
+              <div id="quickParseSummary" class="parse-summary hidden"></div>
+
+              <div class="table-wrap preview-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>เลข</th>
+                      <th>หวย</th>
+                      <th>งวด</th>
+                      <th>ประเภท</th>
+                      <th>ยอด</th>
+                      <th>สถานะ</th>
+                    </tr>
+                  </thead>
+                  <tbody id="quickPreviewBody"></tbody>
+                </table>
+              </div>
+
+              <div class="form-actions">
+                <button id="saveQuickBatchBtn" class="button button-primary" type="button">บันทึกทั้งหมด</button>
+              </div>
+            </section>
+
             <section class="panel entry-panel">
               <div class="panel-heading">
-                <h2 id="formTitle">เพิ่มรายการ</h2>
+                <h2 id="formTitle">กรอกแบบละเอียด</h2>
                 <button id="resetBtn" class="text-button" type="button">ล้างฟอร์ม</button>
               </div>
 
               <form id="entryForm" class="entry-form">
                 <div class="field-grid">
                   <label class="field">
-                    <span>รหัสลูกค้า</span>
-                    <select id="customerInput" name="customer" required></select>
+                    <span>ลูกค้า</span>
+                    <select id="customerInput" required></select>
                   </label>
-
-                  <label class="field">
-                    <span>หวย</span>
-                    <select id="lotteryInput" name="lottery" required></select>
-                  </label>
-
-                  <label class="field">
-                    <span>วันที่</span>
-                    <input id="dateInput" name="date" type="date" required />
-                  </label>
-
                   <label class="field">
                     <span>งวด</span>
-                    <input id="roundInput" name="round" type="text" maxlength="40" placeholder="เช่น 16 พ.ค. 69" required />
+                    <select id="roundInput" required></select>
                   </label>
-
                   <label class="field">
                     <span>ประเภทเลข</span>
-                    <select id="typeInput" name="type" required>
-                      <option value="2">2 ตัว</option>
-                      <option value="3">3 ตัว</option>
-                    </select>
+                    <select id="betTypeInput" required></select>
                   </label>
-
                   <label class="field">
                     <span>เลข</span>
-                    <input id="numberInput" name="number" inputmode="numeric" maxlength="3" placeholder="เช่น 45" required />
+                    <input id="numberInput" inputmode="numeric" maxlength="3" placeholder="เช่น 45" required />
                   </label>
-
                   <label class="field">
                     <span>ยอดเงิน</span>
-                    <input id="amountInput" name="amount" type="text" inputmode="decimal" placeholder="0.00" required />
-                  </label>
-
-                  <label class="field">
-                    <span>แท็ก</span>
-                    <input id="tagInput" name="tag" type="text" maxlength="24" placeholder="เช่น วิเคราะห์" />
+                    <input id="amountInput" inputmode="decimal" placeholder="0.00" required />
                   </label>
                 </div>
 
@@ -146,7 +232,7 @@
 
                 <label class="field">
                   <span>บันทึกเพิ่มเติม</span>
-                  <textarea id="noteInput" name="note" rows="3" maxlength="180" placeholder="รายละเอียดเพิ่มเติมถ้ามี"></textarea>
+                  <textarea id="noteInput" rows="3" maxlength="240" placeholder="รายละเอียดเพิ่มเติมถ้ามี"></textarea>
                 </label>
 
                 <div class="form-actions">
@@ -154,7 +240,9 @@
                 </div>
               </form>
             </section>
+          </section>
 
+          <section class="view" data-view="entries" hidden>
             <section class="panel records-panel">
               <div class="panel-heading records-heading">
                 <h2>รายการทั้งหมด</h2>
@@ -164,20 +252,16 @@
                     <select id="filterCustomer"></select>
                   </label>
                   <label class="compact-field">
-                    <span>หวย</span>
-                    <select id="filterLottery"></select>
+                    <span>งวด</span>
+                    <select id="filterRound"></select>
+                  </label>
+                  <label class="compact-field">
+                    <span>ประเภท</span>
+                    <select id="filterBetType"></select>
                   </label>
                   <label class="compact-field">
                     <span>ค้นหาเลข</span>
                     <input id="searchInput" type="search" placeholder="45" />
-                  </label>
-                  <label class="compact-field">
-                    <span>ประเภท</span>
-                    <select id="filterType">
-                      <option value="all">ทั้งหมด</option>
-                      <option value="2">2 ตัว</option>
-                      <option value="3">3 ตัว</option>
-                    </select>
                   </label>
                 </div>
               </div>
@@ -186,22 +270,20 @@
                 <table>
                   <thead>
                     <tr>
-                      <th>วันที่</th>
                       <th>ลูกค้า</th>
                       <th>หวย</th>
                       <th>งวด</th>
                       <th>ประเภท</th>
                       <th>เลข</th>
                       <th>ยอดเงิน</th>
-                      <th>แท็ก</th>
+                      <th>บันทึก</th>
                       <th></th>
                     </tr>
                   </thead>
                   <tbody id="recordsBody"></tbody>
                 </table>
               </div>
-
-              <div id="emptyState" class="empty-state">ยังไม่มีข้อมูล เริ่มจากเพิ่มรายการแรกด้านบน</div>
+              <div id="emptyState" class="empty-state">ยังไม่มีรายการ</div>
             </section>
           </section>
 
@@ -210,40 +292,81 @@
               <div class="panel-heading">
                 <h2>จัดการลูกค้า</h2>
               </div>
-
               <form id="customerForm" class="stack-form">
                 <div class="field-grid customer-grid">
                   <label class="field">
                     <span>รหัสลูกค้า</span>
-                    <input id="customerCodeInput" type="text" maxlength="24" placeholder="เช่น C001" required />
+                    <input id="customerCodeInput" maxlength="24" placeholder="เช่น C001" required />
                   </label>
                   <label class="field">
                     <span>ชื่อเล่น / หมายเหตุ</span>
-                    <input id="customerNameInput" type="text" maxlength="40" placeholder="เช่น ลูกค้าไลน์ A" />
+                    <input id="customerNameInput" maxlength="80" placeholder="เช่น ลูกค้าไลน์ A" />
                   </label>
                 </div>
                 <button class="button button-primary" type="submit">เพิ่มลูกค้า</button>
               </form>
-
               <div id="customerList" class="customer-list"></div>
             </section>
           </section>
 
           <section class="view" data-view="lotteries" hidden>
-            <section class="panel manager-panel">
+            <section class="split-grid">
+              <section class="panel manager-panel">
+                <div class="panel-heading">
+                  <h2>ประเภทหวย</h2>
+                </div>
+                <form id="lotteryForm" class="inline-form">
+                  <label class="field grow-field">
+                    <span>ชื่อหวยใหม่</span>
+                    <input id="lotteryNameInput" maxlength="80" placeholder="เช่น หวยยี่กี" required />
+                  </label>
+                  <button class="button button-primary" type="submit">เพิ่มหวย</button>
+                </form>
+                <div id="lotteryChips" class="chip-list"></div>
+              </section>
+
+              <section class="panel round-panel">
+                <div class="panel-heading">
+                  <h2>สร้างงวด</h2>
+                </div>
+                <form id="roundForm" class="stack-form">
+                  <div class="field-grid customer-grid">
+                    <label class="field">
+                      <span>หวย</span>
+                      <select id="roundLotteryInput" required></select>
+                    </label>
+                    <label class="field">
+                      <span>วันที่ออก</span>
+                      <input id="roundDateInput" type="date" required />
+                    </label>
+                  </div>
+                  <label class="field">
+                    <span>ชื่องวด</span>
+                    <input id="roundLabelInput" maxlength="80" placeholder="เช่น 16 พ.ค. 69" required />
+                  </label>
+                  <button class="button button-primary" type="submit">เพิ่มงวด</button>
+                </form>
+              </section>
+            </section>
+
+            <section class="panel rounds-table-panel">
               <div class="panel-heading">
-                <h2>จัดการประเภทหวย</h2>
+                <h2>งวดทั้งหมด</h2>
               </div>
-
-              <form id="lotteryForm" class="inline-form">
-                <label class="field grow-field">
-                  <span>ชื่อหวยใหม่</span>
-                  <input id="lotteryNameInput" type="text" maxlength="32" placeholder="เช่น หวยยี่กี" required />
-                </label>
-                <button class="button button-primary" type="submit">เพิ่มหวย</button>
-              </form>
-
-              <div id="lotteryChips" class="chip-list"></div>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>หวย</th>
+                      <th>งวด</th>
+                      <th>วันที่ออก</th>
+                      <th>สถานะ</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody id="roundsBody"></tbody>
+                </table>
+              </div>
             </section>
           </section>
 
@@ -253,38 +376,25 @@
                 <h2 id="limitFormTitle">ตั้งค่าอั้นเลข</h2>
                 <button id="resetLimitBtn" class="text-button" type="button">ล้างฟอร์ม</button>
               </div>
-
               <form id="limitForm" class="limit-form">
                 <div class="field-grid">
                   <label class="field">
-                    <span>หวย</span>
-                    <select id="limitLotteryInput" required></select>
-                  </label>
-
-                  <label class="field">
                     <span>งวด</span>
-                    <input id="limitRoundInput" type="text" maxlength="40" placeholder="เช่น 16 พ.ค. 69" required />
+                    <select id="limitRoundInput" required></select>
                   </label>
-
                   <label class="field">
                     <span>ประเภทเลข</span>
-                    <select id="limitTypeInput" required>
-                      <option value="2">2 ตัว</option>
-                      <option value="3">3 ตัว</option>
-                    </select>
+                    <select id="limitBetTypeInput" required></select>
                   </label>
-
                   <label class="field">
                     <span>เลข</span>
                     <input id="limitNumberInput" inputmode="numeric" maxlength="3" placeholder="เช่น 45" required />
                   </label>
-
                   <label class="field">
                     <span>เพดานยอด</span>
-                    <input id="limitAmountInput" type="text" inputmode="decimal" placeholder="0.00" required />
+                    <input id="limitAmountInput" inputmode="decimal" placeholder="0.00" required />
                   </label>
                 </div>
-
                 <div class="form-actions">
                   <button id="limitSubmitBtn" class="button button-primary" type="submit">บันทึกอั้นเลข</button>
                 </div>
@@ -292,7 +402,7 @@
             </section>
 
             <section class="panel limits-table-panel">
-              <div class="panel-heading records-heading">
+              <div class="panel-heading">
                 <h2>ตารางอั้นเลข</h2>
               </div>
               <div class="table-wrap">
@@ -317,29 +427,116 @@
             </section>
           </section>
 
-          <section class="view" data-view="reports" hidden>
-            <section class="panel analytics-panel">
+          <section class="view" data-view="payouts" hidden>
+            <section class="panel payout-panel">
               <div class="panel-heading">
-                <h2>สถิติ</h2>
+                <h2>อัตราจ่าย</h2>
               </div>
-              <div class="analytics-grid">
-                <div class="chart-card">
-                  <h3>ยอดเงินแยกตามหวย</h3>
-                  <div id="lotteryBars" class="bar-list"></div>
-                </div>
-                <div class="chart-card">
-                  <h3>ยอดเงินแยกตามประเภทเลข</h3>
-                  <div id="typeBars" class="bar-list"></div>
-                </div>
-                <div class="chart-card">
-                  <h3>เลขที่บันทึกบ่อย</h3>
-                  <ol id="topNumbers" class="rank-list"></ol>
-                </div>
-                <div class="chart-card">
-                  <h3>ยอดเงินรายวัน</h3>
-                  <div id="dailyBars" class="daily-bars"></div>
-                </div>
+              <div id="payoutMatrix" class="payout-matrix"></div>
+            </section>
+          </section>
+
+          <section class="view" data-view="results" hidden>
+            <section class="panel result-panel">
+              <div class="panel-heading">
+                <h2>บันทึกผลรางวัล</h2>
               </div>
+              <label class="field result-round-field">
+                <span>งวด</span>
+                <select id="resultRoundInput"></select>
+              </label>
+              <div id="resultEditor" class="result-editor"></div>
+            </section>
+          </section>
+
+          <section class="view" data-view="reports" hidden>
+            <section class="panel settlement-panel">
+              <div class="panel-heading">
+                <h2>สรุปกำไรขาดทุน</h2>
+              </div>
+              <label class="field result-round-field">
+                <span>งวด</span>
+                <select id="reportRoundInput"></select>
+              </label>
+              <section class="summary-grid report-grid">
+                <article class="metric metric-blue">
+                  <span>ยอดรับ</span>
+                  <strong id="reportStake">฿0.00</strong>
+                </article>
+                <article class="metric metric-red">
+                  <span>ยอดจ่าย</span>
+                  <strong id="reportPayout">฿0.00</strong>
+                </article>
+                <article class="metric metric-green">
+                  <span>กำไรสุทธิ</span>
+                  <strong id="reportProfit">฿0.00</strong>
+                </article>
+                <article class="metric metric-indigo">
+                  <span>ผู้ถูกรางวัล</span>
+                  <strong id="reportWinnerCount">0</strong>
+                </article>
+              </section>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>ลูกค้า</th>
+                      <th>ประเภท</th>
+                      <th>เลข</th>
+                      <th>ยอด</th>
+                      <th>อัตราจ่าย</th>
+                      <th>จ่ายจริง</th>
+                    </tr>
+                  </thead>
+                  <tbody id="winnersBody"></tbody>
+                </table>
+              </div>
+            </section>
+          </section>
+
+          <section class="view" data-view="users" hidden>
+            <section class="split-grid">
+              <section class="panel user-panel">
+                <div class="panel-heading">
+                  <h2>เพิ่มผู้ใช้</h2>
+                </div>
+                <form id="userForm" class="stack-form">
+                  <label class="field">
+                    <span>ชื่อผู้ใช้</span>
+                    <input id="userUsernameInput" maxlength="40" required />
+                  </label>
+                  <label class="field">
+                    <span>รหัสผ่าน</span>
+                    <input id="userPasswordInput" type="password" minlength="8" required />
+                  </label>
+                  <label class="field">
+                    <span>สิทธิ์</span>
+                    <select id="userRoleInput">
+                      <option value="operator">operator</option>
+                      <option value="admin">admin</option>
+                    </select>
+                  </label>
+                  <button class="button button-primary" type="submit">เพิ่มผู้ใช้</button>
+                </form>
+              </section>
+
+              <section class="panel users-table-panel">
+                <div class="panel-heading">
+                  <h2>ผู้ใช้ทั้งหมด</h2>
+                </div>
+                <div class="table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>ชื่อผู้ใช้</th>
+                        <th>สิทธิ์</th>
+                        <th>วันที่สร้าง</th>
+                      </tr>
+                    </thead>
+                    <tbody id="usersBody"></tbody>
+                  </table>
+                </div>
+              </section>
             </section>
           </section>
         </main>
@@ -348,15 +545,15 @@
 
     <template id="recordActionsTemplate">
       <div class="row-actions">
-        <button class="icon-button edit-button" type="button" title="แก้ไขรายการ" aria-label="แก้ไขรายการ">แก้ไข</button>
-        <button class="icon-button delete-button" type="button" title="ลบรายการ" aria-label="ลบรายการ">ลบ</button>
+        <button class="icon-button edit-button" type="button">แก้ไข</button>
+        <button class="icon-button delete-button" type="button">ลบ</button>
       </div>
     </template>
 
     <template id="limitActionsTemplate">
       <div class="row-actions">
-        <button class="icon-button edit-limit-button" type="button" title="แก้ไขอั้นเลข" aria-label="แก้ไขอั้นเลข">แก้ไข</button>
-        <button class="icon-button delete-limit-button" type="button" title="ลบอั้นเลข" aria-label="ลบอั้นเลข">ลบ</button>
+        <button class="icon-button edit-limit-button" type="button">แก้ไข</button>
+        <button class="icon-button delete-limit-button" type="button">ลบ</button>
       </div>
     </template>
 

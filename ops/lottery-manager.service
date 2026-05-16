@@ -1,0 +1,19 @@
+[Unit]
+Description=Lottery Manager
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/var/www/lottery-manager
+Environment=NODE_ENV=production
+Environment=PORT=3001
+Environment=DB_PATH=/var/lib/lottery-manager/lottery-manager.sqlite
+Environment=SESSION_TTL_DAYS=7
+ExecStart=/usr/bin/node /var/www/lottery-manager/server.js
+Restart=always
+RestartSec=5
+User=www-data
+Group=www-data
+
+[Install]
+WantedBy=multi-user.target
