@@ -172,10 +172,6 @@
 
               <form id="quickCustomerForm" class="inline-create-form hidden">
                 <label class="field">
-                  <span>รหัสลูกค้า</span>
-                  <input id="quickCustomerCodeInput" maxlength="24" placeholder="เช่น C001" required />
-                </label>
-                <label class="field">
                   <span>ชื่อเล่น / หมายเหตุ</span>
                   <input id="quickCustomerNameInput" maxlength="80" placeholder="เช่น ลูกค้าไลน์ A" />
                 </label>
@@ -316,10 +312,6 @@
               <form id="customerForm" class="stack-form">
                 <div class="field-grid customer-grid">
                   <label class="field">
-                    <span>รหัสลูกค้า</span>
-                    <input id="customerCodeInput" maxlength="24" placeholder="เช่น C001" required />
-                  </label>
-                  <label class="field">
                     <span>ชื่อเล่น / หมายเหตุ</span>
                     <input id="customerNameInput" maxlength="80" placeholder="เช่น ลูกค้าไลน์ A" />
                   </label>
@@ -328,6 +320,7 @@
                     <select id="customerHeadHouseInput" required></select>
                   </label>
                 </div>
+                <p class="helper-copy">ระบบจะออกรหัสลูกค้าให้อัตโนมัติ เช่น C0001</p>
                 <button class="button button-primary" type="submit">เพิ่มลูกค้า</button>
               </form>
               <div id="customerList" class="customer-list"></div>
@@ -343,10 +336,6 @@
                 <form id="headHouseForm" class="stack-form">
                   <div class="field-grid customer-grid">
                     <label class="field">
-                      <span>รหัสหัวบ้าน</span>
-                      <input id="headHouseCodeInput" maxlength="24" placeholder="เช่น HB001" required />
-                    </label>
-                    <label class="field">
                       <span>ชื่อหัวบ้าน</span>
                       <input id="headHouseNameInput" maxlength="80" placeholder="เช่น เจ๊แดง" required />
                     </label>
@@ -355,6 +344,7 @@
                     <span>หมายเหตุ</span>
                     <input id="headHouseNoteInput" maxlength="160" placeholder="เช่น รับยอดจาก LINE กลุ่ม A" />
                   </label>
+                  <p class="helper-copy">ระบบจะออกรหัสหัวบ้านให้อัตโนมัติ เช่น HB001</p>
                   <button class="button button-primary" type="submit">เพิ่มหัวบ้าน</button>
                 </form>
               </section>

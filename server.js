@@ -255,15 +255,15 @@ app.post("/api/users", requireAuth, requireAdmin, (req, res) => {
 });
 
 app.post("/api/head-houses", requireAuth, requireAdmin, (req, res) => {
-  const code = cleanText(req.body.code, 24).toUpperCase();
   const name = cleanText(req.body.name, 80);
   const note = cleanText(req.body.note, 160);
 
-  if (!code || !name) {
+  if (!name) {
     return res.status(400).json({ error: "invalid_head_house_payload" });
   }
 
   const now = nowIso();
+  const code = nextSequentialCode("head_houses", "HB", 3);
   const headHouse = {
     id: createSlugId("head-house", code),
     code,
@@ -287,15 +287,15 @@ app.post("/api/head-houses", requireAuth, requireAdmin, (req, res) => {
 });
 
 app.post("/api/customers", requireAuth, requireWriteAccess, (req, res) => {
-  const code = cleanText(req.body.code, 24).toUpperCase();
   const name = cleanText(req.body.name, 80);
   const headHouseId = cleanText(req.body.headHouseId, 80);
 
-  if (!code || !findHeadHouse(headHouseId)) {
-    return res.status(400).json({ error: "customer_code_required" });
+  if (!findHeadHouse(headHouseId)) {
+    return res.status(400).json({ error: "invalid_customer_payload" });
   }
 
   const now = nowIso();
+  const code = nextSequentialCode("customers", "C", 4);
   const customer = {
     id: createSlugId("customer", code),
     code,
@@ -1263,6 +1263,15 @@ function createSlugId(prefix, raw) {
     .replace(/\s+/g, "-")
     .replace(/[^a-z0-9-]/g, "");
   return slug || `${prefix}-${crypto.randomUUID().slice(0, 8)}`;
+}
+
+function nextSequentialCode(tableName, prefix, width) {
+  const rows = db.prepare(`SELECT code FROM ${tableName} WHERE code GLOB ?`).all(`${prefix}[0-9]*`);
+  const max = rows.reduce((currentMax, row) => {
+    const match = row.code.match(new RegExp(`^${prefix}(\\d+)$`));
+    return match ? Math.max(currentMax, Number(match[1])) : currentMax;
+  }, 0);
+  return `${prefix}${String(max + 1).padStart(width, "0")}`;
 }
 
 function sortDigits(value) {

@@ -81,7 +81,6 @@ const elements = {
   quickCustomer: document.querySelector("#quickCustomer"),
   toggleQuickCustomerBtn: document.querySelector("#toggleQuickCustomerBtn"),
   quickCustomerForm: document.querySelector("#quickCustomerForm"),
-  quickCustomerCode: document.querySelector("#quickCustomerCodeInput"),
   quickCustomerName: document.querySelector("#quickCustomerNameInput"),
   quickCustomerHeadHouse: document.querySelector("#quickCustomerHeadHouseInput"),
   quickLottery: document.querySelector("#quickLottery"),
@@ -112,12 +111,10 @@ const elements = {
   filterBetType: document.querySelector("#filterBetType"),
   searchInput: document.querySelector("#searchInput"),
   customerForm: document.querySelector("#customerForm"),
-  customerCode: document.querySelector("#customerCodeInput"),
   customerName: document.querySelector("#customerNameInput"),
   customerHeadHouse: document.querySelector("#customerHeadHouseInput"),
   customerList: document.querySelector("#customerList"),
   headHouseForm: document.querySelector("#headHouseForm"),
-  headHouseCode: document.querySelector("#headHouseCodeInput"),
   headHouseName: document.querySelector("#headHouseNameInput"),
   headHouseNote: document.querySelector("#headHouseNoteInput"),
   headHouseList: document.querySelector("#headHouseList"),
@@ -532,14 +529,13 @@ function clearQuickIntake() {
 function toggleQuickCustomerForm() {
   elements.quickCustomerForm.classList.toggle("hidden");
   if (!elements.quickCustomerForm.classList.contains("hidden")) {
-    elements.quickCustomerCode.focus();
+    elements.quickCustomerName.focus();
   }
 }
 
 async function handleQuickCustomerSubmit(event) {
   event.preventDefault();
   const created = await createCustomer(
-    elements.quickCustomerCode.value.trim(),
     elements.quickCustomerName.value.trim(),
     elements.quickCustomerHeadHouse.value,
   );
@@ -548,6 +544,7 @@ async function handleQuickCustomerSubmit(event) {
   await refreshState();
   elements.quickCustomer.value = created.id;
   elements.customer.value = created.id;
+  alert(`สร้างลูกค้าแล้ว รหัสคือ ${created.code}`);
 }
 
 function getQuickEntryIssues(entry) {
@@ -658,30 +655,31 @@ async function deleteEntry(id) {
 
 async function handleCustomerSubmit(event) {
   event.preventDefault();
-  await createCustomer(elements.customerCode.value.trim(), elements.customerName.value.trim(), elements.customerHeadHouse.value);
+  const created = await createCustomer(elements.customerName.value.trim(), elements.customerHeadHouse.value);
   elements.customerForm.reset();
   await refreshState();
+  alert(`สร้างลูกค้าแล้ว รหัสคือ ${created.code}`);
 }
 
-async function createCustomer(code, name, headHouseId) {
+async function createCustomer(name, headHouseId) {
   return api("/api/customers", {
     method: "POST",
-    body: { code, name, headHouseId },
+    body: { name, headHouseId },
   });
 }
 
 async function handleHeadHouseSubmit(event) {
   event.preventDefault();
-  await api("/api/head-houses", {
+  const created = await api("/api/head-houses", {
     method: "POST",
     body: {
-      code: elements.headHouseCode.value.trim(),
       name: elements.headHouseName.value.trim(),
       note: elements.headHouseNote.value.trim(),
     },
   });
   elements.headHouseForm.reset();
   await refreshState();
+  alert(`สร้างหัวบ้านแล้ว รหัสคือ ${created.code}`);
 }
 
 function renderHeadHouses() {
