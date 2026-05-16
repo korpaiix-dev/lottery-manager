@@ -61,6 +61,7 @@ const state = {
   ticketDraftEntries: [],
   ticketBetTypeId: "two_top",
   latestViewerCredentials: null,
+  announcedRoundIds: new Set(),
 };
 
 const elements = {
@@ -77,6 +78,11 @@ const elements = {
   currentViewEyebrow: document.querySelector("#currentViewEyebrow"),
   currentViewTitle: document.querySelector("#currentViewTitle"),
   currentUserLabel: document.querySelector("#currentUserLabel"),
+  sidebarUsername: document.querySelector("#sidebarUsername"),
+  sidebarRole: document.querySelector("#sidebarRole"),
+  sidebarBalance: document.querySelector("#sidebarBalance"),
+  sidebarProfileBtn: document.querySelector("#sidebarProfileBtn"),
+  sidebarLogoutBtn: document.querySelector("#sidebarLogoutBtn"),
   usersNavButton: document.querySelector('[data-view-target="users"]'),
   usersView: document.querySelector('[data-view="users"]'),
   headHousesNavButton: document.querySelector('[data-view-target="headHouses"]'),
@@ -95,6 +101,7 @@ const elements = {
   nearLimitCount: document.querySelector("#nearLimitCount"),
   marketSummary: document.querySelector("#marketSummary"),
   lotteryBoard: document.querySelector("#lotteryBoard"),
+  closingSoonBanner: document.querySelector("#closingSoonBanner"),
   limitWatchList: document.querySelector("#limitWatchList"),
   recentEntriesList: document.querySelector("#recentEntriesList"),
   ticketCountdown: document.querySelector("#ticketCountdown"),
@@ -176,6 +183,8 @@ const elements = {
   roundFormTitle: document.querySelector("#roundFormTitle"),
   resetRoundBtn: document.querySelector("#resetRoundBtn"),
   roundLottery: document.querySelector("#roundLotteryInput"),
+  roundOpenDate: document.querySelector("#roundOpenDateInput"),
+  roundOpenTime: document.querySelector("#roundOpenTimeInput"),
   roundDate: document.querySelector("#roundDateInput"),
   roundTime: document.querySelector("#roundTimeInput"),
   roundLabel: document.querySelector("#roundLabelInput"),
@@ -230,7 +239,9 @@ initialize();
 async function initialize() {
   bindEvents();
   elements.roundDate.value = today();
-  window.setInterval(renderTicketHeader, 1000);
+  elements.roundOpenDate.value = today();
+  elements.roundOpenTime.value = "00:00";
+  window.setInterval(renderTimeSensitiveUi, 1000);
   await bootAuth();
 }
 
@@ -238,6 +249,8 @@ function bindEvents() {
   elements.setupForm.addEventListener("submit", handleSetup);
   elements.loginForm.addEventListener("submit", handleLogin);
   elements.logoutBtn.addEventListener("click", handleLogout);
+  elements.sidebarLogoutBtn.addEventListener("click", handleLogout);
+  elements.sidebarProfileBtn.addEventListener("click", () => activateView("users"));
   elements.exportBtn.addEventListener("click", exportData);
 
   elements.navButtons.forEach((button) => {
@@ -356,6 +369,8 @@ async function enterApp() {
   elements.authShell.classList.add("hidden");
   elements.appShell.classList.remove("hidden");
   elements.currentUserLabel.textContent = state.user.username;
+  elements.sidebarUsername.textContent = state.user.username;
+  elements.sidebarRole.textContent = state.user.role;
   configureRoleAccess();
   await refreshState();
   activateView(state.user.role === "head_house_viewer" ? "headHouseReport" : "dashboard", false);
@@ -400,6 +415,7 @@ function render() {
   renderQuickPreview();
   renderLimitPreview();
   syncUserHeadHouseField();
+  renderSidebarSummary();
 }
 
 function renderSelects() {
@@ -460,6 +476,7 @@ function renderDashboard() {
   renderRecentEntries();
   renderMarketSummary();
   renderLotteryBoard();
+  renderClosingSoonBanner();
 }
 
 function renderMarketSummary() {
@@ -477,6 +494,10 @@ function renderMarketSummary() {
   `;
 }
 
+function renderSidebarSummary() {
+  elements.sidebarBalance.textContent = money(sum(state.entries.map((entry) => entry.amount)));
+}
+
 function renderLotteryBoard() {
   elements.lotteryBoard.innerHTML = LOTTERY_CATEGORIES.map((category) => {
     const lotteries = state.lotteries.filter((lottery) => (lottery.category || "other") === category.id);
@@ -492,18 +513,18 @@ function renderLotteryBoard() {
           ${lotteries
             .map((lottery) => {
               const round = getDisplayRoundForLottery(lottery.id);
-              const accepting = Boolean(round?.accepting);
+              const status = getRoundTimingStatus(round);
               return `
                 <button
-                  class="lottery-card ${accepting ? "is-open" : "is-closed"}"
+                  class="lottery-card ${status.cardClass}"
                   type="button"
                   data-lottery-id="${escapeHtml(lottery.id)}"
                   ${round ? "" : "disabled"}
                 >
                   <strong>${escapeHtml(lottery.name)}</strong>
                   <span>${round ? escapeHtml(round.label) : "ยังไม่มีงวด"}</span>
-                  <small>${round ? `${longDate(round.draw_date)} ${escapeHtml(round.draw_time)}` : "-"}</small>
-                  <em>${round ? roundStatusLabel(round) : "ยังไม่ตั้งงวด"}</em>
+                  <small>${round ? `เปิด ${formatRoundOpenTime(round)} · ปิด ${formatRoundCloseTime(round)}` : "-"}</small>
+                  <em>${round ? status.label : "ยังไม่ตั้งงวด"}</em>
                 </button>
               `;
             })
@@ -1392,6 +1413,8 @@ async function handleRoundSubmit(event) {
   event.preventDefault();
   const payload = {
     lotteryId: elements.roundLottery.value,
+    openDate: elements.roundOpenDate.value,
+    openTime: elements.roundOpenTime.value,
     drawDate: elements.roundDate.value,
     drawTime: elements.roundTime.value,
     label: elements.roundLabel.value.trim(),
@@ -1429,6 +1452,7 @@ function renderRounds() {
     row.innerHTML = `
       <td>${escapeHtml(getLotteryName(round.lottery_id))}</td>
       <td>${escapeHtml(round.label)}</td>
+      <td>${escapeHtml(formatRoundOpenTime(round))}</td>
       <td>${longDate(round.draw_date)}</td>
       <td>${escapeHtml(round.draw_time)}</td>
       <td>${round.close_before_minutes.toLocaleString("th-TH")} นาที</td>
@@ -1459,6 +1483,8 @@ function beginRoundEdit(id) {
   state.editingRoundId = round.id;
   elements.roundLottery.value = round.lottery_id;
   elements.roundLottery.disabled = true;
+  elements.roundOpenDate.value = round.open_date || round.draw_date;
+  elements.roundOpenTime.value = round.open_time || "00:00";
   elements.roundDate.value = round.draw_date;
   elements.roundTime.value = round.draw_time;
   elements.roundLabel.value = round.label;
@@ -1472,6 +1498,8 @@ function resetRoundForm() {
   state.editingRoundId = null;
   elements.roundForm.reset();
   elements.roundLottery.disabled = false;
+  elements.roundOpenDate.value = today();
+  elements.roundOpenTime.value = "00:00";
   elements.roundDate.value = today();
   elements.roundCloseBefore.value = 15;
   renderSelects();
@@ -1811,6 +1839,7 @@ function configureRoleAccess() {
   const isHeadHouseViewer = state.user?.role === "head_house_viewer";
   elements.usersNavButton.classList.toggle("hidden", !canManageUsers);
   elements.usersView.hidden = !canManageUsers;
+  elements.sidebarProfileBtn.classList.toggle("hidden", !canManageUsers);
   elements.headHousesNavButton.classList.toggle("hidden", !canManageUsers);
   elements.headHousesView.hidden = !canManageUsers;
   elements.headHouseReportPickerWrap.classList.toggle("hidden", isHeadHouseViewer);
@@ -2098,15 +2127,12 @@ function resultNumbers(roundId, betTypeId) {
 
 function formatCountdown(round) {
   if (!round) return "ยังไม่เลือกงวด";
+  const now = Date.now();
+  const openMs = new Date(round.open_at).getTime() - now;
+  if (openMs > 0) return `เปิดรับในอีก ${formatDuration(openMs)}`;
   const remainingMs = new Date(round.close_at).getTime() - Date.now();
   if (remainingMs <= 0) return "ปิดรับแล้ว";
-  const totalSeconds = Math.floor(remainingMs / 1000);
-  const days = Math.floor(totalSeconds / 86400);
-  const hours = Math.floor((totalSeconds % 86400) / 3600);
-  const minutes = Math.floor((totalSeconds % 3600) / 60);
-  const seconds = totalSeconds % 60;
-  const clock = `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
-  return days > 0 ? `เหลือเวลา ${days} วัน ${clock}` : `เหลือเวลา ${clock}`;
+  return `เหลือเวลา ${formatDuration(remainingMs)}`;
 }
 
 function getRound(id) {
@@ -2199,14 +2225,90 @@ function formatRoundCutoff(round) {
   }).format(new Date(round.close_at));
 }
 
+function formatRoundOpenTime(round) {
+  return new Intl.DateTimeFormat("th-TH", {
+    day: "numeric",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: "Asia/Bangkok",
+  }).format(new Date(round.open_at));
+}
+
+function formatRoundCloseTime(round) {
+  return new Intl.DateTimeFormat("th-TH", {
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: "Asia/Bangkok",
+  }).format(new Date(round.close_at));
+}
+
 function roundStatusLabel(round) {
-  if (round.accepting) return "เปิดรับ";
+  const timing = getRoundTimingStatus(round);
+  if (timing.state === "upcoming") return "ยังไม่เปิด";
+  if (timing.state === "closing_soon") return "ใกล้ปิด";
+  if (timing.state === "open") return "เปิดรับ";
   return round.status === "closed" ? "ปิดงวด" : "ปิดรับแล้ว";
 }
 
 function roundStatusClass(round) {
-  if (round.accepting) return "normal";
+  const timing = getRoundTimingStatus(round);
+  if (timing.state === "open") return "normal";
+  if (timing.state === "closing_soon" || timing.state === "upcoming") return "warning";
   return round.status === "closed" ? "full" : "warning";
+}
+
+function getRoundTimingStatus(round) {
+  if (!round) return { state: "unset", label: "ยังไม่ตั้งงวด", cardClass: "is-closed" };
+  if (round.status === "closed") return { state: "manual_closed", label: "ปิดงวด", cardClass: "is-closed" };
+
+  const now = Date.now();
+  const openAt = new Date(round.open_at).getTime();
+  const closeAt = new Date(round.close_at).getTime();
+  if (now < openAt) return { state: "upcoming", label: "ยังไม่เปิด", cardClass: "is-upcoming" };
+  if (now >= closeAt) return { state: "closed", label: "ปิดรับ", cardClass: "is-closed" };
+  if (closeAt - now <= 5 * 60_000) return { state: "closing_soon", label: "ใกล้ปิด", cardClass: "is-closing" };
+  return { state: "open", label: "เปิดรับ", cardClass: "is-open" };
+}
+
+function renderClosingSoonBanner() {
+  const rounds = state.rounds.filter((round) => getRoundTimingStatus(round).state === "closing_soon");
+  elements.closingSoonBanner.classList.toggle("hidden", rounds.length === 0);
+  elements.closingSoonBanner.innerHTML = rounds.length
+    ? `
+      <strong>เตือนก่อนปิดรับ 5 นาที</strong>
+      <span>${rounds
+        .map((round) => `${getLotteryName(round.lottery_id)} ${round.label} เหลือ ${formatDuration(new Date(round.close_at) - Date.now())}`)
+        .join(" · ")}</span>
+    `
+    : "";
+}
+
+function renderTimeSensitiveUi() {
+  renderTicketHeader();
+  renderMarketSummary();
+  renderLotteryBoard();
+  renderClosingSoonBanner();
+  announceClosingSoonRounds();
+}
+
+function announceClosingSoonRounds() {
+  const rounds = state.rounds.filter((round) => getRoundTimingStatus(round).state === "closing_soon");
+  rounds.forEach((round) => {
+    if (state.announcedRoundIds.has(round.id)) return;
+    state.announcedRoundIds.add(round.id);
+    alert(`${getLotteryName(round.lottery_id)} ${round.label} เหลือเวลาไม่ถึง 5 นาที จะปิดรับอัตโนมัติ`);
+  });
+}
+
+function formatDuration(milliseconds) {
+  const totalSeconds = Math.max(0, Math.floor(milliseconds / 1000));
+  const days = Math.floor(totalSeconds / 86400);
+  const hours = Math.floor((totalSeconds % 86400) / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  const clock = `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+  return days > 0 ? `${days} วัน ${clock}` : clock;
 }
 
 function today() {

@@ -67,6 +67,8 @@ db.exec(`
     id TEXT PRIMARY KEY,
     lottery_id TEXT NOT NULL REFERENCES lotteries(id) ON DELETE CASCADE,
     label TEXT NOT NULL,
+    open_date TEXT,
+    open_time TEXT,
     draw_date TEXT NOT NULL,
     draw_time TEXT NOT NULL DEFAULT '00:00',
     close_before_minutes INTEGER NOT NULL DEFAULT 0,
@@ -142,6 +144,8 @@ db.exec(`
 migrateUsersTableIfNeeded();
 ensureColumn("rounds", "draw_time", "TEXT NOT NULL DEFAULT '00:00'");
 ensureColumn("rounds", "close_before_minutes", "INTEGER NOT NULL DEFAULT 0");
+ensureColumn("rounds", "open_date", "TEXT");
+ensureColumn("rounds", "open_time", "TEXT");
 ensureColumn("customers", "head_house_id", "TEXT");
 ensureColumn("users", "head_house_id", "TEXT");
 ensureColumn("head_houses", "commission_percent", "REAL NOT NULL DEFAULT 0");
@@ -603,6 +607,8 @@ app.post("/api/lotteries", requireAuth, requireWriteAccess, (req, res) => {
 app.post("/api/rounds", requireAuth, requireWriteAccess, (req, res) => {
   const lotteryId = cleanText(req.body.lotteryId, 80);
   const label = cleanText(req.body.label, 80);
+  const openDate = cleanText(req.body.openDate || req.body.drawDate, 20);
+  const openTime = cleanText(req.body.openTime || "00:00", 5);
   const drawDate = cleanText(req.body.drawDate, 20);
   const drawTime = cleanText(req.body.drawTime, 5);
   const closeBeforeMinutes = Number(req.body.closeBeforeMinutes);
@@ -611,6 +617,8 @@ app.post("/api/rounds", requireAuth, requireWriteAccess, (req, res) => {
   if (
     !lotteryId ||
     !label ||
+    !isIsoDate(openDate) ||
+    !isTimeOfDay(openTime) ||
     !isIsoDate(drawDate) ||
     !isTimeOfDay(drawTime) ||
     !Number.isInteger(closeBeforeMinutes) ||
@@ -626,6 +634,8 @@ app.post("/api/rounds", requireAuth, requireWriteAccess, (req, res) => {
     id: crypto.randomUUID(),
     lottery_id: lotteryId,
     label,
+    open_date: openDate,
+    open_time: openTime,
     draw_date: drawDate,
     draw_time: drawTime,
     close_before_minutes: closeBeforeMinutes,
@@ -636,12 +646,14 @@ app.post("/api/rounds", requireAuth, requireWriteAccess, (req, res) => {
 
   try {
     db.prepare(`
-      INSERT INTO rounds (id, lottery_id, label, draw_date, draw_time, close_before_minutes, status, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO rounds (id, lottery_id, label, open_date, open_time, draw_date, draw_time, close_before_minutes, status, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       round.id,
       round.lottery_id,
       round.label,
+      round.open_date,
+      round.open_time,
       round.draw_date,
       round.draw_time,
       round.close_before_minutes,
@@ -663,6 +675,8 @@ app.put("/api/rounds/:id", requireAuth, requireWriteAccess, (req, res) => {
 
   const status = req.body.status === undefined ? round.status : req.body.status === "closed" ? "closed" : "open";
   const label = req.body.label ? cleanText(req.body.label, 80) : round.label;
+  const openDate = req.body.openDate ? cleanText(req.body.openDate, 20) : round.open_date || round.draw_date;
+  const openTime = req.body.openTime ? cleanText(req.body.openTime, 5) : round.open_time || "00:00";
   const drawDate = req.body.drawDate ? cleanText(req.body.drawDate, 20) : round.draw_date;
   const drawTime = req.body.drawTime ? cleanText(req.body.drawTime, 5) : round.draw_time;
   const closeBeforeMinutes =
@@ -670,6 +684,8 @@ app.put("/api/rounds/:id", requireAuth, requireWriteAccess, (req, res) => {
 
   if (
     !label ||
+    !isIsoDate(openDate) ||
+    !isTimeOfDay(openTime) ||
     !isIsoDate(drawDate) ||
     !isTimeOfDay(drawTime) ||
     !Number.isInteger(closeBeforeMinutes) ||
@@ -683,9 +699,9 @@ app.put("/api/rounds/:id", requireAuth, requireWriteAccess, (req, res) => {
   try {
     db.prepare(`
       UPDATE rounds
-      SET label = ?, status = ?, draw_date = ?, draw_time = ?, close_before_minutes = ?, updated_at = ?
+      SET label = ?, status = ?, open_date = ?, open_time = ?, draw_date = ?, draw_time = ?, close_before_minutes = ?, updated_at = ?
       WHERE id = ?
-    `).run(label, status, drawDate, drawTime, closeBeforeMinutes, updatedAt, round.id);
+    `).run(label, status, openDate, openTime, drawDate, drawTime, closeBeforeMinutes, updatedAt, round.id);
   } catch {
     return res.status(409).json({ error: "round_exists" });
   }
@@ -1662,10 +1678,12 @@ function migrateUsersTableIfNeeded() {
 }
 
 function presentRound(round) {
+  const openAt = getRoundOpenAt(round);
   const drawAt = getRoundDrawAt(round);
   const closeAt = getRoundCloseAt(round);
   return {
     ...round,
+    open_at: openAt.toISOString(),
     draw_at: drawAt.toISOString(),
     close_at: closeAt.toISOString(),
     accepting: roundAcceptsEntries(round),
@@ -1673,7 +1691,12 @@ function presentRound(round) {
 }
 
 function roundAcceptsEntries(round) {
-  return round.status === "open" && Date.now() < getRoundCloseAt(round).getTime();
+  const now = Date.now();
+  return round.status === "open" && now >= getRoundOpenAt(round).getTime() && now < getRoundCloseAt(round).getTime();
+}
+
+function getRoundOpenAt(round) {
+  return new Date(`${round.open_date || round.draw_date}T${round.open_time || "00:00"}:00+07:00`);
 }
 
 function getRoundDrawAt(round) {

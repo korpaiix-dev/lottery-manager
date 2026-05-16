@@ -47,37 +47,62 @@
           <h1>จัดการหวย</h1>
         </div>
 
-        <nav class="sidebar-nav" aria-label="หมวดงานหลัก">
-          <button class="nav-button is-active" type="button" data-view-target="dashboard">แดชบอร์ด</button>
-          <button class="nav-button" type="button" data-view-target="intake">รับรายการ</button>
-          <button class="nav-button" type="button" data-view-target="entries">รายการ</button>
-          <button class="nav-button" type="button" data-view-target="headHouses">หัวบ้าน</button>
-          <button class="nav-button" type="button" data-view-target="customers">ลูกค้า</button>
-          <button class="nav-button" type="button" data-view-target="lotteries">หวยและงวด</button>
-          <button class="nav-button" type="button" data-view-target="limits">อั้นเลข</button>
-          <button class="nav-button" type="button" data-view-target="payouts">อัตราจ่าย</button>
-          <button class="nav-button" type="button" data-view-target="results">ผลรางวัล</button>
-          <button class="nav-button" type="button" data-view-target="reports">รายงาน</button>
-          <button class="nav-button" type="button" data-view-target="headHouseReport">ยอดหัวบ้าน</button>
-          <button class="nav-button" type="button" data-view-target="users">ผู้ใช้</button>
-        </nav>
+        <section class="sidebar-account">
+          <span>ผู้ใช้</span>
+          <strong id="sidebarUsername">-</strong>
+          <span>สิทธิ์</span>
+          <strong id="sidebarRole">-</strong>
+          <span>ยอดรับรวม</span>
+          <strong id="sidebarBalance">฿0.00</strong>
+        </section>
+
+        <div class="sidebar-actions">
+          <button id="sidebarProfileBtn" class="sidebar-link" type="button" data-view-target="users">ข้อมูลผู้ใช้</button>
+          <button id="sidebarLogoutBtn" class="sidebar-link danger" type="button">ออกจากระบบ</button>
+        </div>
       </aside>
 
       <div class="workspace">
         <header class="topbar">
-          <div>
-            <p id="currentViewEyebrow" class="eyebrow">ศูนย์ควบคุมงานหลังบ้าน</p>
-            <h2 id="currentViewTitle">แดชบอร์ด</h2>
-          </div>
-          <div class="topbar-actions">
-            <span id="currentUserLabel" class="user-pill"></span>
-            <button id="exportBtn" class="button button-secondary" type="button">ส่งออกข้อมูล</button>
-            <button id="logoutBtn" class="button button-secondary" type="button">ออกจากระบบ</button>
+          <nav class="top-nav" aria-label="หมวดงานหลัก">
+            <button class="nav-button is-active" type="button" data-view-target="dashboard">แทงหวย</button>
+            <button class="nav-button" type="button" data-view-target="intake">คีย์โพย</button>
+            <button class="nav-button" type="button" data-view-target="entries">รายการแทง</button>
+            <button class="nav-button" type="button" data-view-target="results">ตรวจรางวัล</button>
+            <button class="nav-button" type="button" data-view-target="reports">บัญชีการเงิน</button>
+            <button class="nav-button" type="button" data-view-target="headHouseReport">ยอดหัวบ้าน</button>
+            <button class="nav-button" type="button" data-view-target="customers">ลูกค้า</button>
+            <button class="nav-button" type="button" data-view-target="lotteries">ตั้งค่าหวย</button>
+            <button class="nav-button" type="button" data-view-target="limits">อั้นเลข</button>
+            <button class="nav-button" type="button" data-view-target="payouts">อัตราจ่าย</button>
+            <button class="nav-button" type="button" data-view-target="headHouses">หัวบ้าน</button>
+            <button class="nav-button" type="button" data-view-target="users">ผู้ใช้</button>
+          </nav>
+          <div class="view-title-row">
+            <div>
+              <p id="currentViewEyebrow" class="eyebrow">ศูนย์ควบคุมงานหลังบ้าน</p>
+              <h2 id="currentViewTitle">แทงหวย</h2>
+            </div>
+            <div class="topbar-actions">
+              <span id="currentUserLabel" class="user-pill"></span>
+              <button id="exportBtn" class="button button-secondary" type="button">ส่งออกข้อมูล</button>
+              <button id="logoutBtn" class="button button-secondary" type="button">ออกจากระบบ</button>
+            </div>
           </div>
         </header>
 
         <main class="view-stack">
           <section class="view is-active" data-view="dashboard">
+            <section id="closingSoonBanner" class="closing-soon-banner hidden"></section>
+
+            <section class="announcement-panel">
+              <div>
+                <p class="eyebrow">ประกาศ</p>
+                <h2>สถานะหวยวันนี้</h2>
+              </div>
+              <p>ระบบเปิดและปิดรับอัตโนมัติตามเวลาที่ตั้งไว้ พร้อมเตือนก่อนปิดรับ 5 นาที</p>
+            </section>
+
             <section class="market-alert panel">
               <div>
                 <p class="eyebrow">ภาพรวมวันนี้</p>
@@ -499,6 +524,16 @@
                       <select id="roundLotteryInput" required></select>
                     </label>
                     <label class="field">
+                      <span>วันที่เปิดรับ</span>
+                      <input id="roundOpenDateInput" type="date" required />
+                    </label>
+                    <label class="field">
+                      <span>เวลาเปิดรับ</span>
+                      <input id="roundOpenTimeInput" type="time" required />
+                    </label>
+                  </div>
+                  <div class="field-grid customer-grid">
+                    <label class="field">
                       <span>วันที่ออก</span>
                       <input id="roundDateInput" type="date" required />
                     </label>
@@ -532,6 +567,7 @@
                     <tr>
                       <th>หวย</th>
                       <th>งวด</th>
+                      <th>เวลาเปิดรับ</th>
                       <th>วันที่ออก</th>
                       <th>เวลาออก</th>
                       <th>ปิดรับก่อน</th>
