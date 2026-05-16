@@ -44,6 +44,7 @@ const state = {
   editingEntryId: null,
   editingLimitId: null,
   quickParsedEntries: [],
+  latestViewerCredentials: null,
 };
 
 const elements = {
@@ -118,6 +119,9 @@ const elements = {
   headHouseName: document.querySelector("#headHouseNameInput"),
   headHouseNote: document.querySelector("#headHouseNoteInput"),
   headHouseList: document.querySelector("#headHouseList"),
+  viewerCredentialCard: document.querySelector("#viewerCredentialCard"),
+  viewerCredentialSummary: document.querySelector("#viewerCredentialSummary"),
+  copyViewerCredentialsBtn: document.querySelector("#copyViewerCredentialsBtn"),
   lotteryForm: document.querySelector("#lotteryForm"),
   lotteryName: document.querySelector("#lotteryNameInput"),
   lotteryChips: document.querySelector("#lotteryChips"),
@@ -208,6 +212,7 @@ function bindEvents() {
 
   elements.customerForm.addEventListener("submit", handleCustomerSubmit);
   elements.headHouseForm.addEventListener("submit", handleHeadHouseSubmit);
+  elements.copyViewerCredentialsBtn.addEventListener("click", copyViewerCredentials);
   elements.lotteryForm.addEventListener("submit", handleLotterySubmit);
   elements.roundForm.addEventListener("submit", handleRoundSubmit);
 
@@ -686,6 +691,7 @@ function renderHeadHouses() {
   elements.headHouseList.innerHTML = state.headHouses
     .map((headHouse) => {
       const customers = state.customers.filter((customer) => customer.head_house_id === headHouse.id).length;
+      const viewer = state.users.find((user) => user.role === "head_house_viewer" && user.head_house_id === headHouse.id);
       const amount = sum(
         state.entries
           .filter((entry) => getCustomer(entry.customer_id)?.head_house_id === headHouse.id)
@@ -697,11 +703,46 @@ function renderHeadHouses() {
             <strong>${escapeHtml(headHouse.code)} · ${escapeHtml(headHouse.name)}</strong>
             <span>${escapeHtml(headHouse.note || "ไม่มีหมายเหตุ")}</span>
           </div>
-          <small>${customers.toLocaleString("th-TH")} ลูกค้า · ${money(amount)}</small>
+          <div class="head-house-actions">
+            <small>${customers.toLocaleString("th-TH")} ลูกค้า · ${money(amount)}</small>
+            ${
+              viewer
+                ? `<small>บัญชีดูยอด: ${escapeHtml(viewer.username)}</small>`
+                : `<button class="button button-secondary create-viewer-button" type="button" data-head-house-id="${escapeHtml(headHouse.id)}">สร้างบัญชีดูยอด</button>`
+            }
+          </div>
         </article>
       `;
     })
     .join("");
+
+  elements.headHouseList.querySelectorAll(".create-viewer-button").forEach((button) => {
+    button.addEventListener("click", () => provisionHeadHouseViewer(button.dataset.headHouseId));
+  });
+}
+
+async function provisionHeadHouseViewer(headHouseId) {
+  const credentials = await api(`/api/head-houses/${headHouseId}/viewer-account`, { method: "POST" });
+  state.latestViewerCredentials = {
+    username: credentials.username,
+    password: credentials.password,
+    url: window.location.origin,
+  };
+  elements.viewerCredentialSummary.textContent = `${credentials.username} / ${credentials.password}`;
+  elements.viewerCredentialCard.classList.remove("hidden");
+  await refreshState();
+}
+
+async function copyViewerCredentials() {
+  const credentials = state.latestViewerCredentials;
+  if (!credentials) return;
+  const text = `ลิงก์เข้าใช้งาน: ${credentials.url}\nชื่อผู้ใช้: ${credentials.username}\nรหัสผ่าน: ${credentials.password}`;
+  try {
+    await navigator.clipboard.writeText(text);
+    alert("คัดลอกข้อมูลแล้ว");
+  } catch {
+    alert(text);
+  }
 }
 
 function renderCustomers() {

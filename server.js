@@ -286,6 +286,45 @@ app.post("/api/head-houses", requireAuth, requireAdmin, (req, res) => {
   res.status(201).json(headHouse);
 });
 
+app.post("/api/head-houses/:id/viewer-account", requireAuth, requireAdmin, (req, res) => {
+  const headHouse = findHeadHouse(req.params.id);
+  if (!headHouse) return res.status(404).json({ error: "head_house_not_found" });
+
+  const existing = db
+    .prepare("SELECT id, username, role, head_house_id, created_at FROM users WHERE role = 'head_house_viewer' AND head_house_id = ?")
+    .get(headHouse.id);
+  if (existing) {
+    return res.status(409).json({ error: "viewer_account_exists", user: publicUser(existing) });
+  }
+
+  const username = nextAvailableHeadHouseUsername(headHouse.code);
+  const password = generateTemporaryPassword();
+  const user = {
+    id: crypto.randomUUID(),
+    username,
+    password_hash: bcrypt.hashSync(password, 12),
+    role: "head_house_viewer",
+    head_house_id: headHouse.id,
+    created_at: nowIso(),
+  };
+
+  db.prepare(`
+    INSERT INTO users (id, username, password_hash, role, head_house_id, created_at)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `).run(user.id, user.username, user.password_hash, user.role, user.head_house_id, user.created_at);
+
+  logAudit(req.user.id, "create", "head_house_viewer", user.id, {
+    username: user.username,
+    headHouseId: headHouse.id,
+  });
+  res.status(201).json({
+    user: publicUser(user),
+    username,
+    password,
+    loginPath: "/",
+  });
+});
+
 app.post("/api/customers", requireAuth, requireWriteAccess, (req, res) => {
   const name = cleanText(req.body.name, 80);
   const headHouseId = cleanText(req.body.headHouseId, 80);
@@ -1272,6 +1311,21 @@ function nextSequentialCode(tableName, prefix, width) {
     return match ? Math.max(currentMax, Number(match[1])) : currentMax;
   }, 0);
   return `${prefix}${String(max + 1).padStart(width, "0")}`;
+}
+
+function nextAvailableHeadHouseUsername(code) {
+  const base = cleanText(code, 24).toLowerCase();
+  const existing = new Set(
+    db.prepare("SELECT username FROM users WHERE username = ? OR username GLOB ?").all(base, `${base}-*`).map((row) => row.username),
+  );
+  if (!existing.has(base)) return base;
+  let suffix = 2;
+  while (existing.has(`${base}-${suffix}`)) suffix += 1;
+  return `${base}-${suffix}`;
+}
+
+function generateTemporaryPassword() {
+  return crypto.randomBytes(6).toString("base64url");
 }
 
 function sortDigits(value) {
