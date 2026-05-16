@@ -78,20 +78,15 @@
 
         <main class="view-stack">
           <section class="view is-active" data-view="dashboard">
-            <section class="hero-panel">
+            <section class="market-alert panel">
               <div>
-                <p class="eyebrow">ศูนย์ควบคุมงานหลังบ้าน</p>
-                <h2>รับรายการไว ตรวจยอดทัน คุมเลขอั้นได้</h2>
+                <p class="eyebrow">ภาพรวมวันนี้</p>
+                <h2>กระดานหวย</h2>
               </div>
-              <div class="hero-steps" aria-label="ขั้นตอนการทำงาน">
-                <span>1 รับข้อความ</span>
-                <span>2 ตรวจทาน</span>
-                <span>3 บันทึก</span>
-                <span>4 เคลียร์งวด</span>
-              </div>
+              <div id="marketSummary" class="market-summary"></div>
             </section>
 
-            <section class="summary-grid" aria-label="สรุปภาพรวม">
+            <section class="summary-grid compact-summary" aria-label="สรุปภาพรวม">
               <article class="metric metric-blue">
                 <span>ยอดรับทั้งหมด</span>
                 <strong id="totalAmount">฿0.00</strong>
@@ -117,6 +112,8 @@
                 <strong id="nearLimitCount">0</strong>
               </article>
             </section>
+
+            <section id="lotteryBoard" class="lottery-board"></section>
 
             <section class="dashboard-grid">
               <section class="panel watch-panel">
@@ -388,23 +385,7 @@
                 </div>
               </div>
 
-              <div class="table-wrap">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>ลูกค้า</th>
-                      <th>หวย</th>
-                      <th>งวด</th>
-                      <th>ประเภท</th>
-                      <th>เลข</th>
-                      <th>ยอดเงิน</th>
-                      <th>บันทึก</th>
-                      <th></th>
-                    </tr>
-                  </thead>
-                  <tbody id="recordsBody"></tbody>
-                </table>
-              </div>
+              <div id="entryGroups" class="entry-groups"></div>
               <div id="emptyState" class="empty-state">ยังไม่มีรายการ</div>
             </section>
           </section>
@@ -488,6 +469,18 @@
                   <label class="field grow-field">
                     <span>ชื่อหวยใหม่</span>
                     <input id="lotteryNameInput" maxlength="80" placeholder="เช่น หวยยี่กี" required />
+                  </label>
+                  <label class="field category-field">
+                    <span>หมวด</span>
+                    <select id="lotteryCategoryInput">
+                      <option value="government">รัฐบาล</option>
+                      <option value="daily">หวยรายวัน</option>
+                      <option value="thai">หวยไทย</option>
+                      <option value="foreign">หวยต่างประเทศ</option>
+                      <option value="stock">หวยหุ้น</option>
+                      <option value="stock_vip">หวยหุ้น VIP</option>
+                      <option value="other">หวยอื่น ๆ</option>
+                    </select>
                   </label>
                   <button class="button button-primary" type="submit">เพิ่มหวย</button>
                 </form>
@@ -629,6 +622,28 @@
                 <select id="resultRoundInput"></select>
               </label>
               <div id="resultEditor" class="result-editor"></div>
+            </section>
+
+            <section class="panel records-panel">
+              <div class="panel-heading">
+                <h2>ตรวจผลรางวัลล่าสุด</h2>
+              </div>
+              <div class="table-wrap dense-table">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>หวย</th>
+                      <th>งวด</th>
+                      <th>วันที่</th>
+                      <th>3 ตัวบน</th>
+                      <th>2 ตัวบน</th>
+                      <th>2 ตัวล่าง</th>
+                      <th>สถานะ</th>
+                    </tr>
+                  </thead>
+                  <tbody id="resultsOverviewBody"></tbody>
+                </table>
+              </div>
             </section>
           </section>
 

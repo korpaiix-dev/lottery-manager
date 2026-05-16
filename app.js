@@ -29,6 +29,16 @@ const BET_TYPE_PATTERNS = [
   { id: "run_top", patterns: [/วิ่ง\s*บน/i, /วิ่ง/i] },
 ];
 
+const LOTTERY_CATEGORIES = [
+  { id: "government", label: "รัฐบาล" },
+  { id: "daily", label: "หวยรายวัน" },
+  { id: "thai", label: "หวยไทย" },
+  { id: "foreign", label: "หวยต่างประเทศ" },
+  { id: "stock", label: "หวยหุ้น" },
+  { id: "stock_vip", label: "หวยหุ้น VIP" },
+  { id: "other", label: "หวยอื่น ๆ" },
+];
+
 const state = {
   user: null,
   headHouses: [],
@@ -83,6 +93,8 @@ const elements = {
   openRoundsCount: document.querySelector("#openRoundsCount"),
   totalLimits: document.querySelector("#totalLimits"),
   nearLimitCount: document.querySelector("#nearLimitCount"),
+  marketSummary: document.querySelector("#marketSummary"),
+  lotteryBoard: document.querySelector("#lotteryBoard"),
   limitWatchList: document.querySelector("#limitWatchList"),
   recentEntriesList: document.querySelector("#recentEntriesList"),
   ticketCountdown: document.querySelector("#ticketCountdown"),
@@ -132,7 +144,7 @@ const elements = {
   note: document.querySelector("#noteInput"),
   limitPreview: document.querySelector("#limitPreview"),
   submitBtn: document.querySelector("#submitBtn"),
-  recordsBody: document.querySelector("#recordsBody"),
+  entryGroups: document.querySelector("#entryGroups"),
   emptyState: document.querySelector("#emptyState"),
   filterCustomer: document.querySelector("#filterCustomer"),
   filterRound: document.querySelector("#filterRound"),
@@ -158,6 +170,7 @@ const elements = {
   copyViewerCredentialsBtn: document.querySelector("#copyViewerCredentialsBtn"),
   lotteryForm: document.querySelector("#lotteryForm"),
   lotteryName: document.querySelector("#lotteryNameInput"),
+  lotteryCategory: document.querySelector("#lotteryCategoryInput"),
   lotteryChips: document.querySelector("#lotteryChips"),
   roundForm: document.querySelector("#roundForm"),
   roundFormTitle: document.querySelector("#roundFormTitle"),
@@ -182,6 +195,7 @@ const elements = {
   payoutMatrix: document.querySelector("#payoutMatrix"),
   resultRound: document.querySelector("#resultRoundInput"),
   resultEditor: document.querySelector("#resultEditor"),
+  resultsOverviewBody: document.querySelector("#resultsOverviewBody"),
   reportRound: document.querySelector("#reportRoundInput"),
   reportStake: document.querySelector("#reportStake"),
   reportPayout: document.querySelector("#reportPayout"),
@@ -379,6 +393,7 @@ function render() {
   renderLimits();
   renderPayouts();
   renderResultEditor();
+  renderResultsOverview();
   renderSettlement();
   renderHeadHouseReport();
   renderUsers();
@@ -443,6 +458,70 @@ function renderDashboard() {
 
   renderLimitWatchList(limitStatuses);
   renderRecentEntries();
+  renderMarketSummary();
+  renderLotteryBoard();
+}
+
+function renderMarketSummary() {
+  const openRounds = state.rounds.filter((round) => round.accepting);
+  const closingSoon = openRounds.filter((round) => {
+    const remainingMs = new Date(round.close_at).getTime() - Date.now();
+    return remainingMs > 0 && remainingMs <= 60 * 60 * 1000;
+  }).length;
+  const closedProducts = state.lotteries.filter((lottery) => !getDisplayRoundForLottery(lottery.id)?.accepting).length;
+
+  elements.marketSummary.innerHTML = `
+    <span>เปิดรับ ${openRounds.length.toLocaleString("th-TH")} งวด</span>
+    <span>ใกล้ปิด ${closingSoon.toLocaleString("th-TH")} งวด</span>
+    <span>ยังไม่เปิด ${closedProducts.toLocaleString("th-TH")} หวย</span>
+  `;
+}
+
+function renderLotteryBoard() {
+  elements.lotteryBoard.innerHTML = LOTTERY_CATEGORIES.map((category) => {
+    const lotteries = state.lotteries.filter((lottery) => (lottery.category || "other") === category.id);
+    if (!lotteries.length) return "";
+
+    return `
+      <section class="lottery-category">
+        <div class="lottery-category-heading">
+          <h2>${escapeHtml(category.label)}</h2>
+          <span>${lotteries.length.toLocaleString("th-TH")} หวย</span>
+        </div>
+        <div class="lottery-card-grid">
+          ${lotteries
+            .map((lottery) => {
+              const round = getDisplayRoundForLottery(lottery.id);
+              const accepting = Boolean(round?.accepting);
+              return `
+                <button
+                  class="lottery-card ${accepting ? "is-open" : "is-closed"}"
+                  type="button"
+                  data-lottery-id="${escapeHtml(lottery.id)}"
+                  ${round ? "" : "disabled"}
+                >
+                  <strong>${escapeHtml(lottery.name)}</strong>
+                  <span>${round ? escapeHtml(round.label) : "ยังไม่มีงวด"}</span>
+                  <small>${round ? `${longDate(round.draw_date)} ${escapeHtml(round.draw_time)}` : "-"}</small>
+                  <em>${round ? roundStatusLabel(round) : "ยังไม่ตั้งงวด"}</em>
+                </button>
+              `;
+            })
+            .join("")}
+        </div>
+      </section>
+    `;
+  }).join("");
+
+  elements.lotteryBoard.querySelectorAll("[data-lottery-id]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const round = getDisplayRoundForLottery(button.dataset.lotteryId);
+      if (!round?.accepting) return;
+      activateView("intake");
+      elements.ticketRound.value = round.id;
+      renderTicketWorkbench();
+    });
+  });
 }
 
 function renderLimitWatchList(statuses = getLimitStatuses()) {
@@ -945,26 +1024,63 @@ function renderEntries() {
     );
   });
 
-  elements.recordsBody.innerHTML = "";
   elements.emptyState.classList.toggle("hidden", visible.length > 0);
+  const grouped = groupBy(visible, (entry) => entry.round_id);
+  elements.entryGroups.innerHTML = [...grouped.entries()]
+    .map(([roundId, entries]) => {
+      const roundInfo = getRound(roundId);
+      const total = sum(entries.map((entry) => entry.amount));
+      return `
+        <section class="entry-group">
+          <div class="entry-group-heading">
+            <h3>${escapeHtml(getLotteryName(roundInfo?.lottery_id))} · ${escapeHtml(roundInfo?.label || "-")}</h3>
+            <strong>${money(total)}</strong>
+          </div>
+          <div class="table-wrap dense-table">
+            <table>
+              <thead>
+                <tr>
+                  <th>ลูกค้า</th>
+                  <th>ประเภท</th>
+                  <th>เลข</th>
+                  <th>ยอดเงิน</th>
+                  <th>บันทึก</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                ${entries
+                  .map(
+                    (entry) => `
+                      <tr>
+                        <td>${escapeHtml(getCustomerCode(entry.customer_id))}</td>
+                        <td>${escapeHtml(getBetTypeName(entry.bet_type_id))}</td>
+                        <td><span class="number-pill">${escapeHtml(entry.number)}</span></td>
+                        <td class="amount">${money(entry.amount)}</td>
+                        <td>${escapeHtml(entry.note || "-")}</td>
+                        <td>
+                          <div class="row-actions">
+                            <button class="icon-button edit-entry-button" type="button" data-entry-id="${escapeHtml(entry.id)}">แก้ไข</button>
+                            <button class="icon-button delete-entry-button" type="button" data-entry-id="${escapeHtml(entry.id)}">ลบ</button>
+                          </div>
+                        </td>
+                      </tr>
+                    `,
+                  )
+                  .join("")}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      `;
+    })
+    .join("");
 
-  visible.forEach((entry) => {
-    const row = document.createElement("tr");
-    row.innerHTML = `
-      <td>${escapeHtml(getCustomerCode(entry.customer_id))}</td>
-      <td>${escapeHtml(getLotteryName(getRound(entry.round_id)?.lottery_id))}</td>
-      <td>${escapeHtml(formatRound(getRound(entry.round_id)))}</td>
-      <td>${escapeHtml(getBetTypeName(entry.bet_type_id))}</td>
-      <td><span class="number-pill">${escapeHtml(entry.number)}</span></td>
-      <td class="amount">${money(entry.amount)}</td>
-      <td>${escapeHtml(entry.note || "-")}</td>
-      <td></td>
-    `;
-    const actions = elements.recordActionsTemplate.content.cloneNode(true);
-    actions.querySelector(".edit-button").addEventListener("click", () => beginEntryEdit(entry.id));
-    actions.querySelector(".delete-button").addEventListener("click", () => deleteEntry(entry.id));
-    row.lastElementChild.appendChild(actions);
-    elements.recordsBody.appendChild(row);
+  elements.entryGroups.querySelectorAll(".edit-entry-button").forEach((button) => {
+    button.addEventListener("click", () => beginEntryEdit(button.dataset.entryId));
+  });
+  elements.entryGroups.querySelectorAll(".delete-entry-button").forEach((button) => {
+    button.addEventListener("click", () => deleteEntry(button.dataset.entryId));
   });
 }
 
@@ -1254,7 +1370,10 @@ async function handleLotterySubmit(event) {
   event.preventDefault();
   await api("/api/lotteries", {
     method: "POST",
-    body: { name: elements.lotteryName.value.trim() },
+    body: {
+      name: elements.lotteryName.value.trim(),
+      category: elements.lotteryCategory.value,
+    },
   });
   elements.lotteryForm.reset();
   await refreshState();
@@ -1264,7 +1383,7 @@ function renderLotteries() {
   elements.lotteryChips.innerHTML = state.lotteries
     .map((lottery) => {
       const count = state.rounds.filter((round) => round.lottery_id === lottery.id).length;
-      return `<span class="chip">${escapeHtml(lottery.name)} ${count.toLocaleString("th-TH")} งวด</span>`;
+      return `<span class="chip">${escapeHtml(lottery.name)} · ${escapeHtml(getLotteryCategoryLabel(lottery.category))} · ${count.toLocaleString("th-TH")} งวด</span>`;
     })
     .join("");
 }
@@ -1512,6 +1631,28 @@ function renderResultEditor() {
       await refreshState();
     });
   });
+}
+
+function renderResultsOverview() {
+  const rows = state.rounds
+    .slice()
+    .sort((a, b) => new Date(`${b.draw_date}T${b.draw_time}:00`) - new Date(`${a.draw_date}T${a.draw_time}:00`))
+    .map((round) => {
+      return `
+        <tr>
+          <td>${escapeHtml(getLotteryName(round.lottery_id))}</td>
+          <td>${escapeHtml(round.label)}</td>
+          <td>${longDate(round.draw_date)}</td>
+          <td>${escapeHtml(resultNumbers(round.id, "three_top") || "-")}</td>
+          <td>${escapeHtml(resultNumbers(round.id, "two_top") || "-")}</td>
+          <td>${escapeHtml(resultNumbers(round.id, "two_bottom") || "-")}</td>
+          <td><span class="status-pill ${roundStatusClass(round)}">${roundStatusLabel(round)}</span></td>
+        </tr>
+      `;
+    })
+    .join("");
+
+  elements.resultsOverviewBody.innerHTML = rows || '<tr><td colspan="7">ยังไม่มีงวด</td></tr>';
 }
 
 async function renderSettlement() {
@@ -1918,6 +2059,16 @@ function findLatestOpenRound(lotteryId) {
   return getAcceptingRounds(lotteryId)[0];
 }
 
+function getDisplayRoundForLottery(lotteryId) {
+  return (
+    findLatestOpenRound(lotteryId) ||
+    state.rounds
+      .filter((round) => round.lottery_id === lotteryId)
+      .sort((a, b) => new Date(`${b.draw_date}T${b.draw_time}:00`) - new Date(`${a.draw_date}T${a.draw_time}:00`))[0] ||
+    null
+  );
+}
+
 function getAcceptingRounds(lotteryId = "") {
   return state.rounds
     .filter((round) => round.accepting && (!lotteryId || round.lottery_id === lotteryId))
@@ -1980,6 +2131,10 @@ function getCustomerCode(id) {
 
 function getLotteryName(id) {
   return state.lotteries.find((lottery) => lottery.id === id)?.name || "-";
+}
+
+function getLotteryCategoryLabel(id) {
+  return LOTTERY_CATEGORIES.find((category) => category.id === id)?.label || "หวยอื่น ๆ";
 }
 
 function syncNumberLength(input, betTypeId) {
@@ -2068,6 +2223,15 @@ function statusLabel(status) {
 
 function sum(values) {
   return values.reduce((total, value) => total + Number(value || 0), 0);
+}
+
+function groupBy(items, getKey) {
+  return items.reduce((groups, item) => {
+    const key = getKey(item);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(item);
+    return groups;
+  }, new Map());
 }
 
 function escapeHtml(value) {

@@ -57,6 +57,8 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS lotteries (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL UNIQUE,
+    category TEXT NOT NULL DEFAULT 'other',
+    display_order INTEGER NOT NULL DEFAULT 999,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
   );
@@ -143,6 +145,8 @@ ensureColumn("rounds", "close_before_minutes", "INTEGER NOT NULL DEFAULT 0");
 ensureColumn("customers", "head_house_id", "TEXT");
 ensureColumn("users", "head_house_id", "TEXT");
 ensureColumn("head_houses", "commission_percent", "REAL NOT NULL DEFAULT 0");
+ensureColumn("lotteries", "category", "TEXT NOT NULL DEFAULT 'other'");
+ensureColumn("lotteries", "display_order", "INTEGER NOT NULL DEFAULT 999");
 seedReferenceData();
 db.prepare("UPDATE customers SET head_house_id = 'direct' WHERE head_house_id IS NULL OR head_house_id = ''").run();
 
@@ -560,6 +564,7 @@ app.delete("/api/customers/:id", requireAuth, requireWriteAccess, (req, res) => 
 
 app.post("/api/lotteries", requireAuth, requireWriteAccess, (req, res) => {
   const name = cleanText(req.body.name, 80);
+  const category = cleanLotteryCategory(req.body.category);
   if (!name) {
     return res.status(400).json({ error: "lottery_name_required" });
   }
@@ -568,15 +573,24 @@ app.post("/api/lotteries", requireAuth, requireWriteAccess, (req, res) => {
   const lottery = {
     id: createSlugId("lottery", name),
     name,
+    category,
+    display_order: nextLotteryDisplayOrder(category),
     created_at: now,
     updated_at: now,
   };
 
   try {
     db.prepare(`
-      INSERT INTO lotteries (id, name, created_at, updated_at)
-      VALUES (?, ?, ?, ?)
-    `).run(lottery.id, lottery.name, lottery.created_at, lottery.updated_at);
+      INSERT INTO lotteries (id, name, category, display_order, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(
+      lottery.id,
+      lottery.name,
+      lottery.category,
+      lottery.display_order,
+      lottery.created_at,
+      lottery.updated_at,
+    );
   } catch {
     return res.status(409).json({ error: "lottery_name_exists" });
   }
@@ -941,10 +955,22 @@ function seedReferenceData() {
     ["run_bottom", "วิ่งล่าง", 1],
   ];
   const lotteries = [
-    ["thai", "หวยไทย"],
-    ["lao", "หวยลาว"],
-    ["hanoi", "หวยฮานอย"],
-    ["stock", "หวยหุ้น"],
+    ["thai", "หวยไทย", "government", 10],
+    ["hanoi", "หวยฮานอย", "daily", 10],
+    ["hanoi_vip", "หวยฮานอย VIP", "daily", 20],
+    ["hanoi_star", "หวยฮานอย STAR", "daily", 30],
+    ["hanoi_tv", "หวยฮานอย TV", "daily", 40],
+    ["lao", "หวยลาว", "daily", 50],
+    ["lao_development", "หวยลาวพัฒนา", "daily", 60],
+    ["lao_unity", "หวยลาวสามัคคี", "daily", 70],
+    ["omsin", "หวยออมสิน", "thai", 10],
+    ["baac", "หวย ธกส", "thai", 20],
+    ["malaysia", "หวยมาเลเซีย", "foreign", 10],
+    ["yamoey", "หวยยี่กี", "foreign", 20],
+    ["stock", "หวยหุ้น", "stock", 10],
+    ["nikkei_vip", "นิเคอิ VIP", "stock_vip", 10],
+    ["china_vip", "จีน VIP", "stock_vip", 20],
+    ["hangseng_vip", "ฮั่งเส็ง VIP", "stock_vip", 30],
   ];
 
   const insertBetType = db.prepare(`
@@ -954,10 +980,19 @@ function seedReferenceData() {
   betTypes.forEach(([id, name, digits]) => insertBetType.run(id, name, digits, now));
 
   const insertLottery = db.prepare(`
-    INSERT OR IGNORE INTO lotteries (id, name, created_at, updated_at)
-    VALUES (?, ?, ?, ?)
+    INSERT OR IGNORE INTO lotteries (id, name, category, display_order, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?)
   `);
-  lotteries.forEach(([id, name]) => insertLottery.run(id, name, now, now));
+  lotteries.forEach(([id, name, category, displayOrder]) =>
+    insertLottery.run(id, name, category, displayOrder, now, now),
+  );
+
+  const updateLotteryMeta = db.prepare(`
+    UPDATE lotteries
+    SET category = ?, display_order = ?, updated_at = ?
+    WHERE id = ?
+  `);
+  lotteries.forEach(([id, _name, category, displayOrder]) => updateLotteryMeta.run(category, displayOrder, now, id));
 
   db.prepare(`
     INSERT OR IGNORE INTO head_houses (id, code, name, note, commission_percent, created_at, updated_at)
@@ -1001,7 +1036,7 @@ function getFullState(user) {
 
   return {
     headHouses: db.prepare("SELECT * FROM head_houses ORDER BY code").all(),
-    lotteries: db.prepare("SELECT * FROM lotteries ORDER BY name").all(),
+    lotteries: db.prepare("SELECT * FROM lotteries ORDER BY category, display_order, name").all(),
     customers: db
       .prepare(`
         SELECT customers.*, head_houses.code AS head_house_code, head_houses.name AS head_house_name
@@ -1585,6 +1620,18 @@ function ensureColumn(tableName, columnName, definition) {
   if (!columns.some((column) => column.name === columnName)) {
     db.exec(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${definition};`);
   }
+}
+
+function cleanLotteryCategory(value) {
+  const allowed = new Set(["government", "daily", "thai", "foreign", "stock", "stock_vip", "other"]);
+  return allowed.has(value) ? value : "other";
+}
+
+function nextLotteryDisplayOrder(category) {
+  const row = db
+    .prepare("SELECT COALESCE(MAX(display_order), 0) AS max_order FROM lotteries WHERE category = ?")
+    .get(category);
+  return Number(row?.max_order || 0) + 10;
 }
 
 function migrateUsersTableIfNeeded() {
