@@ -1198,6 +1198,14 @@ td.amount {
   text-align: right;
 }
 
+td.debit {
+  color: #dc2626;
+}
+
+td.credit {
+  color: #15803d;
+}
+
 .number-pill,
 .status-pill {
   display: inline-flex;

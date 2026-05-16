@@ -8,7 +8,7 @@ const VIEW_META = {
   limits: { eyebrow: "ควบคุมเพดานรับ", title: "อั้นเลข" },
   payouts: { eyebrow: "ตั้งค่าอัตราจ่าย", title: "อัตราจ่าย" },
   results: { eyebrow: "บันทึกผลที่ออก", title: "ผลรางวัล" },
-  reports: { eyebrow: "สรุปผลกำไรขาดทุน", title: "รายงาน" },
+  reports: { eyebrow: "กระแสเงินและผลประกอบการ", title: "บัญชีการเงิน" },
   headHouseReport: { eyebrow: "ยอดรวมแบบอ่านอย่างเดียว", title: "ยอดหัวบ้าน" },
   users: { eyebrow: "สิทธิ์การใช้งาน", title: "ผู้ใช้" },
 };
@@ -206,6 +206,10 @@ const elements = {
   resultEditor: document.querySelector("#resultEditor"),
   resultsOverviewBody: document.querySelector("#resultsOverviewBody"),
   reportRound: document.querySelector("#reportRoundInput"),
+  ledgerDebit: document.querySelector("#ledgerDebit"),
+  ledgerCredit: document.querySelector("#ledgerCredit"),
+  ledgerBalance: document.querySelector("#ledgerBalance"),
+  ledgerBody: document.querySelector("#ledgerBody"),
   reportStake: document.querySelector("#reportStake"),
   reportPayout: document.querySelector("#reportPayout"),
   reportProfit: document.querySelector("#reportProfit"),
@@ -409,6 +413,7 @@ function render() {
   renderPayouts();
   renderResultEditor();
   renderResultsOverview();
+  renderFinanceLedger();
   renderSettlement();
   renderHeadHouseReport();
   renderUsers();
@@ -1719,6 +1724,76 @@ async function renderSettlement() {
   }
 }
 
+function renderFinanceLedger() {
+  const rows = buildFinanceLedger();
+  const totalDebit = sum(rows.map((row) => row.debit));
+  const totalCredit = sum(rows.map((row) => row.credit));
+  elements.ledgerDebit.textContent = money(totalDebit);
+  elements.ledgerCredit.textContent = money(totalCredit);
+  elements.ledgerBalance.textContent = money(totalCredit - totalDebit);
+  elements.ledgerBody.innerHTML = rows
+    .map(
+      (row) => `
+        <tr>
+          <td>${escapeHtml(formatDateTime(row.createdAt))}</td>
+          <td>${escapeHtml(row.detail)}</td>
+          <td class="amount debit">${row.debit ? money(row.debit) : "-"}</td>
+          <td class="amount credit">${row.credit ? money(row.credit) : "-"}</td>
+          <td class="amount">${money(row.balance)}</td>
+        </tr>
+      `,
+    )
+    .join("");
+}
+
+function buildFinanceLedger() {
+  const rows = [];
+  state.entries.forEach((entry) => {
+    const round = getRound(entry.round_id);
+    rows.push({
+      createdAt: entry.created_at,
+      detail: `แทงหวย ${getLotteryName(round?.lottery_id)} · ${round?.label || "-"} · ${getCustomerCode(entry.customer_id)}`,
+      debit: entry.amount,
+      credit: 0,
+    });
+
+    const payout = getEntryPayout(entry);
+    if (payout > 0) {
+      rows.push({
+        createdAt: entry.updated_at || entry.created_at,
+        detail: `ถูกรางวัล ${getLotteryName(round?.lottery_id)} · ${entry.number} · ${getCustomerCode(entry.customer_id)}`,
+        debit: 0,
+        credit: payout,
+      });
+    }
+  });
+
+  rows.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+  let running = 0;
+  rows.forEach((row) => {
+    running += row.credit - row.debit;
+    row.balance = running;
+  });
+  return rows.reverse();
+}
+
+function getEntryPayout(entry) {
+  const round = getRound(entry.round_id);
+  if (!round) return 0;
+  const matchingResults = state.results.filter(
+    (result) => result.round_id === entry.round_id && result.bet_type_id === entry.bet_type_id,
+  );
+  if (!matchingResults.some((result) => entryWinsAgainstResult(entry, result))) return 0;
+  return entry.amount * getPayoutRate(round.lottery_id, entry.bet_type_id);
+}
+
+function entryWinsAgainstResult(entry, result) {
+  if (entry.bet_type_id === "three_tod") {
+    return entry.number.split("").sort().join("") === result.number.split("").sort().join("");
+  }
+  return entry.number === result.number;
+}
+
 async function renderHeadHouseReport() {
   const headHouseId =
     state.user?.role === "head_house_viewer" ? state.user.headHouseId : elements.headHouseReportSelect.value;
@@ -2206,6 +2281,17 @@ function longDate(value) {
     month: "short",
     year: "numeric",
   }).format(new Date(`${value}T00:00:00`));
+}
+
+function formatDateTime(value) {
+  return new Intl.DateTimeFormat("th-TH", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: "Asia/Bangkok",
+  }).format(new Date(value));
 }
 
 function shortDate(value) {

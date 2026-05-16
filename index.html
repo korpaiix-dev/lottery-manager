@@ -686,7 +686,41 @@
           <section class="view" data-view="reports" hidden>
             <section class="panel settlement-panel">
               <div class="panel-heading">
-                <h2>สรุปกำไรขาดทุน</h2>
+                <h2>บัญชีการเงิน</h2>
+              </div>
+              <section class="summary-grid report-grid">
+                <article class="metric metric-red">
+                  <span>เงินออก</span>
+                  <strong id="ledgerDebit">฿0.00</strong>
+                </article>
+                <article class="metric metric-green">
+                  <span>เงินเข้า</span>
+                  <strong id="ledgerCredit">฿0.00</strong>
+                </article>
+                <article class="metric metric-blue">
+                  <span>คงเหลือสุทธิ</span>
+                  <strong id="ledgerBalance">฿0.00</strong>
+                </article>
+              </section>
+              <div class="table-wrap dense-table">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>วันที่ - เวลา</th>
+                      <th>รายละเอียด</th>
+                      <th>เงินออก</th>
+                      <th>เงินเข้า</th>
+                      <th>คงเหลือ</th>
+                    </tr>
+                  </thead>
+                  <tbody id="ledgerBody"></tbody>
+                </table>
+              </div>
+            </section>
+
+            <section class="panel settlement-panel">
+              <div class="panel-heading">
+                <h2>สรุปผลรายงวด</h2>
               </div>
               <label class="field result-round-field">
                 <span>งวด</span>
