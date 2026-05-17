@@ -65,14 +65,13 @@
       <div class="workspace">
         <header class="topbar">
           <nav class="top-nav" aria-label="หมวดงานหลัก">
-            <button class="nav-button is-active" type="button" data-view-target="dashboard">แทงหวย</button>
-            <button class="nav-button" type="button" data-view-target="markets">หัวหวย</button>
-            <button class="nav-button" type="button" data-view-target="intake">คีย์โพย</button>
+            <button class="nav-button is-active" type="button" data-view-target="dashboard">วันนี้</button>
+            <button class="nav-button" type="button" data-view-target="intake">รับโพย</button>
             <button class="nav-button" type="button" data-view-target="review">ตรวจโพย</button>
-            <button class="nav-button" type="button" data-view-target="entries">รายการแทง</button>
             <button class="nav-button" type="button" data-view-target="results">ตรวจรางวัล</button>
             <button class="nav-button" type="button" data-view-target="reports">บัญชีการเงิน</button>
-            <button class="nav-button" type="button" data-view-target="manage">จัดการระบบ</button>
+            <button class="nav-button" type="button" data-view-target="markets">ควบคุมหวย</button>
+            <button class="nav-button" type="button" data-view-target="manage">ตั้งค่า</button>
           </nav>
           <div class="view-title-row">
             <div>
@@ -166,7 +165,11 @@
               <p>งานที่ไม่ได้ต้องใช้ทุกนาทีถูกรวมไว้ที่นี่ เพื่อให้หน้าหลักเหลือเฉพาะงานรับหวยจริง</p>
             </section>
 
-            <section class="manage-grid">
+              <section class="manage-grid">
+                <button class="manage-card" type="button" data-view-target="entries">
+                  <strong>รายการแทง</strong>
+                  <span>ค้นหา แก้ไข และตรวจรายการย้อนหลัง</span>
+                </button>
               <button class="manage-card" type="button" data-view-target="customers">
                 <strong>ลูกค้า</strong>
                 <span>เพิ่มลูกค้า ดูรหัส และผูกหัวบ้าน</span>
@@ -667,6 +670,10 @@
                       <span>เวลาออก</span>
                       <input id="scheduleDrawTimeInput" type="time" required />
                     </label>
+                    <label class="field">
+                      <span>เวลาประกาศผล</span>
+                      <input id="scheduleResultTimeInput" type="time" required />
+                    </label>
                   </div>
                   <div class="field-grid customer-grid">
                     <label class="field">
@@ -719,6 +726,10 @@
                       <span>เวลาออก</span>
                       <input id="roundTimeInput" type="time" required />
                     </label>
+                    <label class="field">
+                      <span>เวลาประกาศผล</span>
+                      <input id="roundResultTimeInput" type="time" required />
+                    </label>
                   </div>
                   <div class="field-grid customer-grid">
                     <label class="field">
@@ -747,6 +758,7 @@
                       <th>ความถี่</th>
                       <th>เปิดรับ</th>
                       <th>เวลาออก</th>
+                      <th>เวลาประกาศผล</th>
                       <th>ปิดรับก่อน</th>
                       <th>สถานะ</th>
                       <th>หมายเหตุ</th>
@@ -772,6 +784,7 @@
                       <th>เวลาเปิดรับ</th>
                       <th>วันที่ออก</th>
                       <th>เวลาออก</th>
+                      <th>เวลาประกาศผล</th>
                       <th>ปิดรับก่อน</th>
                       <th>เวลาปิดรับ</th>
                       <th>สถานะ</th>

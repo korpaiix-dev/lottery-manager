@@ -1,6 +1,6 @@
 const VIEW_META = {
-  dashboard: { eyebrow: "งานรับหวยประจำวัน", title: "แทงหวย" },
-  markets: { eyebrow: "รอบหวยอัตโนมัติ", title: "หัวหวย" },
+  dashboard: { eyebrow: "ภาพรวมงานวันนี้", title: "วันนี้" },
+  markets: { eyebrow: "เวลาเปิดปิดและผลอัตโนมัติ", title: "ควบคุมหวย" },
   intake: { eyebrow: "ลดงานกรอกซ้ำ", title: "รับรายการ" },
   review: { eyebrow: "ตรวจโพยก่อนคิดยอดจริง", title: "ตรวจงาน" },
   entries: { eyebrow: "ตรวจสอบรายการทั้งหมด", title: "รายการ" },
@@ -220,6 +220,7 @@ const elements = {
   roundOpenTime: document.querySelector("#roundOpenTimeInput"),
   roundDate: document.querySelector("#roundDateInput"),
   roundTime: document.querySelector("#roundTimeInput"),
+  roundResultTime: document.querySelector("#roundResultTimeInput"),
   roundLabel: document.querySelector("#roundLabelInput"),
   roundCloseBefore: document.querySelector("#roundCloseBeforeInput"),
   roundSubmitBtn: document.querySelector("#roundSubmitBtn"),
@@ -234,6 +235,7 @@ const elements = {
   scheduleOpenDaysBefore: document.querySelector("#scheduleOpenDaysBeforeInput"),
   scheduleOpenTime: document.querySelector("#scheduleOpenTimeInput"),
   scheduleDrawTime: document.querySelector("#scheduleDrawTimeInput"),
+  scheduleResultTime: document.querySelector("#scheduleResultTimeInput"),
   scheduleCloseBefore: document.querySelector("#scheduleCloseBeforeInput"),
   scheduleSourceNote: document.querySelector("#scheduleSourceNoteInput"),
   scheduleActive: document.querySelector("#scheduleActiveInput"),
@@ -300,6 +302,7 @@ async function initialize() {
   elements.roundDate.value = today();
   elements.roundOpenDate.value = today();
   elements.roundOpenTime.value = "00:00";
+  elements.roundResultTime.value = "00:00";
   resetScheduleForm();
   window.setInterval(renderTimeSensitiveUi, 1000);
   await bootAuth();
@@ -679,6 +682,12 @@ function renderSidebarSummary() {
 
 function renderTaskQueue(pendingTickets, pendingResults) {
   const zeroRateCount = state.payoutRates.filter((rate) => Number(rate.rate) <= 0).length;
+  const waitingForResult = state.rounds.filter(
+    (round) =>
+      round.result_status !== "finalized" &&
+      Date.now() >= new Date(round.result_at || round.draw_at).getTime() &&
+      !state.results.some((result) => result.round_id === round.id),
+  );
   const tasks = [];
   if (pendingTickets.length) {
     tasks.push({
@@ -692,6 +701,13 @@ function renderTaskQueue(pendingTickets, pendingResults) {
       tone: "warning",
       title: `${pendingResults.length.toLocaleString("th-TH")} งวดรอยืนยันผล`,
       detail: "บันทึกผลแล้วแต่ยังไม่ปิดงาน",
+    });
+  }
+  if (waitingForResult.length) {
+    tasks.push({
+      tone: "danger",
+      title: `${waitingForResult.length.toLocaleString("th-TH")} งวดถึงเวลาประกาศผลแล้ว`,
+      detail: "ยังไม่มีผลเข้าระบบ ต้องดึงผลหรือกรอกมือ",
     });
   }
   if (zeroRateCount) {
@@ -1934,7 +1950,8 @@ async function handleScheduleSubmit(event) {
     monthDays: elements.scheduleMonthDays.value,
     openDaysBefore: Number(elements.scheduleOpenDaysBefore.value),
     openTime: elements.scheduleOpenTime.value,
-    drawTime: elements.scheduleDrawTime.value,
+      drawTime: elements.scheduleDrawTime.value,
+      resultTime: elements.scheduleResultTime.value,
     closeBeforeMinutes: Number(elements.scheduleCloseBefore.value),
     sourceNote: elements.scheduleSourceNote.value.trim(),
     active: elements.scheduleActive.checked,
@@ -1972,6 +1989,7 @@ function renderScheduleTemplates() {
       <td>${escapeHtml(formatScheduleFrequency(schedule))}</td>
       <td>${escapeHtml(schedule.open_days_before ? `ก่อนออก ${schedule.open_days_before} วัน ${schedule.open_time}` : `วันออก ${schedule.open_time}`)}</td>
       <td>${escapeHtml(schedule.draw_time)}</td>
+      <td>${escapeHtml(schedule.result_time || schedule.draw_time)}</td>
       <td>${schedule.close_before_minutes.toLocaleString("th-TH")} นาที</td>
       <td>${schedule.active ? '<span class="status-pill normal">ใช้งาน</span>' : '<span class="status-pill warning">พักไว้</span>'}</td>
       <td>${escapeHtml(schedule.source_note || "-")}</td>
@@ -1998,6 +2016,7 @@ function beginScheduleEdit(id) {
   elements.scheduleOpenDaysBefore.value = schedule.open_days_before;
   elements.scheduleOpenTime.value = schedule.open_time;
   elements.scheduleDrawTime.value = schedule.draw_time;
+  elements.scheduleResultTime.value = schedule.result_time || schedule.draw_time;
   elements.scheduleCloseBefore.value = schedule.close_before_minutes;
   elements.scheduleSourceNote.value = schedule.source_note || "";
   elements.scheduleActive.checked = schedule.active;
@@ -2017,6 +2036,7 @@ function resetScheduleForm() {
   elements.scheduleOpenDaysBefore.value = 0;
   elements.scheduleOpenTime.value = "00:00";
   elements.scheduleDrawTime.value = "18:00";
+  elements.scheduleResultTime.value = "18:00";
   elements.scheduleCloseBefore.value = 5;
   elements.scheduleActive.checked = true;
   elements.scheduleFormTitle.textContent = "ตั้งเวลารันงวดอัตโนมัติ";
@@ -2050,7 +2070,8 @@ async function handleRoundSubmit(event) {
     openDate: elements.roundOpenDate.value,
     openTime: elements.roundOpenTime.value,
     drawDate: elements.roundDate.value,
-    drawTime: elements.roundTime.value,
+      drawTime: elements.roundTime.value,
+      resultTime: elements.roundResultTime.value,
     label: elements.roundLabel.value.trim(),
     closeBeforeMinutes: Number(elements.roundCloseBefore.value),
   };
@@ -2090,6 +2111,7 @@ function renderRounds() {
       <td>${escapeHtml(formatRoundOpenTime(round))}</td>
       <td>${longDate(round.draw_date)}</td>
       <td>${escapeHtml(round.draw_time)}</td>
+      <td>${escapeHtml(round.result_time || round.draw_time)}</td>
       <td>${round.close_before_minutes.toLocaleString("th-TH")} นาที</td>
       <td>${escapeHtml(formatRoundCutoff(round))}</td>
       <td><span class="status-pill ${roundStatusClass(round)}">${roundStatusLabel(round)}</span></td>
@@ -2122,6 +2144,7 @@ function beginRoundEdit(id) {
   elements.roundOpenTime.value = round.open_time || "00:00";
   elements.roundDate.value = round.draw_date;
   elements.roundTime.value = round.draw_time;
+  elements.roundResultTime.value = round.result_time || round.draw_time;
   elements.roundLabel.value = round.label;
   elements.roundCloseBefore.value = round.close_before_minutes;
   elements.roundFormTitle.textContent = "แก้ไขงวด";
@@ -2136,6 +2159,7 @@ function resetRoundForm() {
   elements.roundOpenDate.value = today();
   elements.roundOpenTime.value = "00:00";
   elements.roundDate.value = today();
+  elements.roundResultTime.value = elements.roundTime.value || "00:00";
   elements.roundCloseBefore.value = 15;
   renderSelects();
   elements.roundFormTitle.textContent = "สร้างงวด";

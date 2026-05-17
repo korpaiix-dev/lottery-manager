@@ -70,7 +70,8 @@ db.exec(`
     open_date TEXT,
     open_time TEXT,
     draw_date TEXT NOT NULL,
-    draw_time TEXT NOT NULL DEFAULT '00:00',
+      draw_time TEXT NOT NULL DEFAULT '00:00',
+      result_time TEXT NOT NULL DEFAULT '00:00',
     close_before_minutes INTEGER NOT NULL DEFAULT 0,
     status TEXT NOT NULL CHECK(status IN ('open', 'closed')) DEFAULT 'open',
     created_at TEXT NOT NULL,
@@ -102,7 +103,8 @@ db.exec(`
     month_days TEXT NOT NULL DEFAULT '',
     open_days_before INTEGER NOT NULL DEFAULT 0,
     open_time TEXT NOT NULL DEFAULT '00:00',
-    draw_time TEXT NOT NULL DEFAULT '00:00',
+      draw_time TEXT NOT NULL DEFAULT '00:00',
+      result_time TEXT NOT NULL DEFAULT '00:00',
     close_before_minutes INTEGER NOT NULL DEFAULT 15,
     active INTEGER NOT NULL DEFAULT 1,
     source_note TEXT NOT NULL DEFAULT '',
@@ -184,6 +186,8 @@ ensureColumn("rounds", "auto_generated", "INTEGER NOT NULL DEFAULT 0");
 ensureColumn("rounds", "result_status", "TEXT NOT NULL DEFAULT 'draft'");
 ensureColumn("rounds", "result_finalized_by", "TEXT");
 ensureColumn("rounds", "result_finalized_at", "TEXT");
+ensureColumn("rounds", "result_time", "TEXT NOT NULL DEFAULT '00:00'");
+ensureColumn("schedule_templates", "result_time", "TEXT NOT NULL DEFAULT '00:00'");
 ensureColumn("customers", "head_house_id", "TEXT");
 ensureColumn("users", "head_house_id", "TEXT");
 ensureColumn("head_houses", "commission_percent", "REAL NOT NULL DEFAULT 0");
@@ -667,9 +671,9 @@ app.post("/api/schedule-templates", requireAuth, requireWriteAccess, (req, res) 
   db.prepare(`
     INSERT INTO schedule_templates (
       id, lottery_id, frequency, weekdays, month_days, open_days_before, open_time,
-      draw_time, close_before_minutes, active, source_note, created_at, updated_at
+      draw_time, result_time, close_before_minutes, active, source_note, created_at, updated_at
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     schedule.id,
     schedule.lottery_id,
@@ -677,8 +681,9 @@ app.post("/api/schedule-templates", requireAuth, requireWriteAccess, (req, res) 
     schedule.weekdays,
     schedule.month_days,
     schedule.open_days_before,
-    schedule.open_time,
-    schedule.draw_time,
+      schedule.open_time,
+      schedule.draw_time,
+      schedule.result_time,
     schedule.close_before_minutes,
     schedule.active,
     schedule.source_note,
@@ -706,16 +711,17 @@ app.put("/api/schedule-templates/:id", requireAuth, requireWriteAccess, (req, re
   const updatedAt = nowIso();
   db.prepare(`
     UPDATE schedule_templates
-    SET frequency = ?, weekdays = ?, month_days = ?, open_days_before = ?, open_time = ?,
-        draw_time = ?, close_before_minutes = ?, active = ?, source_note = ?, updated_at = ?
+      SET frequency = ?, weekdays = ?, month_days = ?, open_days_before = ?, open_time = ?,
+          draw_time = ?, result_time = ?, close_before_minutes = ?, active = ?, source_note = ?, updated_at = ?
     WHERE id = ?
   `).run(
     payload.frequency,
     payload.weekdays,
     payload.month_days,
     payload.open_days_before,
-    payload.open_time,
-    payload.draw_time,
+      payload.open_time,
+      payload.draw_time,
+      payload.result_time,
     payload.close_before_minutes,
     payload.active,
     payload.source_note,
@@ -746,8 +752,9 @@ app.post("/api/rounds", requireAuth, requireWriteAccess, (req, res) => {
   const label = cleanText(req.body.label, 80);
   const openDate = cleanText(req.body.openDate || req.body.drawDate, 20);
   const openTime = cleanText(req.body.openTime || "00:00", 5);
-  const drawDate = cleanText(req.body.drawDate, 20);
-  const drawTime = cleanText(req.body.drawTime, 5);
+    const drawDate = cleanText(req.body.drawDate, 20);
+    const drawTime = cleanText(req.body.drawTime, 5);
+    const resultTime = cleanText(req.body.resultTime || req.body.drawTime, 5);
   const closeBeforeMinutes = Number(req.body.closeBeforeMinutes);
   const status = req.body.status === "closed" ? "closed" : "open";
 
@@ -756,8 +763,9 @@ app.post("/api/rounds", requireAuth, requireWriteAccess, (req, res) => {
     !label ||
     !isIsoDate(openDate) ||
     !isTimeOfDay(openTime) ||
-    !isIsoDate(drawDate) ||
-    !isTimeOfDay(drawTime) ||
+      !isIsoDate(drawDate) ||
+      !isTimeOfDay(drawTime) ||
+      !isTimeOfDay(resultTime) ||
     !Number.isInteger(closeBeforeMinutes) ||
     closeBeforeMinutes < 0 ||
     closeBeforeMinutes > 1440 ||
@@ -773,8 +781,9 @@ app.post("/api/rounds", requireAuth, requireWriteAccess, (req, res) => {
     label,
     open_date: openDate,
     open_time: openTime,
-    draw_date: drawDate,
-    draw_time: drawTime,
+      draw_date: drawDate,
+      draw_time: drawTime,
+      result_time: resultTime,
     close_before_minutes: closeBeforeMinutes,
     status,
     created_at: now,
@@ -783,16 +792,17 @@ app.post("/api/rounds", requireAuth, requireWriteAccess, (req, res) => {
 
   try {
     db.prepare(`
-      INSERT INTO rounds (id, lottery_id, label, open_date, open_time, draw_date, draw_time, close_before_minutes, status, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO rounds (id, lottery_id, label, open_date, open_time, draw_date, draw_time, result_time, close_before_minutes, status, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       round.id,
       round.lottery_id,
       round.label,
       round.open_date,
       round.open_time,
-      round.draw_date,
-      round.draw_time,
+        round.draw_date,
+        round.draw_time,
+        round.result_time,
       round.close_before_minutes,
       round.status,
       round.created_at,
@@ -814,8 +824,9 @@ app.put("/api/rounds/:id", requireAuth, requireWriteAccess, (req, res) => {
   const label = req.body.label ? cleanText(req.body.label, 80) : round.label;
   const openDate = req.body.openDate ? cleanText(req.body.openDate, 20) : round.open_date || round.draw_date;
   const openTime = req.body.openTime ? cleanText(req.body.openTime, 5) : round.open_time || "00:00";
-  const drawDate = req.body.drawDate ? cleanText(req.body.drawDate, 20) : round.draw_date;
-  const drawTime = req.body.drawTime ? cleanText(req.body.drawTime, 5) : round.draw_time;
+    const drawDate = req.body.drawDate ? cleanText(req.body.drawDate, 20) : round.draw_date;
+    const drawTime = req.body.drawTime ? cleanText(req.body.drawTime, 5) : round.draw_time;
+    const resultTime = req.body.resultTime ? cleanText(req.body.resultTime, 5) : round.result_time || round.draw_time;
   const closeBeforeMinutes =
     req.body.closeBeforeMinutes === undefined ? round.close_before_minutes : Number(req.body.closeBeforeMinutes);
 
@@ -823,8 +834,9 @@ app.put("/api/rounds/:id", requireAuth, requireWriteAccess, (req, res) => {
     !label ||
     !isIsoDate(openDate) ||
     !isTimeOfDay(openTime) ||
-    !isIsoDate(drawDate) ||
-    !isTimeOfDay(drawTime) ||
+      !isIsoDate(drawDate) ||
+      !isTimeOfDay(drawTime) ||
+      !isTimeOfDay(resultTime) ||
     !Number.isInteger(closeBeforeMinutes) ||
     closeBeforeMinutes < 0 ||
     closeBeforeMinutes > 1440
@@ -836,9 +848,9 @@ app.put("/api/rounds/:id", requireAuth, requireWriteAccess, (req, res) => {
   try {
     db.prepare(`
       UPDATE rounds
-      SET label = ?, status = ?, open_date = ?, open_time = ?, draw_date = ?, draw_time = ?, close_before_minutes = ?, updated_at = ?
+        SET label = ?, status = ?, open_date = ?, open_time = ?, draw_date = ?, draw_time = ?, result_time = ?, close_before_minutes = ?, updated_at = ?
       WHERE id = ?
-    `).run(label, status, openDate, openTime, drawDate, drawTime, closeBeforeMinutes, updatedAt, round.id);
+      `).run(label, status, openDate, openTime, drawDate, drawTime, resultTime, closeBeforeMinutes, updatedAt, round.id);
   } catch {
     return res.status(409).json({ error: "round_exists" });
   }
@@ -1358,9 +1370,9 @@ function seedScheduleTemplates() {
   const insert = db.prepare(`
     INSERT OR IGNORE INTO schedule_templates (
       id, lottery_id, frequency, weekdays, month_days, open_days_before, open_time,
-      draw_time, close_before_minutes, active, source_note, created_at, updated_at
+      draw_time, result_time, close_before_minutes, active, source_note, created_at, updated_at
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   schedules.forEach(
@@ -1373,6 +1385,7 @@ function seedScheduleTemplates() {
         monthDays,
         openDaysBefore,
         openTime,
+        drawTime,
         drawTime,
         closeBeforeMinutes,
         active,
@@ -2199,11 +2212,13 @@ function migrateUsersTableIfNeeded() {
 function presentRound(round) {
   const openAt = getRoundOpenAt(round);
   const drawAt = getRoundDrawAt(round);
+  const resultAt = getRoundResultAt(round);
   const closeAt = getRoundCloseAt(round);
   return {
     ...round,
     open_at: openAt.toISOString(),
     draw_at: drawAt.toISOString(),
+    result_at: resultAt.toISOString(),
     close_at: closeAt.toISOString(),
     accepting: roundAcceptsEntries(round),
   };
@@ -2231,6 +2246,10 @@ function getRoundDrawAt(round) {
   return new Date(`${round.draw_date}T${round.draw_time || "00:00"}:00+07:00`);
 }
 
+function getRoundResultAt(round) {
+  return new Date(`${round.draw_date}T${round.result_time || round.draw_time || "00:00"}:00+07:00`);
+}
+
 function getRoundCloseAt(round) {
   const closeBeforeMinutes = Math.max(0, Number(round.close_before_minutes) || 0);
   return new Date(getRoundDrawAt(round).getTime() - closeBeforeMinutes * 60_000);
@@ -2245,9 +2264,10 @@ function normalizeSchedulePayload(raw) {
   const frequency = ["daily", "weekly", "monthly"].includes(raw.frequency) ? raw.frequency : "";
   const weekdays = normalizeIntegerList(raw.weekdays, 0, 6);
   const monthDays = normalizeIntegerList(raw.monthDays ?? raw.month_days, 1, 31);
-  const openDaysBefore = Number(raw.openDaysBefore ?? raw.open_days_before ?? 0);
-  const openTime = cleanText(raw.openTime || raw.open_time, 5);
-  const drawTime = cleanText(raw.drawTime || raw.draw_time, 5);
+    const openDaysBefore = Number(raw.openDaysBefore ?? raw.open_days_before ?? 0);
+    const openTime = cleanText(raw.openTime || raw.open_time, 5);
+    const drawTime = cleanText(raw.drawTime || raw.draw_time, 5);
+    const resultTime = cleanText(raw.resultTime || raw.result_time || raw.drawTime || raw.draw_time, 5);
   const closeBeforeMinutes = Number(raw.closeBeforeMinutes ?? raw.close_before_minutes);
   const active = raw.active === false || raw.active === 0 || raw.active === "0" ? 0 : 1;
   const sourceNote = cleanText(raw.sourceNote || raw.source_note || "", 180);
@@ -2258,8 +2278,9 @@ function normalizeSchedulePayload(raw) {
     !Number.isInteger(openDaysBefore) ||
     openDaysBefore < 0 ||
     openDaysBefore > 30 ||
-    !isTimeOfDay(openTime) ||
-    !isTimeOfDay(drawTime) ||
+      !isTimeOfDay(openTime) ||
+      !isTimeOfDay(drawTime) ||
+      !isTimeOfDay(resultTime) ||
     !Number.isInteger(closeBeforeMinutes) ||
     closeBeforeMinutes < 0 ||
     closeBeforeMinutes > 1440
@@ -2275,9 +2296,10 @@ function normalizeSchedulePayload(raw) {
     frequency,
     weekdays: weekdays.join(","),
     month_days: monthDays.join(","),
-    open_days_before: openDaysBefore,
-    open_time: openTime,
-    draw_time: drawTime,
+      open_days_before: openDaysBefore,
+      open_time: openTime,
+      draw_time: drawTime,
+      result_time: resultTime,
     close_before_minutes: closeBeforeMinutes,
     active,
     source_note: sourceNote,
@@ -2327,19 +2349,20 @@ function generateRoundsForSchedule(schedule, fromDate, toDate) {
     const now = nowIso();
     const openDate = shiftIsoDate(date, -Number(schedule.open_days_before || 0));
     db.prepare(`
-      INSERT INTO rounds (
-        id, lottery_id, label, open_date, open_time, draw_date, draw_time, close_before_minutes,
-        status, schedule_template_id, auto_generated, created_at, updated_at
-      )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'open', ?, 1, ?, ?)
+        INSERT INTO rounds (
+          id, lottery_id, label, open_date, open_time, draw_date, draw_time, result_time, close_before_minutes,
+          status, schedule_template_id, auto_generated, created_at, updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?, 1, ?, ?)
     `).run(
       crypto.randomUUID(),
       schedule.lottery_id,
       label,
       openDate,
       schedule.open_time,
-      date,
-      schedule.draw_time,
+        date,
+        schedule.draw_time,
+        schedule.result_time || schedule.draw_time,
       schedule.close_before_minutes,
       schedule.id,
       now,
@@ -2365,10 +2388,10 @@ function syncFutureGeneratedRounds(schedule) {
     `)
     .all(schedule.id, today);
 
-  const update = db.prepare(`
-    UPDATE rounds
-    SET open_date = ?, open_time = ?, draw_time = ?, close_before_minutes = ?, updated_at = ?
-    WHERE id = ?
+    const update = db.prepare(`
+      UPDATE rounds
+      SET open_date = ?, open_time = ?, draw_time = ?, result_time = ?, close_before_minutes = ?, updated_at = ?
+      WHERE id = ?
   `);
   const remove = db.prepare("DELETE FROM rounds WHERE id = ?");
 
@@ -2378,7 +2401,7 @@ function syncFutureGeneratedRounds(schedule) {
       return;
     }
     const openDate = shiftIsoDate(round.draw_date, -Number(schedule.open_days_before || 0));
-    update.run(openDate, schedule.open_time, schedule.draw_time, schedule.close_before_minutes, nowIso(), round.id);
+    update.run(openDate, schedule.open_time, schedule.draw_time, schedule.result_time || schedule.draw_time, schedule.close_before_minutes, nowIso(), round.id);
   });
 }
 
