@@ -66,6 +66,7 @@
         <header class="topbar">
           <nav class="top-nav" aria-label="หมวดงานหลัก">
             <button class="nav-button is-active" type="button" data-view-target="dashboard">แทงหวย</button>
+            <button class="nav-button" type="button" data-view-target="markets">หัวหวย</button>
             <button class="nav-button" type="button" data-view-target="intake">คีย์โพย</button>
             <button class="nav-button" type="button" data-view-target="review">ตรวจโพย</button>
             <button class="nav-button" type="button" data-view-target="entries">รายการแทง</button>
@@ -93,12 +94,10 @@
             <section class="market-alert panel">
               <div>
                 <p class="eyebrow">สถานะวันนี้</p>
-                <h2>เลือกหวยที่ต้องการคีย์</h2>
+                <h2>ภาพรวมงานรับหวย</h2>
               </div>
               <div id="marketSummary" class="market-summary"></div>
             </section>
-
-            <section id="lotteryBoard" class="lottery-board"></section>
 
             <section class="dashboard-strip" aria-label="ภาพรวมงานวันนี้">
               <article class="metric metric-blue">
@@ -145,6 +144,17 @@
                 <div id="recentEntriesList" class="recent-list"></div>
               </section>
             </section>
+          </section>
+
+          <section class="view" data-view="markets" hidden>
+            <section class="market-alert panel">
+              <div>
+                <p class="eyebrow">รอบหวยอัตโนมัติ</p>
+                <h2>หัวหวยทั้งหมด</h2>
+              </div>
+              <div id="marketAdminSummary" class="market-summary"></div>
+            </section>
+            <section id="marketAdminBoard" class="lottery-board market-admin-board"></section>
           </section>
 
           <section class="view" data-view="manage" hidden>
@@ -210,10 +220,6 @@
 
                 <div class="ticket-context-grid ticket-top-controls">
                   <label class="field">
-                    <span>ลูกค้า</span>
-                    <select id="ticketCustomerInput"></select>
-                  </label>
-                  <label class="field">
                     <span>งวดที่รับ</span>
                     <select id="ticketRoundInput"></select>
                   </label>
@@ -242,8 +248,12 @@
                       <input id="ticketNumberInput" inputmode="numeric" maxlength="3" placeholder="เช่น 45" />
                     </label>
                     <label class="field">
-                      <span>ยอดต่อเลข</span>
-                      <input id="ticketAmountInput" inputmode="decimal" placeholder="0.00" />
+                      <span>บน</span>
+                      <input id="ticketTopAmountInput" inputmode="decimal" placeholder="0.00" />
+                    </label>
+                    <label class="field">
+                      <span>ล่าง</span>
+                      <input id="ticketBottomAmountInput" inputmode="decimal" placeholder="0.00" />
                     </label>
                     <button id="addTicketEntryBtn" class="button button-primary" type="button">+ เพิ่มลงโพย</button>
                   </div>
@@ -1069,6 +1079,8 @@
         <button class="icon-button delete-limit-button" type="button">ลบ</button>
       </div>
     </template>
+
+    <div id="toastStack" class="toast-stack" aria-live="polite"></div>
 
     <script src="app.js?v=20260516-flagfix"></script>
   </body>

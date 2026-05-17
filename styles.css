@@ -598,6 +598,27 @@ small {
   font-size: 13px;
 }
 
+.market-admin-card {
+  min-height: 126px;
+}
+
+.market-card-actions {
+  grid-column: 2;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.market-card-actions .button {
+  min-height: 30px;
+  padding: 0 10px;
+}
+
+.danger-text {
+  color: #b42318 !important;
+  font-weight: 700;
+}
+
 .lottery-card.is-open {
   border-color: #169b53;
   background: #1fa64d;
@@ -851,7 +872,7 @@ small {
 
 .ticket-entry-grid {
   display: grid;
-  grid-template-columns: minmax(140px, 0.8fr) minmax(140px, 0.8fr) auto;
+  grid-template-columns: minmax(140px, 1fr) minmax(110px, 0.55fr) minmax(110px, 0.55fr) auto;
   gap: 12px;
   align-items: end;
 }
@@ -1731,6 +1752,30 @@ td.credit {
 
 .hidden {
   display: none !important;
+}
+
+.toast-stack {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 30;
+  display: grid;
+  gap: 10px;
+  width: min(360px, calc(100vw - 36px));
+}
+
+.toast {
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--primary);
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: var(--shadow);
+  padding: 14px 16px;
+}
+
+.toast.warning {
+  border-left-color: var(--warning);
+  background: #fff8eb;
 }
 
 @media (max-width: 1080px) {
