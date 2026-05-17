@@ -67,17 +67,11 @@
           <nav class="top-nav" aria-label="หมวดงานหลัก">
             <button class="nav-button is-active" type="button" data-view-target="dashboard">แทงหวย</button>
             <button class="nav-button" type="button" data-view-target="intake">คีย์โพย</button>
-            <button class="nav-button" type="button" data-view-target="review">ตรวจงาน</button>
+            <button class="nav-button" type="button" data-view-target="review">ตรวจโพย</button>
             <button class="nav-button" type="button" data-view-target="entries">รายการแทง</button>
             <button class="nav-button" type="button" data-view-target="results">ตรวจรางวัล</button>
             <button class="nav-button" type="button" data-view-target="reports">บัญชีการเงิน</button>
-            <button class="nav-button" type="button" data-view-target="headHouseReport">ยอดหัวบ้าน</button>
-            <button class="nav-button" type="button" data-view-target="customers">ลูกค้า</button>
-            <button class="nav-button" type="button" data-view-target="lotteries">ตั้งค่าหวย</button>
-            <button class="nav-button" type="button" data-view-target="limits">อั้นเลข</button>
-            <button class="nav-button" type="button" data-view-target="payouts">อัตราจ่าย</button>
-            <button class="nav-button" type="button" data-view-target="headHouses">หัวบ้าน</button>
-            <button class="nav-button" type="button" data-view-target="users">ผู้ใช้</button>
+            <button class="nav-button" type="button" data-view-target="manage">จัดการระบบ</button>
           </nav>
           <div class="view-title-row">
             <div>
@@ -96,23 +90,17 @@
           <section class="view is-active" data-view="dashboard">
             <section id="closingSoonBanner" class="closing-soon-banner hidden"></section>
 
-            <section class="announcement-panel">
-              <div>
-                <p class="eyebrow">ประกาศ</p>
-                <h2>สถานะหวยวันนี้</h2>
-              </div>
-              <p>ระบบเปิดและปิดรับอัตโนมัติตามเวลาที่ตั้งไว้ พร้อมเตือนก่อนปิดรับ 5 นาที</p>
-            </section>
-
             <section class="market-alert panel">
               <div>
-                <p class="eyebrow">ภาพรวมวันนี้</p>
-                <h2>กระดานหวย</h2>
+                <p class="eyebrow">สถานะวันนี้</p>
+                <h2>เลือกหวยที่ต้องการคีย์</h2>
               </div>
               <div id="marketSummary" class="market-summary"></div>
             </section>
 
-            <section class="summary-grid compact-summary" aria-label="สรุปภาพรวม">
+            <section id="lotteryBoard" class="lottery-board"></section>
+
+            <section class="dashboard-strip" aria-label="ภาพรวมงานวันนี้">
               <article class="metric metric-blue">
                 <span>ยอดรับทั้งหมด</span>
                 <strong id="totalAmount">฿0.00</strong>
@@ -122,32 +110,18 @@
                 <strong id="totalEntries">0</strong>
               </article>
               <article class="metric metric-indigo">
-                <span>จำนวนลูกค้า</span>
+                <span>ลูกค้า</span>
                 <strong id="totalCustomers">0</strong>
-              </article>
-              <article class="metric metric-green">
-                <span>งวดที่ยังรับอยู่</span>
-                <strong id="openRoundsCount">0</strong>
-              </article>
-              <article class="metric metric-amber">
-                <span>เลขที่ตั้งอั้นไว้</span>
-                <strong id="totalLimits">0</strong>
-              </article>
-              <article class="metric metric-red">
-                <span>เลขใกล้เต็ม / เต็ม</span>
-                <strong id="nearLimitCount">0</strong>
               </article>
               <article class="metric metric-amber">
                 <span>โพยรอตรวจ</span>
                 <strong id="pendingTicketCount">0</strong>
               </article>
-              <article class="metric metric-indigo">
-                <span>ผลรอปิดงาน</span>
-                <strong id="pendingResultCount">0</strong>
+              <article class="metric metric-red">
+                <span>เลขใกล้เต็ม</span>
+                <strong id="nearLimitCount">0</strong>
               </article>
             </section>
-
-            <section id="lotteryBoard" class="lottery-board"></section>
 
             <section class="dashboard-grid">
               <section class="panel task-panel">
@@ -170,6 +144,47 @@
                 </div>
                 <div id="recentEntriesList" class="recent-list"></div>
               </section>
+            </section>
+          </section>
+
+          <section class="view" data-view="manage" hidden>
+            <section class="panel manage-hero">
+              <div>
+                <p class="eyebrow">งานตั้งค่าและควบคุมระบบ</p>
+                <h2>จัดการระบบ</h2>
+              </div>
+              <p>งานที่ไม่ได้ต้องใช้ทุกนาทีถูกรวมไว้ที่นี่ เพื่อให้หน้าหลักเหลือเฉพาะงานรับหวยจริง</p>
+            </section>
+
+            <section class="manage-grid">
+              <button class="manage-card" type="button" data-view-target="customers">
+                <strong>ลูกค้า</strong>
+                <span>เพิ่มลูกค้า ดูรหัส และผูกหัวบ้าน</span>
+              </button>
+              <button class="manage-card" type="button" data-view-target="headHouses">
+                <strong>หัวบ้าน</strong>
+                <span>สร้างหัวบ้าน ตั้งส่วนแบ่ง และจัดการลิงก์ดูยอด</span>
+              </button>
+              <button class="manage-card" type="button" data-view-target="headHouseReport">
+                <strong>ยอดหัวบ้าน</strong>
+                <span>เช็คยอดส่ง ยอดจ่าย และยอดสุทธิ</span>
+              </button>
+              <button class="manage-card" type="button" data-view-target="lotteries">
+                <strong>หวยและงวด</strong>
+                <span>ตารางเวลา เปิดปิดอัตโนมัติ และสร้างงวด</span>
+              </button>
+              <button class="manage-card" type="button" data-view-target="limits">
+                <strong>อั้นเลข</strong>
+                <span>คุมเพดานรับแต่ละเลข</span>
+              </button>
+              <button class="manage-card" type="button" data-view-target="payouts">
+                <strong>อัตราจ่าย</strong>
+                <span>กำหนดเรทจ่ายของแต่ละหวย</span>
+              </button>
+              <button class="manage-card" type="button" data-view-target="users">
+                <strong>ผู้ใช้</strong>
+                <span>จัดการสิทธิ์และรหัสผ่านผู้ใช้งาน</span>
+              </button>
             </section>
           </section>
 

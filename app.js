@@ -1,5 +1,5 @@
 const VIEW_META = {
-  dashboard: { eyebrow: "ศูนย์ควบคุมงานหลังบ้าน", title: "แดชบอร์ด" },
+  dashboard: { eyebrow: "งานรับหวยประจำวัน", title: "แทงหวย" },
   intake: { eyebrow: "ลดงานกรอกซ้ำ", title: "รับรายการ" },
   review: { eyebrow: "ตรวจโพยก่อนคิดยอดจริง", title: "ตรวจงาน" },
   entries: { eyebrow: "ตรวจสอบรายการทั้งหมด", title: "รายการ" },
@@ -11,6 +11,7 @@ const VIEW_META = {
   results: { eyebrow: "บันทึกผลที่ออก", title: "ผลรางวัล" },
   reports: { eyebrow: "กระแสเงินและผลประกอบการ", title: "บัญชีการเงิน" },
   headHouseReport: { eyebrow: "ยอดรวมแบบอ่านอย่างเดียว", title: "ยอดหัวบ้าน" },
+  manage: { eyebrow: "ตั้งค่าและควบคุมระบบ", title: "จัดการระบบ" },
   users: { eyebrow: "สิทธิ์การใช้งาน", title: "ผู้ใช้" },
 };
 
@@ -88,15 +89,15 @@ const elements = {
   sidebarBalance: document.querySelector("#sidebarBalance"),
   sidebarProfileBtn: document.querySelector("#sidebarProfileBtn"),
   sidebarLogoutBtn: document.querySelector("#sidebarLogoutBtn"),
-  usersNavButton: document.querySelector('[data-view-target="users"]'),
+  usersNavButtons: document.querySelectorAll('[data-view-target="users"]'),
   usersView: document.querySelector('[data-view="users"]'),
-  reviewNavButton: document.querySelector('[data-view-target="review"]'),
+  reviewNavButtons: document.querySelectorAll('[data-view-target="review"]'),
   reviewView: document.querySelector('[data-view="review"]'),
-  headHousesNavButton: document.querySelector('[data-view-target="headHouses"]'),
+  headHousesNavButtons: document.querySelectorAll('[data-view-target="headHouses"]'),
   headHousesView: document.querySelector('[data-view="headHouses"]'),
   headHouseReportNavButton: document.querySelector('[data-view-target="headHouseReport"]'),
   staffOnlyNavButtons: document.querySelectorAll(
-    '[data-view-target="dashboard"], [data-view-target="intake"], [data-view-target="review"], [data-view-target="entries"], [data-view-target="customers"], [data-view-target="lotteries"], [data-view-target="limits"], [data-view-target="payouts"], [data-view-target="results"], [data-view-target="reports"]',
+    '[data-view-target="dashboard"], [data-view-target="intake"], [data-view-target="review"], [data-view-target="entries"], [data-view-target="customers"], [data-view-target="lotteries"], [data-view-target="limits"], [data-view-target="payouts"], [data-view-target="results"], [data-view-target="reports"], [data-view-target="manage"]',
   ),
   exportBtn: document.querySelector("#exportBtn"),
   logoutBtn: document.querySelector("#logoutBtn"),
@@ -522,11 +523,17 @@ function renderDashboard() {
   elements.totalAmount.textContent = money(sum(approvedEntries.map((entry) => entry.amount)));
   elements.totalEntries.textContent = approvedEntries.length.toLocaleString("th-TH");
   elements.totalCustomers.textContent = state.customers.length.toLocaleString("th-TH");
-  elements.openRoundsCount.textContent = state.rounds.filter((round) => round.accepting).length.toLocaleString("th-TH");
-  elements.totalLimits.textContent = state.limits.length.toLocaleString("th-TH");
+  if (elements.openRoundsCount) {
+    elements.openRoundsCount.textContent = state.rounds.filter((round) => round.accepting).length.toLocaleString("th-TH");
+  }
+  if (elements.totalLimits) {
+    elements.totalLimits.textContent = state.limits.length.toLocaleString("th-TH");
+  }
   elements.nearLimitCount.textContent = limitStatuses.filter((item) => item.status !== "normal").length.toLocaleString("th-TH");
   elements.pendingTicketCount.textContent = pendingTickets.length.toLocaleString("th-TH");
-  elements.pendingResultCount.textContent = pendingResults.length.toLocaleString("th-TH");
+  if (elements.pendingResultCount) {
+    elements.pendingResultCount.textContent = pendingResults.length.toLocaleString("th-TH");
+  }
 
   renderTaskQueue(pendingTickets, pendingResults);
   renderLimitWatchList(limitStatuses);
@@ -2380,12 +2387,12 @@ function renderUsers() {
 function configureRoleAccess() {
   const canManageUsers = state.user?.role === "admin";
   const isHeadHouseViewer = state.user?.role === "head_house_viewer";
-  elements.reviewNavButton.classList.toggle("hidden", !canManageUsers);
+  elements.reviewNavButtons.forEach((button) => button.classList.toggle("hidden", !canManageUsers));
   elements.reviewView.hidden = !canManageUsers;
-  elements.usersNavButton.classList.toggle("hidden", !canManageUsers);
+  elements.usersNavButtons.forEach((button) => button.classList.toggle("hidden", !canManageUsers));
   elements.usersView.hidden = !canManageUsers;
   elements.sidebarProfileBtn.classList.toggle("hidden", !canManageUsers);
-  elements.headHousesNavButton.classList.toggle("hidden", !canManageUsers);
+  elements.headHousesNavButtons.forEach((button) => button.classList.toggle("hidden", !canManageUsers));
   elements.headHousesView.hidden = !canManageUsers;
   elements.headHouseReportPickerWrap.classList.toggle("hidden", isHeadHouseViewer);
   elements.exportBtn.classList.toggle("hidden", isHeadHouseViewer);

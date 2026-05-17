@@ -391,10 +391,6 @@ small {
   color: var(--muted);
 }
 
-.compact-summary .metric {
-  min-height: 78px;
-}
-
 .lottery-board {
   display: grid;
   gap: 18px;
@@ -1113,6 +1109,66 @@ textarea {
   gap: 18px;
 }
 
+.dashboard-strip {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.dashboard-strip .metric {
+  min-height: 76px;
+  padding: 12px 14px;
+}
+
+.dashboard-strip .metric strong {
+  font-size: 22px;
+}
+
+.manage-hero {
+  display: grid;
+  gap: 6px;
+  padding: 18px;
+}
+
+.manage-hero p:last-child {
+  margin-bottom: 0;
+  color: var(--muted);
+}
+
+.manage-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.manage-card {
+  display: grid;
+  gap: 8px;
+  min-height: 112px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 16px;
+  background: #fff;
+  color: var(--text);
+  text-align: left;
+  box-shadow: var(--shadow);
+  cursor: pointer;
+}
+
+.manage-card strong {
+  font-size: 17px;
+}
+
+.manage-card span {
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.manage-card:hover {
+  border-color: rgba(23, 105, 170, 0.35);
+  background: #fbfdff;
+}
+
 .task-list {
   display: grid;
   gap: 10px;
@@ -1577,7 +1633,9 @@ td.credit {
   .analytics-grid,
   .quick-grid,
   .payout-matrix,
-  .report-grid {
+  .report-grid,
+  .dashboard-strip,
+  .manage-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
@@ -1662,7 +1720,9 @@ td.credit {
   .customer-grid,
   .filters,
   .payout-matrix,
-  .report-grid {
+  .report-grid,
+  .dashboard-strip,
+  .manage-grid {
     grid-template-columns: 1fr;
   }
 
