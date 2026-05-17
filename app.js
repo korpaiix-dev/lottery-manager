@@ -313,6 +313,7 @@ async function initialize() {
   resetScheduleForm();
   window.setInterval(renderTimeSensitiveUi, 1000);
   await bootAuth();
+  if (window.location.hash === "#intake") activateView("intake");
 }
 
 function bindEvents() {
@@ -1173,11 +1174,16 @@ function getIntakeValidationMessage() {
   const action = getIntakeAction();
   const number = elements.ticketNumber.value.trim();
   const numbers = getIntakeNumbers(action, number);
+  const topAmount = parseAmount(elements.ticketTopAmount.value);
+  const bottomAmount = parseAmount(elements.ticketBottomAmount.value);
+  const todAmount = parseAmount(elements.ticketTodAmount.value);
   if (!elements.ticketRound.value) return "เลือกงวดก่อน";
   if (!numbers.length) return "เลือกหรือใส่เลขก่อน";
-  const entries = buildIntakeEntries({ customerId: "walkin", roundId: elements.ticketRound.value, number });
-  if (entries.length) return "";
-  return action?.target === "three_pair" ? "ใส่ยอดบนหรือยอดโต๊ดก่อน" : "ใส่ยอดก่อนเพิ่มลงโพย";
+  if (action?.target === "three_pair") return topAmount > 0 || todAmount > 0 ? "" : "ใส่ยอดบนหรือยอดโต๊ดก่อน";
+  if (action?.target === "run_pair" || action?.target === "pair") {
+    return topAmount > 0 || bottomAmount > 0 ? "" : "ใส่ยอดบนหรือล่างก่อน";
+  }
+  return topAmount > 0 ? "" : "ใส่ยอดบนก่อน";
 }
 
 function renderTicketDraft() {

@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="th">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ศูนย์ข้อมูลหวย</title>
+    <link rel="stylesheet" href="portal.css" />
+  </head>
+  <body>
+    <div class="portal-shell">
+      <aside class="portal-sidebar">
+        <div class="portal-brand">
+          <strong>LOTTERY</strong>
+          <span>ศูนย์ข้อมูลหวย</span>
+        </div>
+
+        <section class="portal-user-card">
+          <span id="portalClock">--:--:--</span>
+          <strong>สมาชิกทั่วไป</strong>
+          <small>เลือกหวยเพื่อเริ่มรายการ</small>
+        </section>
+
+        <section class="portal-rate-card">
+          <h2>อัตราจ่ายตัวอย่าง</h2>
+          <dl>
+            <div><dt>2 ตัว</dt><dd>70</dd></div>
+            <div><dt>3 ตัว</dt><dd>600</dd></div>
+            <div><dt>โต๊ด</dt><dd>120</dd></div>
+          </dl>
+        </section>
+
+        <a class="admin-link" href="/admin">จัดการหลังบ้าน</a>
+      </aside>
+
+      <main class="portal-main">
+        <header class="portal-topbar">
+          <nav aria-label="เมนูหลัก">
+            <a class="is-active" href="#markets">แทงหวย</a>
+            <a href="#results">รายการแทง</a>
+            <a href="#results">ตรวจรางวัล</a>
+            <a href="#announcements">กติกา</a>
+            <a href="#announcements">วิธีเล่นหวย</a>
+          </nav>
+        </header>
+
+        <section id="announcements" class="announcement-band">
+          <strong>ประกาศ</strong>
+          <p>เลือกหวยจากรายการด้านล่างเพื่อเข้าสู่หน้ารับรายการ ระบบจะแสดงเวลาเปิดปิดและสถานะล่าสุดให้อัตโนมัติ</p>
+        </section>
+
+        <section id="markets" class="portal-section">
+          <div class="section-heading">
+            <h1>แทงหวย</h1>
+            <span id="marketSummary">กำลังโหลดข้อมูล</span>
+          </div>
+          <div id="portalBoard" class="portal-board"></div>
+        </section>
+
+        <section id="results" class="portal-section">
+          <div class="section-heading">
+            <h2>ตรวจรางวัลล่าสุด</h2>
+            <span>อัปเดตจากหลังบ้าน</span>
+          </div>
+          <div id="latestResults" class="result-board"></div>
+        </section>
+      </main>
+    </div>
+
+    <script src="portal.js"></script>
+  </body>
+</html>

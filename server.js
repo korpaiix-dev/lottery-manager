@@ -202,12 +202,26 @@ ensureUpcomingRounds();
 const app = express();
 app.disable("x-powered-by");
 app.use(express.json({ limit: "2mb" }));
-app.get("/", (_req, res) => res.sendFile(path.join(__dirname, "index.html")));
+app.get("/", (_req, res) => res.sendFile(path.join(__dirname, "portal.html")));
+app.get("/portal.js", (_req, res) => res.sendFile(path.join(__dirname, "portal.js")));
+app.get("/portal.css", (_req, res) => res.sendFile(path.join(__dirname, "portal.css")));
+app.get("/admin", (_req, res) => res.sendFile(path.join(__dirname, "index.html")));
 app.get("/app.js", (_req, res) => res.sendFile(path.join(__dirname, "app.js")));
 app.get("/styles.css", (_req, res) => res.sendFile(path.join(__dirname, "styles.css")));
 
 app.get("/api/bootstrap", (_req, res) => {
   res.json({ setupRequired: countRows("users") === 0 });
+});
+
+app.get("/api/public-state", (_req, res) => {
+  ensureUpcomingRounds();
+  const state = getFullState(null);
+  res.json({
+    lotteries: state.lotteries,
+    rounds: state.rounds,
+    results: state.results,
+    scheduleTemplates: state.scheduleTemplates,
+  });
 });
 
 app.post("/api/setup", (req, res) => {
