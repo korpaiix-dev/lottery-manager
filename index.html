@@ -204,13 +204,14 @@
           <section class="view" data-view="intake" hidden>
             <section class="intake-workbench">
               <section class="panel ticket-panel">
-                <div class="ticket-reference-header">
+                <header class="ticket-reference-header">
                   <div class="ticket-topline">
                     <strong id="ticketCountdown">ยังไม่เลือกงวด</strong>
                     <span id="ticketAcceptingState" class="status-pill warning">รอเลือกงวด</span>
                   </div>
                   <div class="ticket-reference-title">
                     <div>
+                      <p class="eyebrow">รับรายการ</p>
                       <h2 id="ticketRoundTitle">เลือกงวดที่ต้องการรับรายการ</h2>
                       <span id="ticketRateLabel" class="ticket-inline-rate">-</span>
                     </div>
@@ -219,13 +220,16 @@
                       <span id="ticketFlag" class="flag flag-generic large-flag" aria-hidden="true"></span>
                     </div>
                   </div>
-                </div>
+                </header>
 
-                <div class="ticket-context-grid ticket-top-controls">
+                <div class="ticket-round-selector-row">
                   <label class="field">
                     <span>งวดที่รับ</span>
                     <select id="ticketRoundInput"></select>
                   </label>
+                  <div class="ticket-round-helper">
+                    เลือกงวดก่อนเริ่มคีย์ ระบบจะกันการลงโพยผิดงวดให้เอง
+                  </div>
                 </div>
 
                 <div class="ticket-mode-tabs" aria-label="โหมดการคีย์">
@@ -245,35 +249,41 @@
 
                   <div id="ticketBetTypeTabs" class="ticket-tabs" aria-label="ประเภทเลข"></div>
 
-                <div class="ticket-entry-grid">
+                  <div class="ticket-action-strip">
+                    <p id="ticketActionHint">เลือกประเภทเลขเพื่อเริ่มคีย์</p>
+                    <div class="ticket-tool-row">
+                      <button id="ticketDoubleBtn" class="button button-secondary" type="button">เลขเบิ้ล</button>
+                      <button id="ticketReverseBtn" class="button button-secondary" type="button">กลับเลข</button>
+                    </div>
+                  </div>
+
+                  <div id="ticketKeypad" class="ticket-keypad hidden" aria-label="แป้นเลือกเลขวิ่ง"></div>
+
+                  <div class="ticket-entry-grid">
                     <label class="field">
                       <span>ใส่เลข</span>
                       <input id="ticketNumberInput" inputmode="numeric" maxlength="3" placeholder="เช่น 45" />
                     </label>
-                      <label id="ticketTopAmountField" class="field">
-                        <span>บน</span>
-                        <input id="ticketTopAmountInput" inputmode="decimal" placeholder="0.00" />
-                      </label>
-                      <label id="ticketBottomAmountField" class="field">
-                        <span>ล่าง</span>
-                        <input id="ticketBottomAmountInput" inputmode="decimal" placeholder="0.00" />
-                      </label>
-                      <label id="ticketTodAmountField" class="field hidden">
-                        <span>โต๊ด</span>
-                        <input id="ticketTodAmountInput" inputmode="decimal" placeholder="0.00" />
-                      </label>
+                    <label id="ticketTopAmountField" class="field">
+                      <span>บน</span>
+                      <input id="ticketTopAmountInput" inputmode="decimal" placeholder="0.00" />
+                    </label>
+                    <label id="ticketBottomAmountField" class="field">
+                      <span>ล่าง</span>
+                      <input id="ticketBottomAmountInput" inputmode="decimal" placeholder="0.00" />
+                    </label>
+                    <label id="ticketTodAmountField" class="field hidden">
+                      <span>โต๊ด</span>
+                      <input id="ticketTodAmountInput" inputmode="decimal" placeholder="0.00" />
+                    </label>
                     <button id="addTicketEntryBtn" class="button button-primary" type="button">+ เพิ่มลงโพย</button>
                   </div>
+
                   <div id="ticketExpansionPreview" class="ticket-expansion-preview hidden"></div>
-                  <label class="field ticket-inline-note">
-                    <span>หมายเหตุ / ชื่อ LINE ลูกค้า</span>
-                    <input id="ticketNoteInput" maxlength="240" placeholder="เช่น คุณแดง LINE: Daeng789" />
-                  </label>
+                  <div id="ticketLimitPreview" class="limit-preview hidden"></div>
                 </section>
 
-                <div id="ticketLimitPreview" class="limit-preview hidden"></div>
-
-                <div class="ticket-draft-wrap">
+                <section class="ticket-draft-wrap">
                   <div class="panel-heading compact-heading">
                     <h3>รายการในโพย</h3>
                     <button id="clearTicketBtn" class="text-button" type="button">ล้างโพย</button>
@@ -292,26 +302,32 @@
                     </table>
                   </div>
                   <div id="ticketDraftEmpty" class="empty-state">ยังไม่มีรายการในโพย</div>
-                </div>
+                </section>
 
-                <div class="ticket-summary-row">
-                  <div>
-                    <span id="ticketSummaryRoundLabel">-</span>
-                    <span>รวมทั้งโพย</span>
-                    <strong id="ticketTotalAmount">฿0.00</strong>
+                <section class="ticket-finalize-panel">
+                  <label class="field ticket-inline-note">
+                    <span>หมายเหตุ / ชื่อ LINE ลูกค้า</span>
+                    <input id="ticketNoteInput" maxlength="240" placeholder="เช่น คุณแดง LINE: Daeng789" />
+                  </label>
+                  <div class="ticket-summary-row">
+                    <div>
+                      <span id="ticketSummaryRoundLabel">-</span>
+                      <span>รวมทั้งโพย</span>
+                      <strong id="ticketTotalAmount">฿0.00</strong>
+                    </div>
+                    <button id="saveTicketBtn" class="button button-primary" type="button">บันทึกโพย</button>
                   </div>
-                  <button id="saveTicketBtn" class="button button-primary" type="button">บันทึกโพย</button>
-                </div>
-
-                <section class="receipt-preview-wrap">
-                  <div class="panel-heading compact-heading">
-                    <h3>ตัวอย่างบิลสำหรับส่งลูกค้า</h3>
-                  </div>
-                  <article id="ticketReceiptPreview" class="receipt-card"></article>
                 </section>
               </section>
 
               <aside class="intake-side-stack">
+                <section class="panel intake-side-panel receipt-preview-wrap">
+                  <div class="panel-heading compact-heading">
+                    <h3>บิลพร้อมส่งลูกค้า</h3>
+                  </div>
+                  <article id="ticketReceiptPreview" class="receipt-card"></article>
+                </section>
+
                 <section class="panel intake-side-panel">
                   <div class="panel-heading compact-heading">
                     <h3>ผลย้อนหลัง</h3>

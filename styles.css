@@ -258,7 +258,7 @@ small {
 
 .intake-workbench {
   display: grid;
-  grid-template-columns: minmax(540px, 1.25fr) minmax(300px, 0.8fr);
+  grid-template-columns: minmax(640px, 1.45fr) minmax(320px, 0.72fr);
   gap: 18px;
 }
 
@@ -667,9 +667,9 @@ small {
 
 .ticket-panel {
   display: grid;
-  gap: 16px;
-  border: 1px solid #ead85a;
-  background: #fffdf1;
+  gap: 18px;
+  border: 1px solid #cfe5e6;
+  background: #f7fbfb;
 }
 
 .announcement-panel {
@@ -716,15 +716,16 @@ small {
 
 .ticket-reference-header {
   display: grid;
-  gap: 10px;
-  border: 1px solid #ead85a;
-  background: #fff8bf;
-  padding: 14px;
+  gap: 12px;
+  border: 1px solid #f2d45d;
+  border-radius: 8px;
+  background: #fff7ca;
+  padding: 16px;
 }
 
 .ticket-reference-title h2 {
   margin-bottom: 4px;
-  font-size: 20px;
+  font-size: 22px;
 }
 
 .ticket-inline-rate {
@@ -743,33 +744,38 @@ small {
   line-height: 1;
 }
 
-.ticket-context-grid {
+.ticket-round-selector-row {
   display: grid;
-  grid-template-columns: minmax(170px, 1fr) minmax(220px, 1.15fr) minmax(160px, 0.8fr);
+  grid-template-columns: minmax(260px, 1fr) auto;
   gap: 12px;
+  align-items: end;
 }
 
-.ticket-top-controls {
-  grid-template-columns: minmax(220px, 1fr) minmax(260px, 1.15fr);
+.ticket-round-helper {
+  max-width: 320px;
+  color: var(--muted);
+  font-size: 13px;
 }
 
 .ticket-mode-tabs {
   display: flex;
-  gap: 4px;
-  border-bottom: 1px solid #ead85a;
+  gap: 8px;
+  border-bottom: 1px solid #d8e7e8;
 }
 
 .ticket-mode-tab {
-  min-height: 38px;
+  min-height: 40px;
   border: 0;
-  border-radius: 4px 4px 0 0;
+  border-radius: 8px 8px 0 0;
   background: transparent;
   color: var(--text);
-  padding: 0 14px;
+  padding: 0 16px;
 }
 
 .ticket-mode-tab.is-active {
-  background: #fff;
+  background: #dff3f2;
+  color: #0f5d63;
+  font-weight: 700;
 }
 
 .result-status-bar {
@@ -823,10 +829,11 @@ small {
 
 .ticket-compose-board {
   display: grid;
-  gap: 14px;
-  border: 1px solid #ead85a;
-  background: #fff;
-  padding: 14px;
+  gap: 16px;
+  border: 1px solid #b8dddf;
+  border-radius: 8px;
+  background: #def3f4;
+  padding: 16px;
 }
 
 .ticket-compose-heading {
@@ -861,11 +868,10 @@ small {
 
 .ticket-tab {
   min-height: 38px;
-  border: 1px solid rgba(23, 105, 170, 0.18);
+  border: 1px solid #efc15a;
   border-radius: 6px;
   padding: 0 14px;
-  border-color: #f5bf52;
-  background: #fff8e8;
+  background: #fff9ea;
   color: #b26a00;
   cursor: pointer;
 }
@@ -874,6 +880,56 @@ small {
   border-color: #f7b52c;
   background: #f7b52c;
   color: #fff;
+}
+
+.ticket-action-strip {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.ticket-action-strip p {
+  margin-bottom: 0;
+  color: #27575d;
+}
+
+.ticket-tool-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.ticket-tool-row .button {
+  min-height: 34px;
+  border-color: #d6c178;
+  background: #fffdf3;
+}
+
+.ticket-tool-row .button.is-active {
+  border-color: #efb53a;
+  background: #f7b52c;
+  color: #fff;
+}
+
+.ticket-keypad {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 56px));
+  gap: 8px;
+}
+
+.ticket-keypad button {
+  min-height: 44px;
+  border: 1px solid #e7c969;
+  border-radius: 6px;
+  background: #fff9e6;
+  color: #8d5b00;
+  font-size: 18px;
+  cursor: pointer;
+}
+
+.ticket-keypad button:hover {
+  background: #fff0bf;
 }
 
 .ticket-entry-grid {
@@ -887,8 +943,23 @@ small {
   display: grid;
   gap: 8px;
   padding: 12px;
-  border: 1px dashed #f7b52c;
-  background: #fffdf5;
+  border: 1px dashed #49a7ae;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.ticket-preview-heading {
+  display: flex !important;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.ticket-preview-heading span {
+  border: 0;
+  background: transparent;
+  color: #27575d;
+  padding: 0;
 }
 
 .ticket-expansion-preview div {
@@ -899,8 +970,9 @@ small {
 
 .ticket-expansion-preview span {
   padding: 6px 10px;
-  border: 1px solid #f4d76b;
-  background: #fff8dc;
+  border: 1px solid #b8dddf;
+  border-radius: 999px;
+  background: #fff;
   font-size: 13px;
 }
 
@@ -909,7 +981,16 @@ small {
 }
 
 .ticket-draft-wrap {
-  border: 1px solid #ead85a;
+  border: 1px solid #d7e6e8;
+  border-radius: 8px;
+  background: #fff;
+  padding: 14px;
+}
+
+.ticket-finalize-panel {
+  display: grid;
+  gap: 14px;
+  border: 1px solid #d7e6e8;
   border-radius: 8px;
   background: #fff;
   padding: 14px;
@@ -941,7 +1022,7 @@ small {
 .receipt-card {
   display: grid;
   gap: 14px;
-  border: 1px solid #d9c15a;
+  border: 1px solid #b8dddf;
   border-radius: 8px;
   background: #fff;
   padding: 16px;
@@ -1880,6 +1961,10 @@ td.credit {
     grid-template-columns: 1fr;
   }
 
+  .ticket-round-selector-row {
+    grid-template-columns: 1fr;
+  }
+
   .topbar-actions {
     justify-content: flex-start;
     flex-wrap: wrap;
@@ -1929,6 +2014,16 @@ td.credit {
 
   .ticket-compose-heading {
     flex-direction: column;
+  }
+
+  .ticket-action-strip {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .ticket-preview-heading {
+    flex-direction: column;
+    align-items: flex-start;
   }
 
   .receipt-header,

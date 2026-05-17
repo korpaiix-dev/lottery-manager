@@ -75,6 +75,8 @@ const state = {
   quickParsedEntries: [],
   ticketDraftEntries: [],
   ticketBetTypeId: "two_pair",
+  ticketReverseEnabled: false,
+  ticketUseDoubles: false,
   latestReceiptTicketId: null,
   latestViewerCredentials: null,
   announcedRoundIds: new Set(),
@@ -138,6 +140,10 @@ const elements = {
   ticketRound: document.querySelector("#ticketRoundInput"),
   ticketRateLabel: document.querySelector("#ticketRateLabel"),
   ticketBetTypeTabs: document.querySelector("#ticketBetTypeTabs"),
+  ticketActionHint: document.querySelector("#ticketActionHint"),
+  ticketDoubleBtn: document.querySelector("#ticketDoubleBtn"),
+  ticketReverseBtn: document.querySelector("#ticketReverseBtn"),
+  ticketKeypad: document.querySelector("#ticketKeypad"),
   ticketNumber: document.querySelector("#ticketNumberInput"),
   ticketTopAmount: document.querySelector("#ticketTopAmountInput"),
   ticketBottomAmount: document.querySelector("#ticketBottomAmountInput"),
@@ -343,6 +349,8 @@ function bindEvents() {
   elements.ticketBottomAmount.addEventListener("keydown", handleTicketAmountKeydown);
   elements.ticketTodAmount.addEventListener("keydown", handleTicketAmountKeydown);
   elements.addTicketEntryBtn.addEventListener("click", addTicketDraftEntry);
+  elements.ticketDoubleBtn.addEventListener("click", toggleTicketDoubles);
+  elements.ticketReverseBtn.addEventListener("click", toggleTicketReverse);
   elements.clearTicketBtn.addEventListener("click", clearTicketDraft);
   elements.saveTicketBtn.addEventListener("click", saveTicketDraft);
   document.querySelectorAll("[data-intake-mode]").forEach((button) => {
@@ -832,6 +840,7 @@ function renderTicketWorkbench() {
   renderTicketBetTypeTabs();
   renderTicketHeader();
   renderTicketAmountFields();
+  renderTicketActionTools();
   renderTicketDraft();
   renderTicketReceiptPreview();
   renderTicketLimitPreview();
@@ -914,10 +923,12 @@ function renderTicketBetTypeTabs() {
     .join("");
 
   elements.ticketBetTypeTabs.querySelectorAll("[data-ticket-bet-type]").forEach((button) => {
-    button.addEventListener("click", () => {
-      state.ticketBetTypeId = button.dataset.ticketBetType;
-      syncIntakeNumberLength();
-      renderTicketWorkbench();
+      button.addEventListener("click", () => {
+        state.ticketBetTypeId = button.dataset.ticketBetType;
+        state.ticketReverseEnabled = false;
+        state.ticketUseDoubles = false;
+        syncIntakeNumberLength();
+        renderTicketWorkbench();
       elements.ticketNumber.focus();
     });
   });
@@ -972,6 +983,7 @@ function addTicketDraftEntry() {
   });
   state.latestReceiptTicketId = null;
   elements.ticketNumber.value = "";
+  state.ticketUseDoubles = false;
   elements.ticketNumber.focus();
   renderTicketWorkbench();
 }
@@ -982,26 +994,25 @@ function buildIntakeEntries({ customerId, roundId, number }) {
   const bottomAmount = parseAmount(elements.ticketBottomAmount.value);
   const todAmount = parseAmount(elements.ticketTodAmount.value);
   if (!action) return [];
+  const numbers = getIntakeNumbers(action, number);
 
   if (action.target === "run_pair") {
-    return [
-      ...(topAmount > 0 ? [{ customerId, roundId, betTypeId: "run_top", number, amount: topAmount }] : []),
-      ...(bottomAmount > 0 ? [{ customerId, roundId, betTypeId: "run_bottom", number, amount: bottomAmount }] : []),
-    ];
+    return numbers.flatMap((entryNumber) => [
+      ...(topAmount > 0 ? [{ customerId, roundId, betTypeId: "run_top", number: entryNumber, amount: topAmount }] : []),
+      ...(bottomAmount > 0 ? [{ customerId, roundId, betTypeId: "run_bottom", number: entryNumber, amount: bottomAmount }] : []),
+    ]);
   }
   if (action.target === "pair") {
-    return [
-      ...(topAmount > 0 ? [{ customerId, roundId, betTypeId: "two_top", number, amount: topAmount }] : []),
-      ...(bottomAmount > 0 ? [{ customerId, roundId, betTypeId: "two_bottom", number, amount: bottomAmount }] : []),
-    ];
+    return numbers.flatMap((entryNumber) => [
+      ...(topAmount > 0 ? [{ customerId, roundId, betTypeId: "two_top", number: entryNumber, amount: topAmount }] : []),
+      ...(bottomAmount > 0 ? [{ customerId, roundId, betTypeId: "two_bottom", number: entryNumber, amount: bottomAmount }] : []),
+    ]);
   }
   if (action.target === "six_return") {
-    return [...new Set(permutations(number))]
-      .filter((item) => item !== number || topAmount > 0)
-      .map((item) => ({ customerId, roundId, betTypeId: "three_top", number: item, amount: topAmount }));
+    return numbers.map((item) => ({ customerId, roundId, betTypeId: "three_top", number: item, amount: topAmount }));
   }
   if (action.target === "nineteen_gate") {
-    return nineteenGateNumbers(number).map((item) => ({
+    return numbers.map((item) => ({
       customerId,
       roundId,
       betTypeId: "two_top",
@@ -1010,10 +1021,10 @@ function buildIntakeEntries({ customerId, roundId, number }) {
     }));
   }
   if (action.target === "three_pair") {
-    return [
-      ...(topAmount > 0 ? [{ customerId, roundId, betTypeId: "three_top", number, amount: topAmount }] : []),
-      ...(todAmount > 0 ? [{ customerId, roundId, betTypeId: "three_tod", number, amount: todAmount }] : []),
-    ];
+    return numbers.flatMap((entryNumber) => [
+      ...(topAmount > 0 ? [{ customerId, roundId, betTypeId: "three_top", number: entryNumber, amount: topAmount }] : []),
+      ...(todAmount > 0 ? [{ customerId, roundId, betTypeId: "three_tod", number: entryNumber, amount: todAmount }] : []),
+    ]);
   }
   return [];
 }
@@ -1036,6 +1047,74 @@ function renderTicketAmountFields() {
   elements.ticketBottomAmountField.classList.toggle("hidden", !showBottom);
   elements.ticketTodAmountField.classList.toggle("hidden", !showTod);
   elements.ticketTopAmountField.classList.toggle("hidden", false);
+}
+
+function renderTicketActionTools() {
+  const action = getIntakeAction();
+  const isRun = action?.target === "run_pair";
+  const supportsDoubles = action?.target === "pair";
+  const supportsReverse = action?.target === "pair" || action?.target === "three_pair";
+  const hintByAction = {
+    run_pair: "เลขวิ่ง 1 ตัว ใส่ยอดบนหรือล่าง แล้วเพิ่มลงโพยได้ทันที",
+    two_pair: "2 ตัว เลือกเลขเดี่ยว กลับเลข หรือเลขเบิ้ลได้ในชุดเดียว",
+    six_return: "6 กลับ ใส่เลข 3 ตัว ระบบจะแตกชุดกลับให้ครบก่อนเพิ่มลงโพย",
+    nineteen_gate: "19 ประตู ใส่เลขหลักเดียว ระบบจะแตกเลข 2 ตัวที่เกี่ยวข้องให้ครบ",
+    three_pair: "3 ตัว ใส่ยอดบนและโต๊ดในครั้งเดียวได้",
+  };
+
+  elements.ticketActionHint.textContent = hintByAction[action?.id] || "เลือกประเภทเลขเพื่อเริ่มคีย์";
+  elements.ticketDoubleBtn.classList.toggle("hidden", !supportsDoubles);
+  elements.ticketReverseBtn.classList.toggle("hidden", !supportsReverse);
+  elements.ticketDoubleBtn.classList.toggle("is-active", state.ticketUseDoubles);
+  elements.ticketReverseBtn.classList.toggle("is-active", state.ticketReverseEnabled);
+  elements.ticketKeypad.classList.toggle("hidden", !isRun);
+
+  if (!isRun) {
+    elements.ticketKeypad.innerHTML = "";
+    return;
+  }
+
+  elements.ticketKeypad.innerHTML = Array.from({ length: 10 }, (_, index) => {
+    const digit = index === 9 ? 0 : index + 1;
+    return `<button type="button" data-ticket-key="${digit}">${digit}</button>`;
+  }).join("");
+  elements.ticketKeypad.querySelectorAll("[data-ticket-key]").forEach((button) => {
+    button.addEventListener("click", () => {
+      elements.ticketNumber.value = button.dataset.ticketKey;
+      renderTicketLimitPreview();
+      renderTicketExpansionPreview();
+      elements.ticketTopAmount.focus();
+    });
+  });
+}
+
+function toggleTicketDoubles() {
+  state.ticketUseDoubles = !state.ticketUseDoubles;
+  if (state.ticketUseDoubles) {
+    state.ticketReverseEnabled = false;
+    elements.ticketNumber.value = "";
+  }
+  renderTicketWorkbench();
+}
+
+function toggleTicketReverse() {
+  state.ticketReverseEnabled = !state.ticketReverseEnabled;
+  if (state.ticketReverseEnabled) state.ticketUseDoubles = false;
+  renderTicketWorkbench();
+}
+
+function getIntakeNumbers(action, number) {
+  if (!action) return [];
+  if (state.ticketUseDoubles && action.target === "pair") {
+    return Array.from({ length: 10 }, (_, digit) => `${digit}${digit}`);
+  }
+  if (action.target === "six_return") return [...new Set(permutations(number))];
+  if (action.target === "nineteen_gate") return nineteenGateNumbers(number);
+  if (!number) return [];
+  if (state.ticketReverseEnabled && number.length > 1) {
+    return [...new Set([number, number.split("").reverse().join("")])];
+  }
+  return [number];
 }
 
 function permutations(value) {
@@ -1245,27 +1324,22 @@ function renderTicketExpansionPreview() {
   const roundId = elements.ticketRound.value;
   const number = elements.ticketNumber.value.trim();
   const action = getIntakeAction();
-  if (!action || !isValidNumber(number, action.digits)) {
+  const previewNumbers = getIntakeNumbers(action, number);
+  const isNumberReady = state.ticketUseDoubles || isValidNumber(number, action?.digits || 0);
+  if (!action || !isNumberReady || !previewNumbers.length) {
     elements.ticketExpansionPreview.classList.add("hidden");
     elements.ticketExpansionPreview.innerHTML = "";
     return;
   }
   const previewEntries = buildIntakeEntries({ customerId: "walkin", roundId, number });
-  const previewNumbers =
-    action.target === "six_return"
-      ? [...new Set(permutations(number))]
-      : action.target === "nineteen_gate"
-        ? nineteenGateNumbers(number)
-        : previewEntries.map((entry) => entry.number);
-  if (!previewNumbers.length) {
-    elements.ticketExpansionPreview.classList.add("hidden");
-    elements.ticketExpansionPreview.innerHTML = "";
-    return;
-  }
+  const previewTotal = sum(previewEntries.map((entry) => entry.amount));
 
   elements.ticketExpansionPreview.classList.remove("hidden");
   elements.ticketExpansionPreview.innerHTML = `
-    <strong>เลขที่จะเพิ่ม</strong>
+    <div class="ticket-preview-heading">
+      <strong>เลขที่จะเพิ่ม</strong>
+      <span>${previewNumbers.length} เลข · ${money(previewTotal)}</span>
+    </div>
     <div>
       ${previewNumbers
         .map((entryNumber) => `<span>${escapeHtml(entryNumber)}</span>`)
