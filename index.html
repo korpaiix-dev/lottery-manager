@@ -242,7 +242,7 @@
 
                   <div id="ticketBetTypeTabs" class="ticket-tabs" aria-label="ประเภทเลข"></div>
 
-                  <div class="ticket-entry-grid">
+                <div class="ticket-entry-grid">
                     <label class="field">
                       <span>ใส่เลข</span>
                       <input id="ticketNumberInput" inputmode="numeric" maxlength="3" placeholder="เช่น 45" />
@@ -255,9 +255,10 @@
                       <span>ล่าง</span>
                       <input id="ticketBottomAmountInput" inputmode="decimal" placeholder="0.00" />
                     </label>
-                    <button id="addTicketEntryBtn" class="button button-primary" type="button">+ เพิ่มลงโพย</button>
-                  </div>
-                </section>
+                  <button id="addTicketEntryBtn" class="button button-primary" type="button">+ เพิ่มลงโพย</button>
+                </div>
+                <div id="ticketExpansionPreview" class="ticket-expansion-preview hidden"></div>
+              </section>
 
                 <div id="ticketLimitPreview" class="limit-preview hidden"></div>
 
@@ -328,7 +329,7 @@
               </aside>
             </section>
 
-            <section id="quickPanel" class="panel quick-panel">
+            <section id="quickPanel" class="panel quick-panel hidden">
               <div class="panel-heading">
                 <div>
                   <h2>รับจากข้อความ LINE</h2>
@@ -407,7 +408,7 @@
               </div>
             </section>
 
-            <section id="entryPanel" class="panel entry-panel">
+            <section id="entryPanel" class="panel entry-panel hidden">
               <div class="panel-heading">
                 <h2 id="formTitle">กรอก / แก้ไขรายการเดี่ยว</h2>
                 <button id="resetBtn" class="text-button" type="button">ล้างฟอร์ม</button>

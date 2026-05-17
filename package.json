@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node server.js",
     "check": "node --check server.js && node --check app.js",
-    "smoke": "node scripts/e2e-smoke.mjs"
+    "smoke": "node scripts/e2e-smoke.mjs",
+    "qa:deep": "node scripts/qa-deep.mjs"
   },
   "dependencies": {
     "bcryptjs": "^3.0.2",

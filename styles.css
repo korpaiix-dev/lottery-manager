@@ -651,6 +651,12 @@ small {
   color: #394150;
 }
 
+.lottery-card.is-finished {
+  border-color: #f3b4b4;
+  background: #fff1f2;
+  color: #7f1d1d;
+}
+
 .lottery-card:not(:disabled) {
   cursor: pointer;
 }
@@ -875,6 +881,27 @@ small {
   grid-template-columns: minmax(140px, 1fr) minmax(110px, 0.55fr) minmax(110px, 0.55fr) auto;
   gap: 12px;
   align-items: end;
+}
+
+.ticket-expansion-preview {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px dashed #f7b52c;
+  background: #fffdf5;
+}
+
+.ticket-expansion-preview div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.ticket-expansion-preview span {
+  padding: 6px 10px;
+  border: 1px solid #f4d76b;
+  background: #fff8dc;
+  font-size: 13px;
 }
 
 .ticket-draft-wrap {

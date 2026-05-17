@@ -143,6 +143,7 @@ const elements = {
   ticketNumber: document.querySelector("#ticketNumberInput"),
   ticketTopAmount: document.querySelector("#ticketTopAmountInput"),
   ticketBottomAmount: document.querySelector("#ticketBottomAmountInput"),
+  ticketExpansionPreview: document.querySelector("#ticketExpansionPreview"),
   addTicketEntryBtn: document.querySelector("#addTicketEntryBtn"),
   ticketLimitPreview: document.querySelector("#ticketLimitPreview"),
   ticketDraftBody: document.querySelector("#ticketDraftBody"),
@@ -316,9 +317,18 @@ function bindEvents() {
 
   elements.ticketRound.addEventListener("change", renderTicketWorkbench);
   elements.ticketNote.addEventListener("input", renderTicketReceiptPreview);
-  elements.ticketNumber.addEventListener("input", renderTicketLimitPreview);
-  elements.ticketTopAmount.addEventListener("input", renderTicketLimitPreview);
-  elements.ticketBottomAmount.addEventListener("input", renderTicketLimitPreview);
+  elements.ticketNumber.addEventListener("input", () => {
+    renderTicketLimitPreview();
+    renderTicketExpansionPreview();
+  });
+  elements.ticketTopAmount.addEventListener("input", () => {
+    renderTicketLimitPreview();
+    renderTicketExpansionPreview();
+  });
+  elements.ticketBottomAmount.addEventListener("input", () => {
+    renderTicketLimitPreview();
+    renderTicketExpansionPreview();
+  });
   elements.ticketNumber.addEventListener("keydown", handleTicketNumberKeydown);
   elements.ticketTopAmount.addEventListener("keydown", handleTicketAmountKeydown);
   elements.ticketBottomAmount.addEventListener("keydown", handleTicketAmountKeydown);
@@ -801,6 +811,7 @@ function renderTicketWorkbench() {
   renderTicketDraft();
   renderTicketReceiptPreview();
   renderTicketLimitPreview();
+  renderTicketExpansionPreview();
   renderTicketHistory();
   renderTicketLimits();
   renderTicketRecentEntries();
@@ -810,15 +821,15 @@ function activateIntakeMode(mode) {
   document.querySelectorAll("[data-intake-mode]").forEach((button) => {
     button.classList.toggle("is-active", button.dataset.intakeMode === mode);
   });
+  document.querySelector("#quickPanel")?.classList.toggle("hidden", mode !== "paste");
+  document.querySelector("#entryPanel")?.classList.toggle("hidden", mode !== "classic");
 
   if (mode === "paste") {
-    document.querySelector("#quickPanel")?.scrollIntoView({ behavior: "smooth", block: "start" });
     elements.quickMessage.focus();
     return;
   }
 
   if (mode === "classic") {
-    document.querySelector("#entryPanel")?.scrollIntoView({ behavior: "smooth", block: "start" });
     elements.number.focus();
     return;
   }
@@ -1180,6 +1191,30 @@ function renderTicketLimitPreview() {
     <strong>มีอั้นเลขตรงกัน</strong>
     <span>ปัจจุบัน ${money(item.currentAmount)} / เพดาน ${money(item.limit.max_amount)}</span>
     <span>รวมโพยนี้แล้ว ${money(projected)} (${percent(ratio)})</span>
+  `;
+}
+
+function renderTicketExpansionPreview() {
+  const roundId = elements.ticketRound.value;
+  const number = elements.ticketNumber.value.trim();
+  const previewEntries = buildIntakeEntries({ customerId: "walkin", roundId, number });
+  if (!previewEntries.length) {
+    elements.ticketExpansionPreview.classList.add("hidden");
+    elements.ticketExpansionPreview.innerHTML = "";
+    return;
+  }
+
+  elements.ticketExpansionPreview.classList.remove("hidden");
+  elements.ticketExpansionPreview.innerHTML = `
+    <strong>เลขที่จะเพิ่ม</strong>
+    <div>
+      ${previewEntries
+        .map(
+          (entry) =>
+            `<span>${escapeHtml(entry.number)} · ${escapeHtml(getBetTypeName(entry.betTypeId))} · ${money(entry.amount)}</span>`,
+        )
+        .join("")}
+    </div>
   `;
 }
 
@@ -3147,7 +3182,7 @@ function getRoundTimingStatus(round) {
   const openAt = new Date(round.open_at).getTime();
   const closeAt = new Date(round.close_at).getTime();
   if (now < openAt) return { state: "upcoming", label: "ยังไม่เปิด", cardClass: "is-upcoming" };
-  if (now >= closeAt) return { state: "closed", label: "ปิดรับ", cardClass: "is-closed" };
+  if (now >= closeAt) return { state: "closed", label: "ปิดรับ", cardClass: "is-finished" };
   if (closeAt - now <= 5 * 60_000) return { state: "closing_soon", label: "ใกล้ปิด", cardClass: "is-closing" };
   return { state: "open", label: "เปิดรับ", cardClass: "is-open" };
 }
