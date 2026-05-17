@@ -1388,11 +1388,18 @@ function seedPayoutRatesForLottery(lotteryId) {
   const now = nowIso();
   const insert = db.prepare(`
     INSERT OR IGNORE INTO payout_rates (id, lottery_id, bet_type_id, rate, created_at, updated_at)
-    VALUES (?, ?, ?, 0, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?)
   `);
   getBetTypes().forEach((betType) => {
-    insert.run(crypto.randomUUID(), lotteryId, betType.id, now, now);
+    insert.run(crypto.randomUUID(), lotteryId, betType.id, defaultPayoutRate(betType.id), now, now);
   });
+}
+
+function defaultPayoutRate(betTypeId) {
+  if (betTypeId === "two_top" || betTypeId === "two_bottom") return 70;
+  if (betTypeId === "three_top") return 600;
+  if (betTypeId === "three_tod") return 120;
+  return 0;
 }
 
 function getFullState(user) {
