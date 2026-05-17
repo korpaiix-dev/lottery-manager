@@ -26,12 +26,21 @@ let state = { lotteries: [], rounds: [], results: [], scheduleTemplates: [] };
 boot();
 window.setInterval(updateClock, 1000);
 window.setInterval(render, 1000);
+window.setInterval(refreshPublicState, 30_000);
 
 async function boot() {
   updateClock();
-  const response = await fetch("/api/public-state");
-  state = await response.json();
+  await refreshPublicState();
   render();
+}
+
+async function refreshPublicState() {
+  try {
+    const response = await fetch("/api/public-state");
+    state = await response.json();
+  } catch {
+    // Keep the last good snapshot on screen when the network is temporarily unavailable.
+  }
 }
 
 function render() {
@@ -84,7 +93,7 @@ function renderLotteryCard(lottery) {
       </div>
       <div class="portal-card-meta">
         <small>สถานะ</small>
-        <em>${escapeHtml(status.label)}${round?.accepting ? ` ${formatCountdownCompact(round)}` : ""}</em>
+        <em>${escapeHtml(status.label)}${isRoundAcceptingNow(round) ? ` ${formatCountdownCompact(round)}` : ""}</em>
       </div>
     </article>
   `;
@@ -104,7 +113,7 @@ function renderSchedule() {
             <article class="schedule-row ${timing.cardClass}">
               <strong>${escapeHtml(lottery?.name || "-")}</strong>
               <span>ปิดรับ ${escapeHtml(formatClock(round.close_at))}</span>
-              <em>${escapeHtml(timing.label)}${round.accepting ? ` ${formatCountdownCompact(round)}` : ""}</em>
+              <em>${escapeHtml(timing.label)}${isRoundAcceptingNow(round) ? ` ${formatCountdownCompact(round)}` : ""}</em>
             </article>
           `;
         })
@@ -151,6 +160,7 @@ function renderResults() {
                 <span>${escapeHtml(round.label)}</span>
               </div>
               <span>3 ตัวบน ${escapeHtml(resultNumbers(round.id, "three_top") || "-")}</span>
+              <span>3 ตัวโต๊ด ${escapeHtml(resultNumbers(round.id, "three_tod") || "-")}</span>
               <span>2 ตัวบน ${escapeHtml(resultNumbers(round.id, "two_top") || "-")}</span>
               <span>2 ตัวล่าง ${escapeHtml(resultNumbers(round.id, "two_bottom") || "-")}</span>
             </article>
@@ -161,11 +171,16 @@ function renderResults() {
 }
 
 function getDisplayRoundForLottery(lotteryId) {
-  return state.rounds
-    .filter((round) => round.lottery_id === lotteryId)
-    .sort((a, b) => new Date(a.close_at) - new Date(b.close_at))
-    .find((round) => new Date(round.close_at).getTime() >= Date.now()) ||
-    state.rounds.filter((round) => round.lottery_id === lotteryId).sort((a, b) => new Date(b.close_at) - new Date(a.close_at))[0];
+  return (
+    findLatestOpenRound(lotteryId) ||
+    state.rounds
+      .filter((round) => round.lottery_id === lotteryId)
+      .sort((a, b) => new Date(a.close_at) - new Date(b.close_at))
+      .find((round) => new Date(round.close_at).getTime() >= Date.now()) ||
+    state.rounds
+      .filter((round) => round.lottery_id === lotteryId)
+      .sort((a, b) => new Date(b.close_at) - new Date(a.close_at))[0]
+  );
 }
 
 function resultNumbers(roundId, betTypeId) {
@@ -177,6 +192,7 @@ function resultNumbers(roundId, betTypeId) {
 
 function getRoundTimingStatus(round) {
   if (!round) return { state: "unset", label: "ยังไม่ตั้งงวด", cardClass: "is-upcoming" };
+  if (round.status === "closed") return { state: "manual_closed", label: "ปิดงวด", cardClass: "is-finished" };
   const now = Date.now();
   const openAt = new Date(round.open_at).getTime();
   const closeAt = new Date(round.close_at).getTime();
@@ -184,6 +200,17 @@ function getRoundTimingStatus(round) {
   if (now >= closeAt) return { state: "finished", label: "ปิดรับ", cardClass: "is-finished" };
   if (closeAt - now <= 5 * 60_000) return { state: "closing_soon", label: "ใกล้ปิด", cardClass: "is-closing" };
   return { state: "open", label: "เปิดรับ", cardClass: "is-open" };
+}
+
+function isRoundAcceptingNow(round) {
+  const stateNow = getRoundTimingStatus(round).state;
+  return stateNow === "open" || stateNow === "closing_soon";
+}
+
+function findLatestOpenRound(lotteryId) {
+  return state.rounds
+    .filter((round) => round.lottery_id === lotteryId && isRoundAcceptingNow(round))
+    .sort((a, b) => new Date(a.close_at) - new Date(b.close_at))[0];
 }
 
 function getLotteryFlagClass(id) {

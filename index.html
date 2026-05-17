@@ -76,7 +76,7 @@
           <div class="view-title-row">
             <div>
               <p id="currentViewEyebrow" class="eyebrow">ศูนย์ควบคุมงานหลังบ้าน</p>
-              <h2 id="currentViewTitle">แทงหวย</h2>
+              <h2 id="currentViewTitle">วันนี้</h2>
             </div>
             <div class="topbar-actions">
               <span id="currentUserLabel" class="user-pill"></span>
@@ -400,6 +400,11 @@
               <label class="field">
                 <span>ข้อความจาก LINE</span>
                 <textarea id="quickMessage" rows="4" placeholder="เช่น 01 02 03 04 05 06 ไทย 1000บาท"></textarea>
+              </label>
+
+              <label class="field">
+                <span>หมายเหตุ / ชื่อ LINE ลูกค้า</span>
+                <input id="quickNoteInput" maxlength="240" placeholder="เช่น คุณแดง LINE: Daeng789" />
               </label>
 
               <div class="form-actions">
@@ -904,6 +909,7 @@
                       <th>งวด</th>
                       <th>วันที่</th>
                       <th>3 ตัวบน</th>
+                      <th>3 ตัวโต๊ด</th>
                       <th>2 ตัวบน</th>
                       <th>2 ตัวล่าง</th>
                       <th>สถานะ</th>
@@ -922,11 +928,11 @@
               </div>
               <section class="summary-grid report-grid">
                 <article class="metric metric-red">
-                  <span>เงินออก</span>
+                  <span>ยอดจ่าย</span>
                   <strong id="ledgerDebit">฿0.00</strong>
                 </article>
                 <article class="metric metric-green">
-                  <span>เงินเข้า</span>
+                  <span>ยอดรับ</span>
                   <strong id="ledgerCredit">฿0.00</strong>
                 </article>
                 <article class="metric metric-blue">
@@ -940,8 +946,8 @@
                     <tr>
                       <th>วันที่ - เวลา</th>
                       <th>รายละเอียด</th>
-                      <th>เงินออก</th>
-                      <th>เงินเข้า</th>
+                      <th>ยอดจ่าย</th>
+                      <th>ยอดรับ</th>
                       <th>คงเหลือ</th>
                     </tr>
                   </thead>

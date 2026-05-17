@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "start": "node server.js",
-    "check": "node --check server.js && node --check app.js",
+    "check": "node --check server.js && node --check app.js && node --check portal.js",
     "smoke": "node scripts/e2e-smoke.mjs",
     "qa:deep": "node scripts/qa-deep.mjs",
     "payouts:defaults": "node scripts/set-default-payouts.mjs"

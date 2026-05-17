@@ -84,11 +84,18 @@ try {
     expectedStatus: 201,
   });
 
+  const scheduledLottery = await request("/api/lotteries", {
+    method: "POST",
+    cookie: "admin",
+    body: { name: "หวยทดสอบเวลา", category: "other" },
+    expectedStatus: 201,
+  });
+
   const round = await request("/api/rounds", {
     method: "POST",
     cookie: "admin",
     body: {
-      lotteryId: thai.id,
+      lotteryId: scheduledLottery.id,
       label: "QA งวดครบ",
       openDate: today(),
       openTime: "00:00",
@@ -99,6 +106,44 @@ try {
     },
     expectedStatus: 201,
   });
+
+  const schedule = await request("/api/schedule-templates", {
+    method: "POST",
+    cookie: "admin",
+    body: {
+      lotteryId: scheduledLottery.id,
+      frequency: "daily",
+      weekdays: "0,1,2,3,4,5,6",
+      monthDays: "",
+      openDaysBefore: 0,
+      openTime: "08:00",
+      drawTime: "18:00",
+      resultTime: "18:30",
+      closeBeforeMinutes: 5,
+      sourceNote: "qa",
+      active: true,
+    },
+    expectedStatus: 201,
+  });
+
+  const toggledSchedule = await request(`/api/schedule-templates/${schedule.id}`, {
+    method: "PUT",
+    cookie: "admin",
+    body: {
+      lotteryId: schedule.lottery_id,
+      frequency: schedule.frequency,
+      weekdays: schedule.weekdays.join(","),
+      monthDays: schedule.month_days.join(","),
+      openDaysBefore: schedule.open_days_before,
+      openTime: schedule.open_time,
+      drawTime: schedule.draw_time,
+      resultTime: schedule.result_time,
+      closeBeforeMinutes: schedule.close_before_minutes,
+      sourceNote: schedule.source_note,
+      active: false,
+    },
+  });
+  assert(toggledSchedule.result_time === "18:30", "schedule result time must survive active toggle");
 
   await request("/api/limits", {
     method: "POST",

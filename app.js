@@ -175,6 +175,7 @@ const elements = {
   quickBetType: document.querySelector("#quickBetType"),
   quickAmount: document.querySelector("#quickAmount"),
   quickMessage: document.querySelector("#quickMessage"),
+  quickNote: document.querySelector("#quickNoteInput"),
   parseQuickBtn: document.querySelector("#parseQuickBtn"),
   clearQuickBtn: document.querySelector("#clearQuickBtn"),
   quickParseSummary: document.querySelector("#quickParseSummary"),
@@ -578,7 +579,7 @@ function renderDashboard() {
   elements.totalEntries.textContent = approvedEntries.length.toLocaleString("th-TH");
   elements.totalCustomers.textContent = state.customers.length.toLocaleString("th-TH");
   if (elements.openRoundsCount) {
-    elements.openRoundsCount.textContent = state.rounds.filter((round) => round.accepting).length.toLocaleString("th-TH");
+    elements.openRoundsCount.textContent = state.rounds.filter(isRoundAcceptingNow).length.toLocaleString("th-TH");
   }
   if (elements.totalLimits) {
     elements.totalLimits.textContent = state.limits.length.toLocaleString("th-TH");
@@ -598,12 +599,12 @@ function renderDashboard() {
 }
 
 function renderMarketSummary() {
-  const openRounds = state.rounds.filter((round) => round.accepting);
+  const openRounds = state.rounds.filter(isRoundAcceptingNow);
   const closingSoon = openRounds.filter((round) => {
     const remainingMs = new Date(round.close_at).getTime() - Date.now();
     return remainingMs > 0 && remainingMs <= 60 * 60 * 1000;
   }).length;
-  const closedProducts = state.lotteries.filter((lottery) => !getDisplayRoundForLottery(lottery.id)?.accepting).length;
+  const closedProducts = state.lotteries.filter((lottery) => !isRoundAcceptingNow(getDisplayRoundForLottery(lottery.id))).length;
 
   elements.marketSummary.innerHTML = `
     <span>เปิดรับ ${openRounds.length.toLocaleString("th-TH")} งวด</span>
@@ -643,7 +644,7 @@ function renderMarketAdmin() {
                   <strong>${escapeHtml(lottery.name)}</strong>
                   <span>${round ? `${escapeHtml(round.label)} · ${formatRoundCloseTime(round)}` : "ยังไม่มีงวด"}</span>
                   <small>${schedule ? `${escapeHtml(formatScheduleFrequency(schedule))} · ออก ${escapeHtml(schedule.draw_time)}` : "ยังไม่ตั้งเวลา"}</small>
-                  <em class="${status.state === "closing_soon" ? "danger-text" : ""}">${round ? `${status.label}${round.accepting ? ` ${formatCountdownCompact(round)}` : ""}` : "ยังไม่ตั้งงวด"}</em>
+                  <em class="${status.state === "closing_soon" ? "danger-text" : ""}">${round ? `${status.label}${isRoundAcceptingNow(round) ? ` ${formatCountdownCompact(round)}` : ""}` : "ยังไม่ตั้งงวด"}</em>
                   <div class="market-card-actions">
                     <button class="button button-secondary configure-market-button" type="button" data-lottery-id="${escapeHtml(lottery.id)}">ตั้งค่า</button>
                     <button class="button ${schedule?.active ? "button-danger" : "button-primary"} toggle-market-button" type="button" data-schedule-id="${escapeHtml(schedule?.id || "")}" ${schedule ? "" : "disabled"}>
@@ -684,6 +685,7 @@ async function toggleScheduleActive(id) {
       openDaysBefore: schedule.open_days_before,
       openTime: schedule.open_time,
       drawTime: schedule.draw_time,
+      resultTime: schedule.result_time || schedule.draw_time,
       closeBeforeMinutes: schedule.close_before_minutes,
       sourceNote: schedule.source_note,
       active: !schedule.active,
@@ -781,7 +783,7 @@ function renderLotteryBoard() {
                   <strong>${escapeHtml(lottery.name)}</strong>
                   <span>${round ? escapeHtml(round.label) : "ยังไม่มีงวด"}</span>
                   <small>${round ? `ปิดรับ ${formatRoundCloseTime(round)}` : "-"}</small>
-                  <em>${round ? `${status.label}${round.accepting ? ` ${formatCountdownCompact(round)}` : ""}` : "ยังไม่ตั้งงวด"}</em>
+                  <em>${round ? `${status.label}${isRoundAcceptingNow(round) ? ` ${formatCountdownCompact(round)}` : ""}` : "ยังไม่ตั้งงวด"}</em>
                 </button>
               `;
             })
@@ -794,7 +796,7 @@ function renderLotteryBoard() {
   elements.lotteryBoard.querySelectorAll("[data-lottery-id]").forEach((button) => {
     button.addEventListener("click", () => {
       const round = getDisplayRoundForLottery(button.dataset.lotteryId);
-      if (!round?.accepting) return;
+      if (!isRoundAcceptingNow(round)) return;
       activateView("intake");
       elements.ticketRound.value = round.id;
       renderTicketWorkbench();
@@ -1163,7 +1165,7 @@ function getDraftIssues(entry) {
   const issues = [];
   if (!entry.customerId) issues.push("ยังไม่เลือกลูกค้า");
   if (!entry.roundId) issues.push("ยังไม่เลือกงวด");
-  if (entry.roundId && !getRound(entry.roundId)?.accepting) issues.push("งวดนี้ปิดรับแล้ว");
+  if (entry.roundId && !isRoundAcceptingNow(getRound(entry.roundId))) issues.push("งวดนี้ปิดรับแล้ว");
   const betType = getBetType(entry.betTypeId);
   if (!betType || !isValidNumber(entry.number, betType.digits)) issues.push("เลขไม่ตรงประเภท");
   if (!Number.isFinite(entry.amount) || entry.amount <= 0) issues.push("ยอดต้องมากกว่า 0");
@@ -1562,6 +1564,7 @@ async function saveQuickBatch() {
     betTypeId: entry.betTypeId,
     number: entry.number,
     amount: entry.amount,
+    note: elements.quickNote.value.trim(),
     sourceText: entry.sourceText,
   }));
   const normalizedEntries = mergeDuplicateQuickEntries(entries);
@@ -1572,6 +1575,7 @@ async function saveQuickBatch() {
       body: {
         sourceChannel: "line",
         sourceText: elements.quickMessage.value.trim(),
+        note: elements.quickNote.value.trim(),
         entries: normalizedEntries,
       },
     });
@@ -1587,6 +1591,7 @@ async function saveQuickBatch() {
 
 function clearQuickIntake() {
   elements.quickMessage.value = "";
+  elements.quickNote.value = "";
   state.quickParsedEntries = [];
   renderQuickPreview();
 }
@@ -1616,7 +1621,7 @@ function getQuickEntryIssues(entry) {
   const issues = [];
   if (!entry.customerId) issues.push("ไม่มีลูกค้า");
   if (!entry.roundId) issues.push("ไม่มีงวด");
-  if (entry.roundId && !getRound(entry.roundId)?.accepting) issues.push("งวดปิดรับแล้ว");
+  if (entry.roundId && !isRoundAcceptingNow(getRound(entry.roundId))) issues.push("งวดปิดรับแล้ว");
   if (!entry.betTypeId) issues.push("ไม่มีประเภท");
   const betType = getBetType(entry.betTypeId);
   if (!betType || !isValidNumber(entry.number, betType.digits)) issues.push("เลขไม่ตรงประเภท");
@@ -2516,6 +2521,7 @@ function renderResultsOverview() {
           <td>${escapeHtml(round.label)}</td>
           <td>${longDate(round.draw_date)}</td>
           <td>${escapeHtml(resultNumbers(round.id, "three_top") || "-")}</td>
+          <td>${escapeHtml(resultNumbers(round.id, "three_tod") || "-")}</td>
           <td>${escapeHtml(resultNumbers(round.id, "two_top") || "-")}</td>
           <td>${escapeHtml(resultNumbers(round.id, "two_bottom") || "-")}</td>
           <td><span class="status-pill ${resultStatusClass(round)}">${resultStatusLabel(round)}</span></td>
@@ -2524,7 +2530,7 @@ function renderResultsOverview() {
     })
     .join("");
 
-  elements.resultsOverviewBody.innerHTML = rows || '<tr><td colspan="7">ยังไม่มีงวด</td></tr>';
+  elements.resultsOverviewBody.innerHTML = rows || '<tr><td colspan="8">ยังไม่มีงวด</td></tr>';
 }
 
 function renderReview() {
@@ -2595,7 +2601,7 @@ function renderReview() {
           (round) => `
             <article class="compact-row">
               <strong>${escapeHtml(getLotteryName(round.lottery_id))} · ${escapeHtml(round.label)}</strong>
-              <span>${escapeHtml(resultNumbers(round.id, "three_top") || "-")} / ${escapeHtml(resultNumbers(round.id, "two_top") || "-")} / ${escapeHtml(resultNumbers(round.id, "two_bottom") || "-")}</span>
+              <span>${escapeHtml(resultNumbers(round.id, "three_top") || "-")} / ${escapeHtml(resultNumbers(round.id, "three_tod") || "-")} / ${escapeHtml(resultNumbers(round.id, "two_top") || "-")} / ${escapeHtml(resultNumbers(round.id, "two_bottom") || "-")}</span>
             </article>
           `,
         )
@@ -2698,18 +2704,18 @@ function buildFinanceLedger() {
     const round = getRound(entry.round_id);
     rows.push({
       createdAt: entry.created_at,
-      detail: `แทงหวย ${getLotteryName(round?.lottery_id)} · ${round?.label || "-"} · ${getCustomerCode(entry.customer_id)}`,
-      debit: entry.amount,
-      credit: 0,
+      detail: `รับยอด ${getLotteryName(round?.lottery_id)} · ${round?.label || "-"} · ${getCustomerCode(entry.customer_id)}`,
+      debit: 0,
+      credit: entry.amount,
     });
 
     const payout = getEntryPayout(entry);
     if (payout > 0) {
       rows.push({
-        createdAt: entry.updated_at || entry.created_at,
-        detail: `ถูกรางวัล ${getLotteryName(round?.lottery_id)} · ${entry.number} · ${getCustomerCode(entry.customer_id)}`,
-        debit: 0,
-        credit: payout,
+        createdAt: round?.result_finalized_at || entry.updated_at || entry.created_at,
+        detail: `จ่ายรางวัล ${getLotteryName(round?.lottery_id)} · ${entry.number} · ${getCustomerCode(entry.customer_id)}`,
+        debit: payout,
+        credit: 0,
       });
     }
   });
@@ -3192,6 +3198,10 @@ function getDisplayRoundForLottery(lotteryId) {
     findLatestOpenRound(lotteryId) ||
     state.rounds
       .filter((round) => round.lottery_id === lotteryId)
+      .sort((a, b) => new Date(a.close_at) - new Date(b.close_at))
+      .find((round) => new Date(round.close_at).getTime() >= Date.now()) ||
+    state.rounds
+      .filter((round) => round.lottery_id === lotteryId)
       .sort((a, b) => new Date(`${b.draw_date}T${b.draw_time}:00`) - new Date(`${a.draw_date}T${a.draw_time}:00`))[0] ||
     null
   );
@@ -3199,8 +3209,13 @@ function getDisplayRoundForLottery(lotteryId) {
 
 function getAcceptingRounds(lotteryId = "") {
   return state.rounds
-    .filter((round) => round.accepting && (!lotteryId || round.lottery_id === lotteryId))
+    .filter((round) => isRoundAcceptingNow(round) && (!lotteryId || round.lottery_id === lotteryId))
     .sort((a, b) => new Date(a.close_at) - new Date(b.close_at));
+}
+
+function isRoundAcceptingNow(round) {
+  const stateNow = getRoundTimingStatus(round).state;
+  return stateNow === "open" || stateNow === "closing_soon";
 }
 
 function getPayoutRate(lotteryId, betTypeId) {
