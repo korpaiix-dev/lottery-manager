@@ -16,8 +16,8 @@
 
         <section class="portal-user-card">
           <span id="portalClock">--:--:--</span>
-          <strong>สมาชิกทั่วไป</strong>
-          <small>เลือกหวยเพื่อเริ่มรายการ</small>
+          <strong>ผู้เข้าชมทั่วไป</strong>
+          <small>ระบบสมาชิกจะเพิ่มภายหลัง</small>
         </section>
 
         <section class="portal-rate-card">
@@ -35,25 +35,32 @@
       <main class="portal-main">
         <header class="portal-topbar">
           <nav aria-label="เมนูหลัก">
-            <a class="is-active" href="#markets">แทงหวย</a>
-            <a href="#results">รายการแทง</a>
+            <a class="is-active" href="#markets">หน้าหวย</a>
             <a href="#results">ตรวจรางวัล</a>
-            <a href="#announcements">กติกา</a>
-            <a href="#announcements">วิธีเล่นหวย</a>
+            <a href="#schedule">ตารางเวลา</a>
+            <a href="#announcements">ประกาศ</a>
           </nav>
         </header>
 
         <section id="announcements" class="announcement-band">
           <strong>ประกาศ</strong>
-          <p>เลือกหวยจากรายการด้านล่างเพื่อเข้าสู่หน้ารับรายการ ระบบจะแสดงเวลาเปิดปิดและสถานะล่าสุดให้อัตโนมัติ</p>
+          <p>หน้านี้ใช้ดูสถานะหวย เวลาเปิดปิด และผลรางวัลล่าสุด ส่วนการคีย์รายการและการตั้งค่าระบบอยู่ในหลังบ้านแยกต่างหาก</p>
         </section>
 
         <section id="markets" class="portal-section">
           <div class="section-heading">
-            <h1>แทงหวย</h1>
+            <h1>หน้าหวย</h1>
             <span id="marketSummary">กำลังโหลดข้อมูล</span>
           </div>
           <div id="portalBoard" class="portal-board"></div>
+        </section>
+
+        <section id="schedule" class="portal-section">
+          <div class="section-heading">
+            <h2>ตารางเวลาวันนี้</h2>
+            <span>เรียงตามเวลาปิดรับ</span>
+          </div>
+          <div id="todaySchedule" class="schedule-board"></div>
         </section>
 
         <section id="results" class="portal-section">

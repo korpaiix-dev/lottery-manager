@@ -227,10 +227,6 @@ body {
   color: var(--muted);
 }
 
-.portal-card:hover {
-  outline: 2px solid rgba(216, 139, 0, 0.45);
-}
-
 .flag {
   position: relative;
   width: 60px;
@@ -296,6 +292,39 @@ body {
   gap: 10px;
 }
 
+.schedule-board {
+  display: grid;
+  gap: 8px;
+}
+
+.schedule-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 12px;
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+  padding: 10px 0;
+}
+
+.schedule-row span {
+  color: var(--muted);
+}
+
+.schedule-row em {
+  color: var(--good);
+  font-style: normal;
+}
+
+.schedule-row.is-closing em {
+  color: var(--danger);
+  font-weight: 700;
+}
+
+.schedule-row.is-upcoming em,
+.schedule-row.is-finished em {
+  color: var(--muted);
+}
+
 .result-card {
   display: grid;
   grid-template-columns: 1.1fr repeat(3, minmax(70px, 0.5fr));
@@ -337,6 +366,10 @@ body {
   }
 
   .result-card {
+    grid-template-columns: 1fr;
+  }
+
+  .schedule-row {
     grid-template-columns: 1fr;
   }
 }

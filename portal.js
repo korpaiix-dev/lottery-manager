@@ -12,6 +12,7 @@ const elements = {
   clock: document.querySelector("#portalClock"),
   summary: document.querySelector("#marketSummary"),
   board: document.querySelector("#portalBoard"),
+  schedule: document.querySelector("#todaySchedule"),
   results: document.querySelector("#latestResults"),
 };
 
@@ -48,6 +49,7 @@ function render() {
     .join("");
 
   renderResults();
+  renderSchedule();
 }
 
 function renderLotteryCard(lottery) {
@@ -55,7 +57,7 @@ function renderLotteryCard(lottery) {
   const status = getRoundTimingStatus(round);
   const closeText = round ? formatDateTime(round.close_at) : "ยังไม่มีงวด";
   return `
-    <a class="portal-card ${status.cardClass}" href="/admin#intake" data-lottery-id="${escapeHtml(lottery.id)}">
+    <article class="portal-card ${status.cardClass}">
       <div class="portal-card-head">
         <span class="flag ${getLotteryFlagClass(lottery.id)}" aria-hidden="true"></span>
         <div>
@@ -71,8 +73,30 @@ function renderLotteryCard(lottery) {
         <small>สถานะ</small>
         <em>${escapeHtml(status.label)}${round?.accepting ? ` ${formatCountdownCompact(round)}` : ""}</em>
       </div>
-    </a>
+    </article>
   `;
+}
+
+function renderSchedule() {
+  const today = localDateKey(new Date());
+  const rounds = state.rounds
+    .filter((round) => localDateKey(new Date(round.close_at)) === today)
+    .sort((a, b) => new Date(a.close_at) - new Date(b.close_at));
+  elements.schedule.innerHTML = rounds.length
+    ? rounds
+        .map((round) => {
+          const lottery = state.lotteries.find((item) => item.id === round.lottery_id);
+          const timing = getRoundTimingStatus(round);
+          return `
+            <article class="schedule-row ${timing.cardClass}">
+              <strong>${escapeHtml(lottery?.name || "-")}</strong>
+              <span>ปิดรับ ${escapeHtml(formatClock(round.close_at))}</span>
+              <em>${escapeHtml(timing.label)}${round.accepting ? ` ${formatCountdownCompact(round)}` : ""}</em>
+            </article>
+          `;
+        })
+        .join("")
+    : '<div class="empty-state">วันนี้ยังไม่มีงวด</div>';
 }
 
 function renderResults() {
@@ -157,6 +181,25 @@ function formatDateTime(value) {
     hour: "2-digit",
     minute: "2-digit",
     hour12: false,
+    timeZone: "Asia/Bangkok",
+  }).format(date);
+}
+
+function formatClock(value) {
+  if (!value) return "-";
+  return new Intl.DateTimeFormat("th-TH", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+    timeZone: "Asia/Bangkok",
+  }).format(new Date(value));
+}
+
+function localDateKey(date) {
+  return new Intl.DateTimeFormat("en-CA", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
     timeZone: "Asia/Bangkok",
   }).format(date);
 }
