@@ -77,6 +77,7 @@ const state = {
   ticketBetTypeId: "two_pair",
   ticketReverseEnabled: false,
   ticketUseDoubles: false,
+  ticketRunDigits: [],
   latestReceiptTicketId: null,
   latestViewerCredentials: null,
   announcedRoundIds: new Set(),
@@ -329,6 +330,12 @@ function bindEvents() {
   elements.ticketRound.addEventListener("change", renderTicketWorkbench);
   elements.ticketNote.addEventListener("input", renderTicketReceiptPreview);
   elements.ticketNumber.addEventListener("input", () => {
+    if (getIntakeAction()?.target === "run_pair") {
+      state.ticketRunDigits = elements.ticketNumber.value
+        .replace(/\D/g, "")
+        .split("")
+        .filter((digit, index, digits) => digits.indexOf(digit) === index);
+    }
     renderTicketLimitPreview();
     renderTicketExpansionPreview();
   });
@@ -927,6 +934,7 @@ function renderTicketBetTypeTabs() {
         state.ticketBetTypeId = button.dataset.ticketBetType;
         state.ticketReverseEnabled = false;
         state.ticketUseDoubles = false;
+        state.ticketRunDigits = [];
         syncIntakeNumberLength();
         renderTicketWorkbench();
       elements.ticketNumber.focus();
@@ -984,6 +992,7 @@ function addTicketDraftEntry() {
   state.latestReceiptTicketId = null;
   elements.ticketNumber.value = "";
   state.ticketUseDoubles = false;
+  state.ticketRunDigits = [];
   elements.ticketNumber.focus();
   renderTicketWorkbench();
 }
@@ -1055,7 +1064,7 @@ function renderTicketActionTools() {
   const supportsDoubles = action?.target === "pair";
   const supportsReverse = action?.target === "pair" || action?.target === "three_pair";
   const hintByAction = {
-    run_pair: "เลขวิ่ง 1 ตัว ใส่ยอดบนหรือล่าง แล้วเพิ่มลงโพยได้ทันที",
+    run_pair: "เลขวิ่ง เลือกได้หลายตัว แล้วใส่ยอดบนหรือล่างก่อนเพิ่มลงโพย",
     two_pair: "2 ตัว เลือกเลขเดี่ยว กลับเลข หรือเลขเบิ้ลได้ในชุดเดียว",
     six_return: "6 กลับ ใส่เลข 3 ตัว ระบบจะแตกชุดกลับให้ครบก่อนเพิ่มลงโพย",
     nineteen_gate: "19 ประตู ใส่เลขหลักเดียว ระบบจะแตกเลข 2 ตัวที่เกี่ยวข้องให้ครบ",
@@ -1076,11 +1085,16 @@ function renderTicketActionTools() {
 
   elements.ticketKeypad.innerHTML = Array.from({ length: 10 }, (_, index) => {
     const digit = index === 9 ? 0 : index + 1;
-    return `<button type="button" data-ticket-key="${digit}">${digit}</button>`;
+    const isActive = state.ticketRunDigits.includes(String(digit));
+    return `<button class="${isActive ? "is-active" : ""}" type="button" data-ticket-key="${digit}">${digit}</button>`;
   }).join("");
   elements.ticketKeypad.querySelectorAll("[data-ticket-key]").forEach((button) => {
     button.addEventListener("click", () => {
-      elements.ticketNumber.value = button.dataset.ticketKey;
+      const digit = button.dataset.ticketKey;
+      state.ticketRunDigits = state.ticketRunDigits.includes(digit)
+        ? state.ticketRunDigits.filter((item) => item !== digit)
+        : [...state.ticketRunDigits, digit];
+      elements.ticketNumber.value = state.ticketRunDigits.join("");
       renderTicketLimitPreview();
       renderTicketExpansionPreview();
       elements.ticketTopAmount.focus();
@@ -1105,6 +1119,14 @@ function toggleTicketReverse() {
 
 function getIntakeNumbers(action, number) {
   if (!action) return [];
+  if (action.target === "run_pair") {
+    return state.ticketRunDigits.length
+      ? state.ticketRunDigits
+      : number
+          .replace(/\D/g, "")
+          .split("")
+          .filter((digit, index, digits) => digits.indexOf(digit) === index);
+  }
   if (state.ticketUseDoubles && action.target === "pair") {
     return Array.from({ length: 10 }, (_, digit) => `${digit}${digit}`);
   }
@@ -1145,6 +1167,17 @@ function getDraftIssues(entry) {
   if (!betType || !isValidNumber(entry.number, betType.digits)) issues.push("เลขไม่ตรงประเภท");
   if (!Number.isFinite(entry.amount) || entry.amount <= 0) issues.push("ยอดต้องมากกว่า 0");
   return issues;
+}
+
+function getIntakeValidationMessage() {
+  const action = getIntakeAction();
+  const number = elements.ticketNumber.value.trim();
+  const numbers = getIntakeNumbers(action, number);
+  if (!elements.ticketRound.value) return "เลือกงวดก่อน";
+  if (!numbers.length) return "เลือกหรือใส่เลขก่อน";
+  const entries = buildIntakeEntries({ customerId: "walkin", roundId: elements.ticketRound.value, number });
+  if (entries.length) return "";
+  return action?.target === "three_pair" ? "ใส่ยอดบนหรือยอดโต๊ดก่อน" : "ใส่ยอดก่อนเพิ่มลงโพย";
 }
 
 function renderTicketDraft() {
@@ -1222,6 +1255,19 @@ function renderTicketReceiptPreview() {
   const customerLabel = note || "ยังไม่ได้ใส่ชื่อ LINE ลูกค้า";
   const createdAt = savedTicket ? formatDateTime(savedTicket.created_at) : "ยังไม่บันทึก";
   const total = sum(draftEntries.map((entry) => entry.amount));
+  const receiptBetTypeId =
+    draftEntries[0]?.bet_type_id ||
+    draftEntries[0]?.betTypeId ||
+    (state.ticketBetTypeId === "run_pair"
+      ? "run_top"
+      : state.ticketBetTypeId === "three_pair"
+        ? "three_top"
+        : state.ticketBetTypeId === "nineteen_gate"
+          ? "two_top"
+          : state.ticketBetTypeId === "six_return"
+            ? "three_top"
+            : "two_top");
+  const receiptRate = round ? getPayoutRate(round.lottery_id, receiptBetTypeId) : 0;
   const rows = draftEntries.length
     ? draftEntries
         .map(
@@ -1237,13 +1283,16 @@ function renderTicketReceiptPreview() {
     : '<p class="receipt-empty">เพิ่มรายการแล้วบิลจะขึ้นตรงนี้ทันที</p>';
 
   elements.ticketReceiptPreview.innerHTML = `
-    <header class="receipt-header">
-      <div>
-        <span>บิลยืนยันรายการ</span>
-        <strong>${escapeHtml(code)}</strong>
-      </div>
-      <div class="receipt-status">${savedTicket ? ticketStatusLabel(savedTicket.status) : "รอบันทึก"}</div>
-    </header>
+      <header class="receipt-header">
+        <div>
+          <span>บิลยืนยันรายการ</span>
+          <strong>${escapeHtml(code)}</strong>
+        </div>
+        <div class="receipt-header-side">
+          <span class="flag ${round ? getLotteryFlagClass(round.lottery_id) : "flag-generic"} receipt-flag" aria-hidden="true"></span>
+          <div class="receipt-status">${savedTicket ? ticketStatusLabel(savedTicket.status) : "รอบันทึก"}</div>
+        </div>
+      </header>
     <section class="receipt-meta">
       <div>
         <span>ชื่อลูกค้า / LINE</span>
@@ -1257,11 +1306,15 @@ function renderTicketReceiptPreview() {
         <span>งวด</span>
         <strong>${escapeHtml(round ? `${round.label} · ${shortDate(round.draw_date)} ${round.draw_time}` : "-")}</strong>
       </div>
-      <div>
-        <span>เวลาออกบิล</span>
-        <strong>${escapeHtml(createdAt)}</strong>
-      </div>
-    </section>
+        <div>
+          <span>เวลาออกบิล</span>
+          <strong>${escapeHtml(createdAt)}</strong>
+        </div>
+        <div>
+          <span>อัตราจ่าย</span>
+          <strong>บาทละ ${formatRate(receiptRate)}</strong>
+        </div>
+      </section>
     <section class="receipt-lines">${rows}</section>
     <footer class="receipt-total">
       <span>รวมทั้งบิล</span>
@@ -1325,14 +1378,22 @@ function renderTicketExpansionPreview() {
   const number = elements.ticketNumber.value.trim();
   const action = getIntakeAction();
   const previewNumbers = getIntakeNumbers(action, number);
-  const isNumberReady = state.ticketUseDoubles || isValidNumber(number, action?.digits || 0);
+  const isNumberReady =
+    action?.target === "run_pair"
+      ? previewNumbers.length > 0
+      : state.ticketUseDoubles || isValidNumber(number, action?.digits || 0);
   if (!action || !isNumberReady || !previewNumbers.length) {
     elements.ticketExpansionPreview.classList.add("hidden");
     elements.ticketExpansionPreview.innerHTML = "";
+    elements.addTicketEntryBtn.disabled = true;
+    elements.addTicketEntryBtn.title = getIntakeValidationMessage();
     return;
   }
   const previewEntries = buildIntakeEntries({ customerId: "walkin", roundId, number });
   const previewTotal = sum(previewEntries.map((entry) => entry.amount));
+  const validationMessage = getIntakeValidationMessage();
+  elements.addTicketEntryBtn.disabled = Boolean(validationMessage);
+  elements.addTicketEntryBtn.title = validationMessage;
 
   elements.ticketExpansionPreview.classList.remove("hidden");
   elements.ticketExpansionPreview.innerHTML = `
@@ -1345,6 +1406,7 @@ function renderTicketExpansionPreview() {
         .map((entryNumber) => `<span>${escapeHtml(entryNumber)}</span>`)
         .join("")}
     </div>
+    ${validationMessage ? `<small>${escapeHtml(validationMessage)}</small>` : ""}
   `;
 }
 

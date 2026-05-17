@@ -932,6 +932,12 @@ small {
   background: #fff0bf;
 }
 
+.ticket-keypad button.is-active {
+  border-color: #0f8f8b;
+  background: #0f8f8b;
+  color: #fff;
+}
+
 .ticket-entry-grid {
   display: grid;
   grid-template-columns: minmax(140px, 1fr) minmax(110px, 0.55fr) minmax(110px, 0.55fr) auto;
@@ -974,6 +980,10 @@ small {
   border-radius: 999px;
   background: #fff;
   font-size: 13px;
+}
+
+.ticket-expansion-preview small {
+  color: #a23a2f;
 }
 
 .ticket-inline-note {
@@ -1043,6 +1053,12 @@ small {
   padding-bottom: 12px;
 }
 
+.receipt-header-side {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
 .receipt-header div:first-child {
   display: grid;
   gap: 4px;
@@ -1057,6 +1073,11 @@ small {
 
 .receipt-header strong {
   font-size: 20px;
+}
+
+.receipt-flag {
+  width: 34px;
+  min-width: 34px;
 }
 
 .receipt-status {
