@@ -33,13 +33,11 @@ const BET_TYPE_PATTERNS = [
 ];
 
 const INTAKE_ACTIONS = [
-  { id: "run_top", label: "วิ่งบน", digits: 1, target: "single" },
-  { id: "run_bottom", label: "วิ่งล่าง", digits: 1, target: "single" },
+  { id: "run_pair", label: "วิ่ง", digits: 1, target: "run_pair" },
   { id: "two_pair", label: "2 ตัว", digits: 2, target: "pair" },
   { id: "six_return", label: "6 กลับ", digits: 3, target: "six_return" },
   { id: "nineteen_gate", label: "19 ประตู", digits: 1, target: "nineteen_gate" },
-  { id: "three_top", label: "3 ตัวบน", digits: 3, target: "single" },
-  { id: "three_tod", label: "3 ตัวโต๊ด", digits: 3, target: "single" },
+  { id: "three_pair", label: "3 ตัว", digits: 3, target: "three_pair" },
 ];
 
 const LOTTERY_CATEGORIES = [
@@ -143,6 +141,10 @@ const elements = {
   ticketNumber: document.querySelector("#ticketNumberInput"),
   ticketTopAmount: document.querySelector("#ticketTopAmountInput"),
   ticketBottomAmount: document.querySelector("#ticketBottomAmountInput"),
+  ticketTodAmount: document.querySelector("#ticketTodAmountInput"),
+  ticketTopAmountField: document.querySelector("#ticketTopAmountField"),
+  ticketBottomAmountField: document.querySelector("#ticketBottomAmountField"),
+  ticketTodAmountField: document.querySelector("#ticketTodAmountField"),
   ticketExpansionPreview: document.querySelector("#ticketExpansionPreview"),
   addTicketEntryBtn: document.querySelector("#addTicketEntryBtn"),
   ticketLimitPreview: document.querySelector("#ticketLimitPreview"),
@@ -329,9 +331,14 @@ function bindEvents() {
     renderTicketLimitPreview();
     renderTicketExpansionPreview();
   });
+  elements.ticketTodAmount.addEventListener("input", () => {
+    renderTicketLimitPreview();
+    renderTicketExpansionPreview();
+  });
   elements.ticketNumber.addEventListener("keydown", handleTicketNumberKeydown);
   elements.ticketTopAmount.addEventListener("keydown", handleTicketAmountKeydown);
   elements.ticketBottomAmount.addEventListener("keydown", handleTicketAmountKeydown);
+  elements.ticketTodAmount.addEventListener("keydown", handleTicketAmountKeydown);
   elements.addTicketEntryBtn.addEventListener("click", addTicketDraftEntry);
   elements.clearTicketBtn.addEventListener("click", clearTicketDraft);
   elements.saveTicketBtn.addEventListener("click", saveTicketDraft);
@@ -808,6 +815,7 @@ function renderRecentEntries() {
 function renderTicketWorkbench() {
   renderTicketBetTypeTabs();
   renderTicketHeader();
+  renderTicketAmountFields();
   renderTicketDraft();
   renderTicketReceiptPreview();
   renderTicketLimitPreview();
@@ -860,11 +868,13 @@ function renderTicketHeader() {
   elements.ticketCountdown.textContent = formatCountdown(round);
   const selectedAction = getIntakeAction();
   const referenceBetType =
-    selectedAction?.id === "two_pair" || selectedAction?.id === "nineteen_gate"
-      ? "two_top"
-      : selectedAction?.id === "six_return"
-        ? "three_top"
-        : selectedAction?.id;
+    selectedAction?.id === "run_pair"
+      ? "run_top"
+      : selectedAction?.id === "two_pair" || selectedAction?.id === "nineteen_gate"
+        ? "two_top"
+        : selectedAction?.id === "six_return" || selectedAction?.id === "three_pair"
+          ? "three_top"
+          : selectedAction?.id;
   elements.ticketRateLabel.textContent = `${selectedAction?.label || "-"} บาทละ ${formatRate(getPayoutRate(round.lottery_id, referenceBetType))}`;
   elements.ticketFlag.className = `flag ${getLotteryFlagClass(round.lottery_id)} large-flag`;
   elements.ticketComposeRoundLabel.textContent = `${getLotteryName(round.lottery_id)} · ${round.label}`;
@@ -954,8 +964,15 @@ function buildIntakeEntries({ customerId, roundId, number }) {
   const action = getIntakeAction();
   const topAmount = parseAmount(elements.ticketTopAmount.value);
   const bottomAmount = parseAmount(elements.ticketBottomAmount.value);
+  const todAmount = parseAmount(elements.ticketTodAmount.value);
   if (!action) return [];
 
+  if (action.target === "run_pair") {
+    return [
+      ...(topAmount > 0 ? [{ customerId, roundId, betTypeId: "run_top", number, amount: topAmount }] : []),
+      ...(bottomAmount > 0 ? [{ customerId, roundId, betTypeId: "run_bottom", number, amount: bottomAmount }] : []),
+    ];
+  }
   if (action.target === "pair") {
     return [
       ...(topAmount > 0 ? [{ customerId, roundId, betTypeId: "two_top", number, amount: topAmount }] : []),
@@ -976,8 +993,13 @@ function buildIntakeEntries({ customerId, roundId, number }) {
       amount: topAmount,
     }));
   }
-  const amount = action.id === "run_bottom" ? bottomAmount : topAmount;
-  return [{ customerId, roundId, betTypeId: action.id, number, amount }];
+  if (action.target === "three_pair") {
+    return [
+      ...(topAmount > 0 ? [{ customerId, roundId, betTypeId: "three_top", number, amount: topAmount }] : []),
+      ...(todAmount > 0 ? [{ customerId, roundId, betTypeId: "three_tod", number, amount: todAmount }] : []),
+    ];
+  }
+  return [];
 }
 
 function getIntakeAction() {
@@ -989,6 +1011,15 @@ function syncIntakeNumberLength() {
   elements.ticketNumber.maxLength = digits;
   elements.ticketNumber.placeholder = digits === 1 ? "เช่น 5" : digits === 2 ? "เช่น 45" : "เช่น 123";
   elements.ticketNumber.value = elements.ticketNumber.value.replace(/\D/g, "").slice(0, digits);
+}
+
+function renderTicketAmountFields() {
+  const target = getIntakeAction()?.target;
+  const showBottom = target === "run_pair" || target === "pair";
+  const showTod = target === "three_pair";
+  elements.ticketBottomAmountField.classList.toggle("hidden", !showBottom);
+  elements.ticketTodAmountField.classList.toggle("hidden", !showTod);
+  elements.ticketTopAmountField.classList.toggle("hidden", false);
 }
 
 function permutations(value) {
@@ -1197,8 +1228,20 @@ function renderTicketLimitPreview() {
 function renderTicketExpansionPreview() {
   const roundId = elements.ticketRound.value;
   const number = elements.ticketNumber.value.trim();
+  const action = getIntakeAction();
+  if (!action || !isValidNumber(number, action.digits)) {
+    elements.ticketExpansionPreview.classList.add("hidden");
+    elements.ticketExpansionPreview.innerHTML = "";
+    return;
+  }
   const previewEntries = buildIntakeEntries({ customerId: "walkin", roundId, number });
-  if (!previewEntries.length) {
+  const previewNumbers =
+    action.target === "six_return"
+      ? [...new Set(permutations(number))]
+      : action.target === "nineteen_gate"
+        ? nineteenGateNumbers(number)
+        : previewEntries.map((entry) => entry.number);
+  if (!previewNumbers.length) {
     elements.ticketExpansionPreview.classList.add("hidden");
     elements.ticketExpansionPreview.innerHTML = "";
     return;
@@ -1208,11 +1251,8 @@ function renderTicketExpansionPreview() {
   elements.ticketExpansionPreview.innerHTML = `
     <strong>เลขที่จะเพิ่ม</strong>
     <div>
-      ${previewEntries
-        .map(
-          (entry) =>
-            `<span>${escapeHtml(entry.number)} · ${escapeHtml(getBetTypeName(entry.betTypeId))} · ${money(entry.amount)}</span>`,
-        )
+      ${previewNumbers
+        .map((entryNumber) => `<span>${escapeHtml(entryNumber)}</span>`)
         .join("")}
     </div>
   `;

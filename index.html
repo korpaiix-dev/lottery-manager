@@ -247,18 +247,26 @@
                       <span>ใส่เลข</span>
                       <input id="ticketNumberInput" inputmode="numeric" maxlength="3" placeholder="เช่น 45" />
                     </label>
-                    <label class="field">
-                      <span>บน</span>
-                      <input id="ticketTopAmountInput" inputmode="decimal" placeholder="0.00" />
-                    </label>
-                    <label class="field">
-                      <span>ล่าง</span>
-                      <input id="ticketBottomAmountInput" inputmode="decimal" placeholder="0.00" />
-                    </label>
-                  <button id="addTicketEntryBtn" class="button button-primary" type="button">+ เพิ่มลงโพย</button>
-                </div>
-                <div id="ticketExpansionPreview" class="ticket-expansion-preview hidden"></div>
-              </section>
+                      <label id="ticketTopAmountField" class="field">
+                        <span>บน</span>
+                        <input id="ticketTopAmountInput" inputmode="decimal" placeholder="0.00" />
+                      </label>
+                      <label id="ticketBottomAmountField" class="field">
+                        <span>ล่าง</span>
+                        <input id="ticketBottomAmountInput" inputmode="decimal" placeholder="0.00" />
+                      </label>
+                      <label id="ticketTodAmountField" class="field hidden">
+                        <span>โต๊ด</span>
+                        <input id="ticketTodAmountInput" inputmode="decimal" placeholder="0.00" />
+                      </label>
+                    <button id="addTicketEntryBtn" class="button button-primary" type="button">+ เพิ่มลงโพย</button>
+                  </div>
+                  <div id="ticketExpansionPreview" class="ticket-expansion-preview hidden"></div>
+                  <label class="field ticket-inline-note">
+                    <span>หมายเหตุ / ชื่อ LINE ลูกค้า</span>
+                    <input id="ticketNoteInput" maxlength="240" placeholder="เช่น คุณแดง LINE: Daeng789" />
+                  </label>
+                </section>
 
                 <div id="ticketLimitPreview" class="limit-preview hidden"></div>
 
@@ -282,11 +290,6 @@
                   </div>
                   <div id="ticketDraftEmpty" class="empty-state">ยังไม่มีรายการในโพย</div>
                 </div>
-
-                <label class="field">
-                  <span>หมายเหตุ / ชื่อ LINE ลูกค้า</span>
-                  <input id="ticketNoteInput" maxlength="240" placeholder="เช่น คุณแดง LINE: Daeng789" />
-                </label>
 
                 <div class="ticket-summary-row">
                   <div>

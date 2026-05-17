@@ -904,6 +904,10 @@ small {
   font-size: 13px;
 }
 
+.ticket-inline-note {
+  margin-top: 2px;
+}
+
 .ticket-draft-wrap {
   border: 1px solid #ead85a;
   border-radius: 8px;
