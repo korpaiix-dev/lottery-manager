@@ -273,8 +273,8 @@
                 </div>
 
                 <label class="field">
-                  <span>หมายเหตุ</span>
-                  <input id="ticketNoteInput" maxlength="240" placeholder="รายละเอียดเพิ่มเติมถ้ามี" />
+                  <span>หมายเหตุ / ชื่อ LINE ลูกค้า</span>
+                  <input id="ticketNoteInput" maxlength="240" placeholder="เช่น คุณแดง LINE: Daeng789" />
                 </label>
 
                 <div class="ticket-summary-row">
@@ -285,6 +285,13 @@
                   </div>
                   <button id="saveTicketBtn" class="button button-primary" type="button">บันทึกโพย</button>
                 </div>
+
+                <section class="receipt-preview-wrap">
+                  <div class="panel-heading compact-heading">
+                    <h3>ตัวอย่างบิลสำหรับส่งลูกค้า</h3>
+                  </div>
+                  <article id="ticketReceiptPreview" class="receipt-card"></article>
+                </section>
               </section>
 
               <aside class="intake-side-stack">

@@ -66,6 +66,7 @@ const state = {
   quickParsedEntries: [],
   ticketDraftEntries: [],
   ticketBetTypeId: "two_top",
+  latestReceiptTicketId: null,
   latestViewerCredentials: null,
   announcedRoundIds: new Set(),
 };
@@ -136,6 +137,7 @@ const elements = {
   clearTicketBtn: document.querySelector("#clearTicketBtn"),
   ticketNote: document.querySelector("#ticketNoteInput"),
   ticketTotalAmount: document.querySelector("#ticketTotalAmount"),
+  ticketReceiptPreview: document.querySelector("#ticketReceiptPreview"),
   saveTicketBtn: document.querySelector("#saveTicketBtn"),
   ticketHistoryList: document.querySelector("#ticketHistoryList"),
   ticketLimitList: document.querySelector("#ticketLimitList"),
@@ -300,6 +302,7 @@ function bindEvents() {
 
   elements.ticketCustomer.addEventListener("change", renderTicketWorkbench);
   elements.ticketRound.addEventListener("change", renderTicketWorkbench);
+  elements.ticketNote.addEventListener("input", renderTicketReceiptPreview);
   elements.ticketNumber.addEventListener("input", renderTicketLimitPreview);
   elements.ticketAmount.addEventListener("input", renderTicketLimitPreview);
   elements.ticketNumber.addEventListener("keydown", handleTicketNumberKeydown);
@@ -700,6 +703,7 @@ function renderTicketWorkbench() {
   renderTicketBetTypeTabs();
   renderTicketHeader();
   renderTicketDraft();
+  renderTicketReceiptPreview();
   renderTicketLimitPreview();
   renderTicketHistory();
   renderTicketLimits();
@@ -836,6 +840,7 @@ function addTicketDraftEntry() {
       amount,
     });
   }
+  state.latestReceiptTicketId = null;
   elements.ticketNumber.value = "";
   elements.ticketNumber.focus();
   renderTicketWorkbench();
@@ -906,6 +911,7 @@ async function saveTicketDraft() {
         })),
       },
     });
+    state.latestReceiptTicketId = inserted[0]?.ticket_id || null;
     state.ticketDraftEntries = [];
     elements.ticketNote.value = "";
     await refreshState();
@@ -914,6 +920,64 @@ async function saveTicketDraft() {
   } catch (error) {
     handleLimitError(error);
   }
+}
+
+function renderTicketReceiptPreview() {
+  const savedTicket = getTicket(state.latestReceiptTicketId);
+  const savedEntries = savedTicket ? state.entries.filter((entry) => entry.ticket_id === savedTicket.id) : [];
+  const round = savedTicket ? getRound(savedTicket.round_id) : getRound(elements.ticketRound.value);
+  const draftEntries = savedTicket ? savedEntries : state.ticketDraftEntries;
+  const note = savedTicket?.note || elements.ticketNote.value.trim();
+  const code = savedTicket?.code || "รหัสบิลจะออกหลังบันทึก";
+  const customerLabel = note || "ยังไม่ได้ใส่ชื่อ LINE ลูกค้า";
+  const createdAt = savedTicket ? formatDateTime(savedTicket.created_at) : "ยังไม่บันทึก";
+  const total = sum(draftEntries.map((entry) => entry.amount));
+  const rows = draftEntries.length
+    ? draftEntries
+        .map(
+          (entry) => `
+            <div class="receipt-row">
+              <span>${escapeHtml(getBetTypeName(entry.bet_type_id || entry.betTypeId))}</span>
+              <strong>${escapeHtml(entry.number)}</strong>
+              <em>${money(entry.amount)}</em>
+            </div>
+          `,
+        )
+        .join("")
+    : '<p class="receipt-empty">เพิ่มรายการแล้วบิลจะขึ้นตรงนี้ทันที</p>';
+
+  elements.ticketReceiptPreview.innerHTML = `
+    <header class="receipt-header">
+      <div>
+        <span>บิลยืนยันรายการ</span>
+        <strong>${escapeHtml(code)}</strong>
+      </div>
+      <div class="receipt-status">${savedTicket ? ticketStatusLabel(savedTicket.status) : "รอบันทึก"}</div>
+    </header>
+    <section class="receipt-meta">
+      <div>
+        <span>ชื่อลูกค้า / LINE</span>
+        <strong>${escapeHtml(customerLabel)}</strong>
+      </div>
+      <div>
+        <span>หวย</span>
+        <strong>${escapeHtml(round ? getLotteryName(round.lottery_id) : "-")}</strong>
+      </div>
+      <div>
+        <span>งวด</span>
+        <strong>${escapeHtml(round ? `${round.label} · ${shortDate(round.draw_date)} ${round.draw_time}` : "-")}</strong>
+      </div>
+      <div>
+        <span>เวลาออกบิล</span>
+        <strong>${escapeHtml(createdAt)}</strong>
+      </div>
+    </section>
+    <section class="receipt-lines">${rows}</section>
+    <footer class="receipt-total">
+      <span>รวมทั้งบิล</span>
+      <strong>${money(total)}</strong>
+    </footer>
+  `;
 }
 
 function renderTicketLimitPreview() {

@@ -881,6 +881,111 @@ small {
   font-size: 24px;
 }
 
+.receipt-preview-wrap {
+  display: grid;
+  gap: 10px;
+}
+
+.receipt-card {
+  display: grid;
+  gap: 14px;
+  border: 1px solid #d9c15a;
+  border-radius: 8px;
+  background: #fff;
+  padding: 16px;
+}
+
+.receipt-header,
+.receipt-meta,
+.receipt-row,
+.receipt-total {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.receipt-header {
+  align-items: center;
+  border-bottom: 1px dashed #d9c15a;
+  padding-bottom: 12px;
+}
+
+.receipt-header div:first-child {
+  display: grid;
+  gap: 4px;
+}
+
+.receipt-header span,
+.receipt-meta span,
+.receipt-total span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.receipt-header strong {
+  font-size: 20px;
+}
+
+.receipt-status {
+  border-radius: 999px;
+  background: #fff3dd;
+  color: #9a5800;
+  padding: 6px 10px;
+  font-size: 13px;
+}
+
+.receipt-meta {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.receipt-meta div {
+  display: grid;
+  gap: 4px;
+}
+
+.receipt-lines {
+  display: grid;
+  gap: 8px;
+}
+
+.receipt-row {
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 8px;
+}
+
+.receipt-row:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.receipt-row strong {
+  min-width: 52px;
+  text-align: center;
+}
+
+.receipt-row em {
+  color: var(--text);
+  font-style: normal;
+}
+
+.receipt-empty {
+  margin-bottom: 0;
+  color: var(--muted);
+  text-align: center;
+}
+
+.receipt-total {
+  align-items: baseline;
+  border-top: 1px dashed #d9c15a;
+  padding-top: 12px;
+}
+
+.receipt-total strong {
+  font-size: 24px;
+}
+
 .intake-side-stack {
   display: grid;
   gap: 18px;
@@ -1748,6 +1853,17 @@ td.credit {
 
   .ticket-compose-heading {
     flex-direction: column;
+  }
+
+  .receipt-header,
+  .receipt-row,
+  .receipt-total {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .receipt-meta {
+    grid-template-columns: 1fr;
   }
 
   .compact-row {
