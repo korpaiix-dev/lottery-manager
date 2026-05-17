@@ -21,7 +21,7 @@
         </section>
 
         <section class="portal-rate-card">
-          <h2>อัตราจ่ายตัวอย่าง</h2>
+          <h2>อัตราจ่าย</h2>
           <dl>
             <div><dt>2 ตัว</dt><dd>70</dd></div>
             <div><dt>3 ตัว</dt><dd>600</dd></div>
@@ -36,6 +36,7 @@
         <header class="portal-topbar">
           <nav aria-label="เมนูหลัก">
             <a class="is-active" href="#markets">หน้าหวย</a>
+            <a href="#closingSoon">ใกล้ปิด</a>
             <a href="#results">ตรวจรางวัล</a>
             <a href="#schedule">ตารางเวลา</a>
             <a href="#announcements">ประกาศ</a>
@@ -44,7 +45,36 @@
 
         <section id="announcements" class="announcement-band">
           <strong>ประกาศ</strong>
-          <p>หน้านี้ใช้ดูสถานะหวย เวลาเปิดปิด และผลรางวัลล่าสุด ส่วนการคีย์รายการและการตั้งค่าระบบอยู่ในหลังบ้านแยกต่างหาก</p>
+          <p>ดูหวยที่เปิดรับ เวลาปิดรับ และผลรางวัลล่าสุดได้จากหน้านี้ ส่วนงานคีย์รายการและการตั้งค่าระบบอยู่ในหลังบ้านแยกต่างหาก</p>
+        </section>
+
+        <section class="portal-section portal-overview">
+          <div class="overview-grid">
+            <article>
+              <span>หวยทั้งหมด</span>
+              <strong id="lotteryCount">0</strong>
+            </article>
+            <article>
+              <span>เปิดรับตอนนี้</span>
+              <strong id="openRoundCount">0</strong>
+            </article>
+            <article>
+              <span>ใกล้ปิดใน 5 นาที</span>
+              <strong id="closingRoundCount">0</strong>
+            </article>
+            <article>
+              <span>ประกาศผลแล้ว</span>
+              <strong id="finalizedRoundCount">0</strong>
+            </article>
+          </div>
+        </section>
+
+        <section id="closingSoon" class="portal-section">
+          <div class="section-heading">
+            <h2>งวดที่ควรจับตา</h2>
+            <span>เปิดรับอยู่และเรียงตามเวลาปิด</span>
+          </div>
+          <div id="watchList" class="watch-board"></div>
         </section>
 
         <section id="markets" class="portal-section">

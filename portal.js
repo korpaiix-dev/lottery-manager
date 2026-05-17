@@ -12,8 +12,13 @@ const elements = {
   clock: document.querySelector("#portalClock"),
   summary: document.querySelector("#marketSummary"),
   board: document.querySelector("#portalBoard"),
+  watchList: document.querySelector("#watchList"),
   schedule: document.querySelector("#todaySchedule"),
   results: document.querySelector("#latestResults"),
+  lotteryCount: document.querySelector("#lotteryCount"),
+  openRoundCount: document.querySelector("#openRoundCount"),
+  closingRoundCount: document.querySelector("#closingRoundCount"),
+  finalizedRoundCount: document.querySelector("#finalizedRoundCount"),
 };
 
 let state = { lotteries: [], rounds: [], results: [], scheduleTemplates: [] };
@@ -31,7 +36,14 @@ async function boot() {
 
 function render() {
   const liveRounds = state.rounds.map((round) => ({ ...round, timing: getRoundTimingStatus(round) }));
-  elements.summary.textContent = `${state.lotteries.length.toLocaleString("th-TH")} หวย · เปิดรับ ${liveRounds.filter((round) => round.timing.state === "open" || round.timing.state === "closing_soon").length.toLocaleString("th-TH")} งวด`;
+  const openRounds = liveRounds.filter((round) => round.timing.state === "open" || round.timing.state === "closing_soon");
+  const closingRounds = liveRounds.filter((round) => round.timing.state === "closing_soon");
+  const finalizedRounds = liveRounds.filter((round) => round.result_status === "finalized");
+  elements.summary.textContent = `${state.lotteries.length.toLocaleString("th-TH")} หวย · เปิดรับ ${openRounds.length.toLocaleString("th-TH")} งวด`;
+  elements.lotteryCount.textContent = state.lotteries.length.toLocaleString("th-TH");
+  elements.openRoundCount.textContent = openRounds.length.toLocaleString("th-TH");
+  elements.closingRoundCount.textContent = closingRounds.length.toLocaleString("th-TH");
+  elements.finalizedRoundCount.textContent = finalizedRounds.length.toLocaleString("th-TH");
 
   elements.board.innerHTML = Object.entries(CATEGORY_LABELS)
     .map(([category, label]) => {
@@ -48,6 +60,7 @@ function render() {
     })
     .join("");
 
+  renderWatchList(openRounds);
   renderResults();
   renderSchedule();
 }
@@ -97,6 +110,29 @@ function renderSchedule() {
         })
         .join("")
     : '<div class="empty-state">วันนี้ยังไม่มีงวด</div>';
+}
+
+function renderWatchList(openRounds) {
+  const rounds = openRounds
+    .sort((a, b) => new Date(a.close_at) - new Date(b.close_at))
+    .slice(0, 8);
+  elements.watchList.innerHTML = rounds.length
+    ? rounds
+        .map((round) => {
+          const lottery = state.lotteries.find((item) => item.id === round.lottery_id);
+          return `
+            <article class="watch-card ${round.timing.cardClass}">
+              <div class="watch-card-head">
+                <span class="flag ${getLotteryFlagClass(round.lottery_id)}" aria-hidden="true"></span>
+                <strong>${escapeHtml(lottery?.name || "-")}</strong>
+              </div>
+              <span>ปิดรับ ${escapeHtml(formatDateTime(round.close_at))}</span>
+              <em>${escapeHtml(round.timing.label)} ${formatCountdownCompact(round)}</em>
+            </article>
+          `;
+        })
+        .join("")
+    : '<div class="empty-state">ขณะนี้ยังไม่มีงวดที่เปิดรับ</div>';
 }
 
 function renderResults() {
