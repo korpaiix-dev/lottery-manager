@@ -65,12 +65,12 @@
       <div class="workspace">
         <header class="topbar">
           <nav class="top-nav" aria-label="หมวดงานหลัก">
-            <button class="nav-button is-active" type="button" data-view-target="dashboard">วันนี้</button>
-            <button class="nav-button" type="button" data-view-target="intake">รับโพย</button>
+            <button class="nav-button is-active" type="button" data-view-target="markets">แทงหวย</button>
+            <button class="nav-button" type="button" data-view-target="intake">คีย์โพย</button>
+            <button class="nav-button" type="button" data-view-target="dashboard">วันนี้</button>
             <button class="nav-button" type="button" data-view-target="review">ตรวจโพย</button>
             <button class="nav-button" type="button" data-view-target="results">ตรวจรางวัล</button>
             <button class="nav-button" type="button" data-view-target="reports">บัญชีการเงิน</button>
-            <button class="nav-button" type="button" data-view-target="markets">ควบคุมหวย</button>
             <button class="nav-button" type="button" data-view-target="manage">ตั้งค่า</button>
           </nav>
           <div class="view-title-row">
@@ -95,7 +95,7 @@
                 <p class="eyebrow">สถานะวันนี้</p>
                 <h2>ภาพรวมงานรับหวย</h2>
               </div>
-              <div id="marketSummary" class="market-summary"></div>
+              <div id="playMarketSummary" class="market-summary"></div>
             </section>
 
             <section class="dashboard-strip" aria-label="ภาพรวมงานวันนี้">
@@ -148,12 +148,12 @@
           <section class="view" data-view="markets" hidden>
             <section class="market-alert panel">
               <div>
-                <p class="eyebrow">รอบหวยอัตโนมัติ</p>
-                <h2>หัวหวยทั้งหมด</h2>
+                <p class="eyebrow">เลือกหวยที่ต้องการคีย์</p>
+                <h2>แทงหวย</h2>
               </div>
-              <div id="marketAdminSummary" class="market-summary"></div>
+              <div id="marketSummary" class="market-summary"></div>
             </section>
-            <section id="marketAdminBoard" class="lottery-board market-admin-board"></section>
+            <section id="lotteryBoard" class="lottery-board"></section>
           </section>
 
           <section class="view" data-view="manage" hidden>

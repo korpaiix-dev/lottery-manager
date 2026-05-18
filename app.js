@@ -1,7 +1,7 @@
 const VIEW_META = {
   dashboard: { eyebrow: "ภาพรวมงานวันนี้", title: "วันนี้" },
-  markets: { eyebrow: "เวลาเปิดปิดและผลอัตโนมัติ", title: "ควบคุมหวย" },
-  intake: { eyebrow: "ลดงานกรอกซ้ำ", title: "รับรายการ" },
+  markets: { eyebrow: "เลือกงวดก่อนคีย์เลข", title: "แทงหวย" },
+  intake: { eyebrow: "คีย์รายการของลูกค้า", title: "คีย์โพย" },
   review: { eyebrow: "ตรวจโพยก่อนคิดยอดจริง", title: "ตรวจงาน" },
   entries: { eyebrow: "ตรวจสอบรายการทั้งหมด", title: "รายการ" },
   headHouses: { eyebrow: "เครือข่ายผู้ส่งยอด", title: "หัวบ้าน" },
@@ -122,8 +122,9 @@ const elements = {
   totalLimits: document.querySelector("#totalLimits"),
   nearLimitCount: document.querySelector("#nearLimitCount"),
   pendingTicketCount: document.querySelector("#pendingTicketCount"),
-  pendingResultCount: document.querySelector("#pendingResultCount"),
-  marketSummary: document.querySelector("#marketSummary"),
+    pendingResultCount: document.querySelector("#pendingResultCount"),
+    marketSummary: document.querySelector("#marketSummary"),
+    playMarketSummary: document.querySelector("#playMarketSummary"),
   marketAdminSummary: document.querySelector("#marketAdminSummary"),
   lotteryBoard: document.querySelector("#lotteryBoard"),
   marketAdminBoard: document.querySelector("#marketAdminBoard"),
@@ -480,7 +481,7 @@ async function enterApp() {
   elements.sidebarRole.textContent = state.user.role;
   configureRoleAccess();
   await refreshState();
-  activateView(state.user.role === "head_house_viewer" ? "headHouseReport" : "dashboard", false);
+  activateView(state.user.role === "head_house_viewer" ? "headHouseReport" : "markets", false);
 }
 
 async function refreshState() {
@@ -612,12 +613,14 @@ function renderMarketSummary() {
   }).length;
   const closedProducts = state.lotteries.filter((lottery) => !isRoundAcceptingNow(getDisplayRoundForLottery(lottery.id))).length;
 
-  elements.marketSummary.innerHTML = `
-    <span>เปิดรับ ${openRounds.length.toLocaleString("th-TH")} งวด</span>
-    <span>ใกล้ปิด ${closingSoon.toLocaleString("th-TH")} งวด</span>
-    <span>ยังไม่เปิด ${closedProducts.toLocaleString("th-TH")} หวย</span>
-  `;
-}
+    const summaryHtml = `
+      <span>เปิดรับ ${openRounds.length.toLocaleString("th-TH")} งวด</span>
+      <span>ใกล้ปิด ${closingSoon.toLocaleString("th-TH")} งวด</span>
+      <span>ยังไม่เปิด ${closedProducts.toLocaleString("th-TH")} หวย</span>
+    `;
+    if (elements.marketSummary) elements.marketSummary.innerHTML = summaryHtml;
+    if (elements.playMarketSummary) elements.playMarketSummary.innerHTML = summaryHtml;
+  }
 
 function renderMarketAdmin() {
   if (!elements.marketAdminSummary || !elements.marketAdminBoard) return;
