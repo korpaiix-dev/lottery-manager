@@ -229,8 +229,6 @@ app.use(express.json({ limit: "2mb" }));
 app.get("/", (_req, res) => res.sendFile(path.join(__dirname, "index.html")));
 app.get("/admin", (_req, res) => res.redirect("/"));
 app.get("/portal", (_req, res) => res.redirect("/"));
-app.get("/portal.js", (_req, res) => res.sendFile(path.join(__dirname, "portal.js")));
-app.get("/portal.css", (_req, res) => res.sendFile(path.join(__dirname, "portal.css")));
 app.get("/app.js", (_req, res) => res.sendFile(path.join(__dirname, "app.js")));
 app.get("/styles.css", (_req, res) => res.sendFile(path.join(__dirname, "styles.css")));
 
