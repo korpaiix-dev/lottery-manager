@@ -3,24 +3,26 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>ศูนย์ข้อมูลหวย</title>
+    <title>Lottery Member</title>
     <link rel="stylesheet" href="portal.css" />
   </head>
   <body>
-    <div class="portal-shell">
-      <aside class="portal-sidebar">
-        <div class="portal-brand">
+    <div class="member-shell">
+      <aside class="member-sidebar">
+        <div class="member-brand">
           <strong>LOTTERY</strong>
-          <span>ศูนย์ข้อมูลหวย</span>
+          <span>member portal</span>
         </div>
 
-        <section class="portal-user-card">
+        <section class="member-profile">
           <span id="portalClock">--:--:--</span>
-          <strong>ผู้เข้าชมทั่วไป</strong>
-          <small>ระบบสมาชิกจะเพิ่มภายหลัง</small>
+          <small>รหัสผู้ใช้งาน</small>
+          <strong>GUEST</strong>
+          <small>ยอดคงเหลือ</small>
+          <strong>0.00</strong>
         </section>
 
-        <section class="portal-rate-card">
+        <section class="member-rate-table">
           <h2>อัตราจ่าย</h2>
           <dl>
             <div><dt>2 ตัว</dt><dd>70</dd></div>
@@ -29,76 +31,175 @@
           </dl>
         </section>
 
-        <a class="admin-link" href="/admin">จัดการหลังบ้าน</a>
+        <div class="member-actions">
+          <button type="button" disabled>เข้าสู่ระบบ</button>
+          <a href="/admin">หลังบ้าน</a>
+        </div>
       </aside>
 
-      <main class="portal-main">
-        <header class="portal-topbar">
+      <main class="member-main">
+        <header class="member-topbar">
           <nav aria-label="เมนูหลัก">
-            <a class="is-active" href="#markets">หน้าหวย</a>
-            <a href="#closingSoon">ใกล้ปิด</a>
-            <a href="#results">ตรวจรางวัล</a>
-            <a href="#schedule">ตารางเวลา</a>
-            <a href="#announcements">ประกาศ</a>
+            <a class="is-active" href="#play" data-view-link="play">แทงหวย</a>
+            <a href="#tickets" data-view-link="tickets">รายการแทง/ยกเลิกโพย</a>
+            <a href="#tickets-grouped" data-view-link="tickets-grouped">รายการแทง (ตามชนิดหวย)</a>
+            <a href="#finance" data-view-link="finance">บัญชีการเงิน</a>
+            <a href="#results" data-view-link="results">ตรวจรางวัล</a>
+            <a href="#links" data-view-link="links">ลิงก์ดูผล</a>
           </nav>
         </header>
 
-        <section id="announcements" class="announcement-band">
+        <section class="notice-panel">
           <strong>ประกาศ</strong>
-          <p>ดูหวยที่เปิดรับ เวลาปิดรับ และผลรางวัลล่าสุดได้จากหน้านี้ ส่วนงานคีย์รายการและการตั้งค่าระบบอยู่ในหลังบ้านแยกต่างหาก</p>
+          <p>ระบบหน้าใช้งานหลักแยกจากหลังบ้านแล้ว หน้าเว็บนี้ใช้ดูตลาดหวย โพย การเงิน และผลรางวัลตามลำดับงานจริง</p>
         </section>
 
-        <section class="portal-section portal-overview">
-          <div class="overview-grid">
-            <article>
-              <span>หวยทั้งหมด</span>
-              <strong id="lotteryCount">0</strong>
-            </article>
-            <article>
-              <span>เปิดรับตอนนี้</span>
-              <strong id="openRoundCount">0</strong>
-            </article>
-            <article>
-              <span>ใกล้ปิดใน 5 นาที</span>
-              <strong id="closingRoundCount">0</strong>
-            </article>
-            <article>
-              <span>ประกาศผลแล้ว</span>
-              <strong id="finalizedRoundCount">0</strong>
-            </article>
-          </div>
-        </section>
-
-        <section id="closingSoon" class="portal-section">
+        <section class="member-view is-active" data-view="play">
           <div class="section-heading">
-            <h2>งวดที่ควรจับตา</h2>
-            <span>เปิดรับอยู่และเรียงตามเวลาปิด</span>
-          </div>
-          <div id="watchList" class="watch-board"></div>
-        </section>
-
-        <section id="markets" class="portal-section">
-          <div class="section-heading">
-            <h1>หน้าหวย</h1>
+            <h1>แทงหวย</h1>
             <span id="marketSummary">กำลังโหลดข้อมูล</span>
           </div>
-          <div id="portalBoard" class="portal-board"></div>
+          <div id="portalBoard" class="market-board"></div>
         </section>
 
-        <section id="schedule" class="portal-section">
+        <section class="member-view" data-view="tickets">
           <div class="section-heading">
-            <h2>ตารางเวลาวันนี้</h2>
-            <span>เรียงตามเวลาปิดรับ</span>
+            <h1>รายการแทง</h1>
+            <span>ยังไม่เปิดใช้งานระบบสมาชิก</span>
           </div>
-          <div id="todaySchedule" class="schedule-board"></div>
+          <form class="filter-panel report-filter">
+            <fieldset>
+              <legend>ตัวเลือกการค้นหา</legend>
+              <label><input type="radio" name="ticketRange" checked /> วันนี้</label>
+              <label><input type="radio" name="ticketRange" /> เมื่อวาน</label>
+              <label><input type="radio" name="ticketRange" /> สัปดาห์นี้</label>
+              <label><input type="radio" name="ticketRange" /> สัปดาห์ที่แล้ว</label>
+              <label><input type="radio" name="ticketRange" /> เดือน</label>
+            </fieldset>
+            <button type="button">ค้นหา</button>
+          </form>
+          <div class="table-panel">
+            <table>
+              <thead>
+                <tr>
+                  <th>วันที่</th>
+                  <th>ชนิดหวย</th>
+                  <th>ชื่องวด</th>
+                  <th>ยอด</th>
+                  <th>ส่วนลด</th>
+                  <th>รวม</th>
+                  <th>แพ้/ชนะ</th>
+                  <th>หมายเหตุ</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td colspan="8">ต้องเข้าสู่ระบบก่อนจึงจะดูรายการแทงของตนเองได้</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </section>
 
-        <section id="results" class="portal-section">
+        <section class="member-view" data-view="tickets-grouped">
           <div class="section-heading">
-            <h2>ตรวจรางวัลล่าสุด</h2>
-            <span>อัปเดตจากหลังบ้าน</span>
+            <h1>รายการแทง (ตามชนิดหวย)</h1>
+            <span>แยกยอดตามหวย</span>
           </div>
-          <div id="latestResults" class="result-board"></div>
+          <form class="filter-panel report-filter">
+            <fieldset>
+              <legend>ตัวเลือกการค้นหา</legend>
+              <label><input type="radio" name="ticketGroupedRange" checked /> วันนี้</label>
+              <label><input type="radio" name="ticketGroupedRange" /> เมื่อวาน</label>
+              <label><input type="radio" name="ticketGroupedRange" /> สัปดาห์นี้</label>
+              <label><input type="radio" name="ticketGroupedRange" /> เดือน</label>
+            </fieldset>
+            <button type="button">ค้นหา</button>
+          </form>
+          <div class="table-panel">
+            <table>
+              <thead>
+                <tr>
+                  <th>ชนิดหวย</th>
+                  <th>จำนวนโพย</th>
+                  <th>ยอดรวม</th>
+                  <th>ส่วนลด</th>
+                  <th>ได้เสียสุทธิ</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td colspan="5">ต้องเข้าสู่ระบบก่อนจึงจะดูยอดตามชนิดหวยได้</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="member-view" data-view="finance">
+          <div class="section-heading">
+            <h1>บัญชีการเงิน</h1>
+            <span>งบดุล / รอผลเดิมพัน / รายงานสรุป</span>
+          </div>
+          <div class="pill-tabs">
+            <button type="button" class="is-active">รายงานสรุป</button>
+            <button type="button">งบดุล</button>
+            <button type="button">รอผลเดิมพัน</button>
+          </div>
+          <form class="filter-panel report-filter">
+            <fieldset>
+              <legend>ตัวเลือกการค้นหา</legend>
+              <label><input type="radio" name="financeRange" checked /> วันนี้</label>
+              <label><input type="radio" name="financeRange" /> เมื่อวาน</label>
+              <label><input type="radio" name="financeRange" /> สัปดาห์นี้</label>
+              <label><input type="radio" name="financeRange" /> เดือน</label>
+            </fieldset>
+            <button type="button">ค้นหา</button>
+          </form>
+          <div class="table-panel">
+            <table>
+              <thead>
+                <tr>
+                  <th>วันที่ - เวลา</th>
+                  <th>รายละเอียด</th>
+                  <th>เงินเข้า</th>
+                  <th>เงินออก</th>
+                  <th>คงเหลือ</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td colspan="5">ต้องเข้าสู่ระบบก่อนจึงจะดูบัญชีการเงินได้</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="member-view" data-view="results">
+          <div class="section-heading">
+            <h1>ตรวจรางวัล</h1>
+            <span>ผลที่ยืนยันแล้ว</span>
+          </div>
+          <form class="filter-panel report-filter">
+            <fieldset>
+              <legend>ตัวเลือกการค้นหา</legend>
+              <label><input type="radio" name="resultRange" checked /> วันนี้</label>
+              <label><input type="radio" name="resultRange" /> เมื่อวาน</label>
+              <label><input type="radio" name="resultRange" /> สัปดาห์นี้</label>
+              <label><input type="radio" name="resultRange" /> เดือน</label>
+            </fieldset>
+            <button type="button">ค้นหา</button>
+          </form>
+          <div id="latestResults" class="results-table-wrap"></div>
+        </section>
+
+        <section class="member-view" data-view="links">
+          <div class="section-heading">
+            <h1>ลิงก์ดูผล</h1>
+            <span>เวลาอ้างอิงและแหล่งตรวจสอบ</span>
+          </div>
+          <div id="todaySchedule" class="link-board"></div>
         </section>
       </main>
     </div>

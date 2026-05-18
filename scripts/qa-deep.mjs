@@ -84,7 +84,10 @@ try {
 
   const portalHtml = await requestText("/");
   const adminHtml = await requestText("/admin");
-  assert(portalHtml.includes("ศูนย์ข้อมูลหวย"), "public portal shell should render");
+  assert(portalHtml.includes("member portal"), "public portal shell should render");
+  assert(portalHtml.includes("รายการแทง/ยกเลิกโพย"), "public portal should expose ticket navigation");
+  assert(portalHtml.includes('data-view="finance"'), "public portal should expose finance view");
+  assert(portalHtml.includes('data-view="results"'), "public portal should expose results view");
   assert(adminHtml.includes("ระบบหลังบ้าน"), "admin shell should render");
 
   await request("/api/users", {
