@@ -56,6 +56,14 @@
           <strong id="sidebarBalance">฿0.00</strong>
         </section>
 
+        <section class="sidebar-rates">
+          <div class="sidebar-section-heading">
+            <span>อัตราจ่าย</span>
+            <strong id="sidebarRateRound">-</strong>
+          </div>
+          <div id="sidebarRateList" class="sidebar-rate-list"></div>
+        </section>
+
         <div class="sidebar-actions">
           <button id="sidebarProfileBtn" class="sidebar-link" type="button" data-view-target="users">ข้อมูลผู้ใช้</button>
           <button id="sidebarLogoutBtn" class="sidebar-link danger" type="button">ออกจากระบบ</button>
@@ -66,9 +74,9 @@
         <header class="topbar">
           <nav class="top-nav" aria-label="หมวดงานหลัก">
             <button class="nav-button is-active" type="button" data-view-target="markets">แทงหวย</button>
-            <button class="nav-button" type="button" data-view-target="intake">คีย์โพย</button>
             <button class="nav-button" type="button" data-view-target="dashboard">วันนี้</button>
             <button class="nav-button" type="button" data-view-target="review">ตรวจโพย</button>
+            <button class="nav-button" type="button" data-view-target="entries">รายการแทง</button>
             <button class="nav-button" type="button" data-view-target="results">ตรวจรางวัล</button>
             <button class="nav-button" type="button" data-view-target="reports">บัญชีการเงิน</button>
             <button class="nav-button" type="button" data-view-target="manage">ตั้งค่า</button>
@@ -153,6 +161,12 @@
               </div>
               <div id="marketSummary" class="market-summary"></div>
             </section>
+            <section class="market-legend" aria-label="คำอธิบายสถานะหวย">
+              <span><i class="legend-dot open"></i>เปิดรับ</span>
+              <span><i class="legend-dot closing"></i>ใกล้ปิด</span>
+              <span><i class="legend-dot upcoming"></i>ยังไม่เปิด</span>
+              <span><i class="legend-dot closed"></i>ปิดรับแล้ว</span>
+            </section>
             <section id="lotteryBoard" class="lottery-board"></section>
           </section>
 
@@ -204,6 +218,7 @@
           <section class="view" data-view="intake" hidden>
             <section class="intake-workbench">
               <section class="panel ticket-panel">
+                <button id="backToMarketsBtn" class="back-link" type="button">← กลับหน้าแทงหวย</button>
                 <header class="ticket-reference-header">
                   <div class="ticket-topline">
                     <strong id="ticketCountdown">ยังไม่เลือกงวด</strong>
@@ -285,6 +300,7 @@
 
                   <div id="ticketExpansionPreview" class="ticket-expansion-preview hidden"></div>
                   <div id="ticketLimitPreview" class="limit-preview hidden"></div>
+                  <div id="ticketInlineFeedback" class="ticket-inline-feedback hidden"></div>
                   <label class="field ticket-inline-note">
                     <span>หมายเหตุ / ชื่อ LINE ลูกค้า</span>
                     <input id="ticketNoteInput" maxlength="240" placeholder="เช่น คุณแดง LINE: Daeng789" />

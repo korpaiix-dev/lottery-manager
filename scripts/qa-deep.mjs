@@ -86,8 +86,9 @@ try {
   const adminRedirect = await requestRaw("/admin", { redirect: "manual" });
   assert(appHtml.includes("ระบบจัดการหวย"), "main app shell should render from root");
   assert(appHtml.includes('data-view-target="markets">แทงหวย'), "main app should expose แทงหวย as the lottery selection page");
-  assert(appHtml.includes('data-view-target="intake"'), "main app should expose intake navigation");
+  assert(!appHtml.includes('data-view-target="intake">คีย์โพย'), "intake should not be a top-level navigation item");
   assert(appHtml.includes('id="lotteryBoard"'), "main app should render the lottery selection board");
+  assert(appHtml.includes('id="backToMarketsBtn"'), "intake should provide a return path to the lottery board");
   assert(appHtml.includes('data-view-target="headHouseReport"'), "main app should contain head-house report view");
   assert(adminRedirect.status === 302, "/admin should redirect to the unified root app");
 

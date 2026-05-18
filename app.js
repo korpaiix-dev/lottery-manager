@@ -2,7 +2,7 @@ const VIEW_META = {
   dashboard: { eyebrow: "ภาพรวมงานวันนี้", title: "วันนี้" },
   markets: { eyebrow: "เลือกงวดก่อนคีย์เลข", title: "แทงหวย" },
   intake: { eyebrow: "คีย์รายการของลูกค้า", title: "คีย์โพย" },
-  review: { eyebrow: "ตรวจโพยก่อนคิดยอดจริง", title: "ตรวจงาน" },
+  review: { eyebrow: "ตรวจโพยก่อนคิดยอดจริง", title: "ตรวจโพย" },
   entries: { eyebrow: "ตรวจสอบรายการทั้งหมด", title: "รายการ" },
   headHouses: { eyebrow: "เครือข่ายผู้ส่งยอด", title: "หัวบ้าน" },
   customers: { eyebrow: "ข้อมูลผู้ส่งรายการ", title: "ลูกค้า" },
@@ -101,6 +101,8 @@ const elements = {
   sidebarUsername: document.querySelector("#sidebarUsername"),
   sidebarRole: document.querySelector("#sidebarRole"),
   sidebarBalance: document.querySelector("#sidebarBalance"),
+  sidebarRateRound: document.querySelector("#sidebarRateRound"),
+  sidebarRateList: document.querySelector("#sidebarRateList"),
   sidebarProfileBtn: document.querySelector("#sidebarProfileBtn"),
   sidebarLogoutBtn: document.querySelector("#sidebarLogoutBtn"),
   usersNavButtons: document.querySelectorAll('[data-view-target="users"]'),
@@ -156,6 +158,7 @@ const elements = {
   ticketBottomAmountField: document.querySelector("#ticketBottomAmountField"),
   ticketTodAmountField: document.querySelector("#ticketTodAmountField"),
   ticketExpansionPreview: document.querySelector("#ticketExpansionPreview"),
+  ticketInlineFeedback: document.querySelector("#ticketInlineFeedback"),
   addTicketEntryBtn: document.querySelector("#addTicketEntryBtn"),
   ticketLimitPreview: document.querySelector("#ticketLimitPreview"),
   ticketDraftBody: document.querySelector("#ticketDraftBody"),
@@ -165,6 +168,7 @@ const elements = {
   ticketTotalAmount: document.querySelector("#ticketTotalAmount"),
   ticketReceiptPreview: document.querySelector("#ticketReceiptPreview"),
   saveTicketBtn: document.querySelector("#saveTicketBtn"),
+  backToMarketsBtn: document.querySelector("#backToMarketsBtn"),
   ticketHistoryList: document.querySelector("#ticketHistoryList"),
   ticketLimitList: document.querySelector("#ticketLimitList"),
   ticketRecentList: document.querySelector("#ticketRecentList"),
@@ -327,13 +331,24 @@ function bindEvents() {
   elements.logoutBtn.addEventListener("click", handleLogout);
   elements.sidebarLogoutBtn.addEventListener("click", handleLogout);
   elements.sidebarProfileBtn.addEventListener("click", () => activateView("users"));
+  elements.backToMarketsBtn.addEventListener("click", () => {
+    if (!confirmDraftDiscard()) return;
+    activateView("markets");
+  });
   elements.exportBtn.addEventListener("click", exportData);
 
   elements.navButtons.forEach((button) => {
     button.addEventListener("click", () => activateView(button.dataset.viewTarget));
   });
 
-  elements.ticketRound.addEventListener("change", renderTicketWorkbench);
+  elements.ticketRound.addEventListener("change", () => {
+    const nextRoundId = elements.ticketRound.value;
+    if (!prepareRoundSwitch(nextRoundId)) {
+      elements.ticketRound.value = state.ticketDraftEntries[0]?.roundId || "";
+      return;
+    }
+    renderTicketWorkbench();
+  });
   elements.ticketHeadHouse.addEventListener("change", renderTicketReceiptPreview);
   elements.ticketNote.addEventListener("input", renderTicketReceiptPreview);
   elements.ticketNumber.addEventListener("input", () => {
@@ -460,7 +475,7 @@ async function handleLogin(event) {
     state.user = user;
     await enterApp();
   } catch {
-    alert("ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง");
+    showToast("ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง", "danger");
   }
 }
 
@@ -491,13 +506,15 @@ async function refreshState() {
 
 function activateView(viewName, shouldScroll = true) {
   const meta = VIEW_META[viewName] ?? VIEW_META.dashboard;
+  const settingsViews = new Set(["customers", "headHouses", "headHouseReport", "lotteries", "limits", "payouts", "users"]);
   elements.views.forEach((view) => {
     const isActive = view.dataset.view === viewName;
     view.hidden = !isActive;
     view.classList.toggle("is-active", isActive);
   });
   elements.navButtons.forEach((button) => {
-    button.classList.toggle("is-active", button.dataset.viewTarget === viewName);
+    const target = viewName === "intake" ? "markets" : settingsViews.has(viewName) ? "manage" : viewName;
+    button.classList.toggle("is-active", button.dataset.viewTarget === target);
   });
   elements.currentViewEyebrow.textContent = meta.eyebrow;
   elements.currentViewTitle.textContent = meta.title;
@@ -507,6 +524,7 @@ function activateView(viewName, shouldScroll = true) {
 function render() {
   renderSelects();
   renderDashboard();
+  renderSidebarRates();
   renderTicketWorkbench();
   renderReview();
   renderEntries();
@@ -606,21 +624,22 @@ function renderDashboard() {
 }
 
 function renderMarketSummary() {
-  const openRounds = state.rounds.filter(isRoundAcceptingNow);
+  const playableLotteries = getPlayableLotteries();
+  const openRounds = state.rounds.filter((round) => playableLotteries.some((lottery) => lottery.id === round.lottery_id) && isRoundAcceptingNow(round));
   const closingSoon = openRounds.filter((round) => {
     const remainingMs = new Date(round.close_at).getTime() - Date.now();
     return remainingMs > 0 && remainingMs <= 60 * 60 * 1000;
   }).length;
-  const closedProducts = state.lotteries.filter((lottery) => !isRoundAcceptingNow(getDisplayRoundForLottery(lottery.id))).length;
+  const unavailableProducts = playableLotteries.filter((lottery) => !isRoundAcceptingNow(getDisplayRoundForLottery(lottery.id))).length;
 
-    const summaryHtml = `
-      <span>เปิดรับ ${openRounds.length.toLocaleString("th-TH")} งวด</span>
-      <span>ใกล้ปิด ${closingSoon.toLocaleString("th-TH")} งวด</span>
-      <span>ยังไม่เปิด ${closedProducts.toLocaleString("th-TH")} หวย</span>
-    `;
-    if (elements.marketSummary) elements.marketSummary.innerHTML = summaryHtml;
-    if (elements.playMarketSummary) elements.playMarketSummary.innerHTML = summaryHtml;
-  }
+  const summaryHtml = `
+    <span>เปิดรับ ${openRounds.length.toLocaleString("th-TH")} งวด</span>
+    <span>ใกล้ปิด ${closingSoon.toLocaleString("th-TH")} งวด</span>
+    <span>รอเปิด ${unavailableProducts.toLocaleString("th-TH")} หวย</span>
+  `;
+  if (elements.marketSummary) elements.marketSummary.innerHTML = summaryHtml;
+  if (elements.playMarketSummary) elements.playMarketSummary.innerHTML = summaryHtml;
+}
 
 function renderMarketAdmin() {
   if (!elements.marketAdminSummary || !elements.marketAdminBoard) return;
@@ -728,6 +747,7 @@ function renderTaskQueue(pendingTickets, pendingResults) {
       tone: "warning",
       title: `${pendingTickets.length.toLocaleString("th-TH")} โพยรอตรวจ`,
       detail: "ตรวจและอนุมัติก่อนนำไปคิดยอดจริง",
+      view: "review",
     });
   }
   if (pendingResults.length) {
@@ -735,6 +755,7 @@ function renderTaskQueue(pendingTickets, pendingResults) {
       tone: "warning",
       title: `${pendingResults.length.toLocaleString("th-TH")} งวดรอยืนยันผล`,
       detail: "บันทึกผลแล้วแต่ยังไม่ปิดงาน",
+      view: "results",
     });
   }
   if (waitingForResult.length) {
@@ -742,6 +763,7 @@ function renderTaskQueue(pendingTickets, pendingResults) {
       tone: "danger",
       title: `${waitingForResult.length.toLocaleString("th-TH")} งวดถึงเวลาประกาศผลแล้ว`,
       detail: "ยังไม่มีผลเข้าระบบ ต้องดึงผลหรือกรอกมือ",
+      view: "results",
     });
   }
   if (zeroRateCount) {
@@ -749,6 +771,7 @@ function renderTaskQueue(pendingTickets, pendingResults) {
       tone: "danger",
       title: `${zeroRateCount.toLocaleString("th-TH")} อัตราจ่ายยังเป็นศูนย์`,
       detail: "ควรตั้งค่าก่อนรับยอดจริง",
+      view: "payouts",
     });
   }
   if (unscheduledLotteries.length) {
@@ -756,6 +779,7 @@ function renderTaskQueue(pendingTickets, pendingResults) {
       tone: "warning",
       title: `${unscheduledLotteries.length.toLocaleString("th-TH")} หวยยังไม่มีตารางอัตโนมัติ`,
       detail: unscheduledLotteries.map((lottery) => lottery.name).join(", "),
+      view: "lotteries",
     });
   }
   if (!tasks.length) {
@@ -769,19 +793,23 @@ function renderTaskQueue(pendingTickets, pendingResults) {
   elements.taskQueueList.innerHTML = tasks
     .map(
       (task) => `
-        <article class="task-item ${task.tone}">
+        <button class="task-item ${task.tone}" type="button" ${task.view ? `data-task-view="${task.view}"` : ""}>
           <strong>${escapeHtml(task.title)}</strong>
           <span>${escapeHtml(task.detail)}</span>
-        </article>
+        </button>
       `,
     )
     .join("");
+
+  elements.taskQueueList.querySelectorAll("[data-task-view]").forEach((button) => {
+    button.addEventListener("click", () => activateView(button.dataset.taskView));
+  });
 }
 
 function renderLotteryBoard() {
   if (!elements.lotteryBoard) return;
   elements.lotteryBoard.innerHTML = LOTTERY_CATEGORIES.map((category) => {
-    const lotteries = state.lotteries.filter((lottery) => (lottery.category || "other") === category.id);
+    const lotteries = getPlayableLotteries(category.id);
     if (!lotteries.length) return "";
 
     return `
@@ -805,7 +833,8 @@ function renderLotteryBoard() {
                   <span class="lottery-card-flag ${getLotteryFlagClass(lottery.id)}" aria-hidden="true"></span>
                   <strong>${escapeHtml(lottery.name)}</strong>
                   <span>${round ? escapeHtml(round.label) : "ยังไม่มีงวด"}</span>
-                  <small>${round ? `ปิดรับ ${formatRoundCloseTime(round)}` : "-"}</small>
+                  <small>${round ? `ปิดรับ ${formatRoundCloseTime(round)} · ออก ${escapeHtml(round.draw_time)}` : "-"}</small>
+                  <small>${round ? `ประกาศผล ${escapeHtml(round.result_time || round.draw_time)}` : "-"}</small>
                   <em>${round ? `${status.label}${isRoundAcceptingNow(round) ? ` ${formatCountdownCompact(round)}` : ""}` : "ยังไม่ตั้งงวด"}</em>
                 </button>
               `;
@@ -819,11 +848,23 @@ function renderLotteryBoard() {
   elements.lotteryBoard.querySelectorAll("[data-lottery-id]").forEach((button) => {
     button.addEventListener("click", () => {
       const round = getDisplayRoundForLottery(button.dataset.lotteryId);
-      if (!isRoundAcceptingNow(round)) return;
+      if (!isRoundAcceptingNow(round)) {
+        showToast(round ? `${getLotteryName(round.lottery_id)} ยังไม่เปิดรับหรือปิดรับแล้ว` : "หวยนี้ยังไม่มีงวด", "warning");
+        return;
+      }
+      if (!prepareRoundSwitch(round.id)) return;
       activateView("intake");
       elements.ticketRound.value = round.id;
       renderTicketWorkbench();
     });
+  });
+}
+
+function getPlayableLotteries(categoryId = "") {
+  return state.lotteries.filter((lottery) => {
+    const matchesCategory = !categoryId || (lottery.category || "other") === categoryId;
+    const hasActiveSchedule = state.scheduleTemplates.some((schedule) => schedule.lottery_id === lottery.id && schedule.active);
+    return matchesCategory && hasActiveSchedule;
   });
 }
 
@@ -859,7 +900,7 @@ function renderRecentEntries() {
             <article class="recent-item">
               <div>
                 <strong>${escapeHtml(entry.number)} · ${escapeHtml(getBetTypeName(entry.bet_type_id))}</strong>
-                <span>${escapeHtml(getCustomerCode(entry.customer_id))} / ${escapeHtml(formatRound(getRound(entry.round_id)))}</span>
+                <span>${escapeHtml(formatEntryCustomer(entry))} / ${escapeHtml(formatRound(getRound(entry.round_id)))}</span>
               </div>
               <strong>${money(entry.amount)}</strong>
             </article>
@@ -881,6 +922,7 @@ function renderTicketWorkbench() {
   renderTicketHistory();
   renderTicketLimits();
   renderTicketRecentEntries();
+  renderSidebarRates();
 }
 
 function activateIntakeMode(mode) {
@@ -994,13 +1036,13 @@ function addTicketDraftEntry() {
   const issues = newEntries.length ? newEntries.flatMap((entry) => getDraftIssues(entry)) : ["ยังไม่มีรายการที่เพิ่มได้"];
 
   if (issues.length) {
-    alert(issues.join(", "));
+    showToast(issues.join(", "), "warning");
     return;
   }
 
   const firstEntry = state.ticketDraftEntries[0];
   if (firstEntry && (firstEntry.customerId !== customerId || firstEntry.roundId !== roundId)) {
-    alert("หนึ่งโพยต้องเป็นลูกค้าและงวดเดียวกัน");
+    showToast("หนึ่งโพยต้องเป็นลูกค้าและงวดเดียวกัน", "warning");
     return;
   }
 
@@ -1021,6 +1063,7 @@ function addTicketDraftEntry() {
   state.ticketRunDigits = [];
   elements.ticketNumber.focus();
   renderTicketWorkbench();
+  showToast(`เพิ่ม ${newEntries.length.toLocaleString("th-TH")} รายการลงโพยแล้ว`, "success");
 }
 
 function buildIntakeEntries({ customerId, roundId, number }) {
@@ -1245,7 +1288,7 @@ async function saveTicketDraft() {
 
   const groupedIssues = state.ticketDraftEntries.flatMap((entry) => getDraftIssues(entry));
   if (groupedIssues.length) {
-    alert("ยังมีรายการที่ข้อมูลไม่ครบ");
+    showToast("ยังมีรายการที่ข้อมูลไม่ครบ", "warning");
     return;
   }
 
@@ -1271,7 +1314,9 @@ async function saveTicketDraft() {
     elements.ticketNote.value = "";
     await refreshState();
     const ticketCode = getTicket(inserted[0]?.ticket_id)?.code;
-    alert(ticketCode ? `บันทึกโพยแล้ว รหัสโพย ${ticketCode}` : "บันทึกโพยแล้ว");
+    showToast(ticketCode ? `บันทึกโพยแล้ว รหัสโพย ${ticketCode}` : "บันทึกโพยแล้ว", "success");
+    elements.ticketReceiptPreview.classList.add("is-fresh");
+    window.setTimeout(() => elements.ticketReceiptPreview.classList.remove("is-fresh"), 1400);
   } catch (error) {
     handleLimitError(error);
   }
@@ -1289,19 +1334,7 @@ function renderTicketReceiptPreview() {
   const customerLabel = note || "ยังไม่ได้ใส่ชื่อ LINE ลูกค้า";
   const createdAt = savedTicket ? formatDateTime(savedTicket.created_at) : "ยังไม่บันทึก";
   const total = sum(draftEntries.map((entry) => entry.amount));
-  const receiptBetTypeId =
-    draftEntries[0]?.bet_type_id ||
-    draftEntries[0]?.betTypeId ||
-    (state.ticketBetTypeId === "run_pair"
-      ? "run_top"
-      : state.ticketBetTypeId === "three_pair"
-        ? "three_top"
-        : state.ticketBetTypeId === "nineteen_gate"
-          ? "two_top"
-          : state.ticketBetTypeId === "six_return"
-            ? "three_top"
-            : "two_top");
-  const receiptRate = round ? getPayoutRate(round.lottery_id, receiptBetTypeId) : 0;
+  const receiptRateSummary = buildReceiptRateSummary(round, draftEntries);
   const rows = draftEntries.length
     ? draftEntries
         .map(
@@ -1350,7 +1383,7 @@ function renderTicketReceiptPreview() {
         </div>
         <div>
           <span>อัตราจ่าย</span>
-          <strong>บาทละ ${formatRate(receiptRate)}</strong>
+          <strong>${escapeHtml(receiptRateSummary)}</strong>
         </div>
       </section>
     <section class="receipt-lines">${rows}</section>
@@ -1359,6 +1392,51 @@ function renderTicketReceiptPreview() {
       <strong>${money(total)}</strong>
     </footer>
   `;
+}
+
+function buildReceiptRateSummary(round, entries) {
+  if (!round) return "-";
+  const fallbackBetTypeId =
+    state.ticketBetTypeId === "run_pair"
+      ? "run_top"
+      : state.ticketBetTypeId === "three_pair"
+        ? "three_top"
+        : state.ticketBetTypeId === "nineteen_gate"
+          ? "two_top"
+          : state.ticketBetTypeId === "six_return"
+            ? "three_top"
+            : "two_top";
+  const betTypeIds = [...new Set(entries.map((entry) => entry.bet_type_id || entry.betTypeId).filter(Boolean))];
+  const visibleIds = betTypeIds.length ? betTypeIds : [fallbackBetTypeId];
+  return visibleIds
+    .map((betTypeId) => `${getBetTypeName(betTypeId)} บาทละ ${formatRate(getPayoutRate(round.lottery_id, betTypeId))}`)
+    .join(" · ");
+}
+
+function renderSidebarRates() {
+  if (!elements.sidebarRateList || !elements.sidebarRateRound) return;
+  const round = getRound(elements.ticketRound.value) || getAcceptingRounds()[0] || null;
+  const lottery = round ? state.lotteries.find((item) => item.id === round.lottery_id) : null;
+  elements.sidebarRateRound.textContent = round ? lottery?.name || "-" : "-";
+  if (!round) {
+    elements.sidebarRateList.innerHTML = '<span class="sidebar-muted">ยังไม่มีงวดเปิดรับ</span>';
+    return;
+  }
+
+  const visibleRates = ["two_top", "two_bottom", "three_top", "three_tod"]
+    .map((betTypeId) => {
+      const rate = getPayoutRate(round.lottery_id, betTypeId);
+      return rate
+        ? `
+          <div class="sidebar-rate-row">
+            <span>${escapeHtml(getBetTypeName(betTypeId))}</span>
+            <strong>${formatRate(rate)}</strong>
+          </div>
+        `
+        : "";
+    })
+    .join("");
+  elements.sidebarRateList.innerHTML = visibleRates || '<span class="sidebar-muted">ยังไม่ตั้งอัตราจ่าย</span>';
 }
 
 function renderTicketLimitPreview() {
@@ -1425,6 +1503,7 @@ function renderTicketExpansionPreview() {
     elements.ticketExpansionPreview.innerHTML = "";
     elements.addTicketEntryBtn.disabled = true;
     elements.addTicketEntryBtn.title = getIntakeValidationMessage();
+    renderTicketInlineFeedback();
     return;
   }
   const previewEntries = buildIntakeEntries({ customerId: "walkin", roundId, number });
@@ -1446,6 +1525,14 @@ function renderTicketExpansionPreview() {
     </div>
     ${validationMessage ? `<small>${escapeHtml(validationMessage)}</small>` : ""}
   `;
+  renderTicketInlineFeedback();
+}
+
+function renderTicketInlineFeedback() {
+  if (!elements.ticketInlineFeedback) return;
+  const message = getIntakeValidationMessage();
+  elements.ticketInlineFeedback.classList.toggle("hidden", !message);
+  elements.ticketInlineFeedback.textContent = message || "";
 }
 
 function renderTicketHistory() {
@@ -1500,7 +1587,7 @@ function renderTicketRecentEntries() {
           (entry) => `
             <article class="compact-row">
               <strong>${escapeHtml(entry.number)} · ${escapeHtml(getBetTypeName(entry.bet_type_id))}</strong>
-              <span>${escapeHtml(getCustomerCode(entry.customer_id))} · ${money(entry.amount)}</span>
+              <span>${escapeHtml(formatEntryCustomer(entry))} · ${money(entry.amount)}</span>
             </article>
           `,
         )
@@ -1511,7 +1598,7 @@ function renderTicketRecentEntries() {
 function parseQuickMessage() {
   const raw = elements.quickMessage.value.trim();
   if (!raw) {
-    alert("วางข้อความจาก LINE ก่อน");
+    showToast("วางข้อความจาก LINE ก่อน", "warning");
     return;
   }
 
@@ -1586,7 +1673,7 @@ async function saveQuickBatch() {
   if (!state.quickParsedEntries.length) return;
   const issues = state.quickParsedEntries.flatMap((entry) => getQuickEntryIssues(entry));
   if (issues.length) {
-    alert("ยังมีรายการที่ข้อมูลไม่ครบ");
+    showToast("ยังมีรายการที่ข้อมูลไม่ครบ", "warning");
     return;
   }
 
@@ -1616,7 +1703,7 @@ async function saveQuickBatch() {
     clearQuickIntake();
     await refreshState();
     const ticketCode = getTicket(inserted[0]?.ticket_id)?.code;
-    if (ticketCode) alert(`บันทึกโพยแล้ว รหัสโพย ${ticketCode}`);
+    showToast(ticketCode ? `บันทึกโพยแล้ว รหัสโพย ${ticketCode}` : "บันทึกโพยแล้ว", "success");
     activateView("intake");
   } catch (error) {
     handleLimitError(error);
@@ -1648,7 +1735,7 @@ async function handleQuickCustomerSubmit(event) {
   await refreshState();
   elements.quickCustomer.value = created.id;
   elements.customer.value = created.id;
-  alert(`สร้างลูกค้าแล้ว รหัสคือ ${created.code}`);
+  showToast(`สร้างลูกค้าแล้ว รหัสคือ ${created.code}`, "success");
 }
 
 function getQuickEntryIssues(entry) {
@@ -1850,13 +1937,13 @@ async function handleCustomerSubmit(event) {
     );
     resetCustomerForm();
     await refreshState();
-    alert(wasEditing ? "บันทึกข้อมูลลูกค้าแล้ว" : `สร้างลูกค้าแล้ว รหัสคือ ${customer.code}`);
+    showToast(wasEditing ? "บันทึกข้อมูลลูกค้าแล้ว" : `สร้างลูกค้าแล้ว รหัสคือ ${customer.code}`, "success");
   } catch (error) {
     if (error?.payload?.error === "customer_head_house_locked") {
-      alert("เปลี่ยนหัวบ้านไม่ได้ เพราะลูกค้านี้มีรายการย้อนหลังแล้ว");
+      showToast("เปลี่ยนหัวบ้านไม่ได้ เพราะลูกค้านี้มีรายการย้อนหลังแล้ว", "warning");
       return;
     }
-    alert("บันทึกลูกค้าไม่สำเร็จ");
+    showToast("บันทึกลูกค้าไม่สำเร็จ", "danger");
   }
 }
 
@@ -1890,7 +1977,7 @@ async function handleHeadHouseSubmit(event) {
   const wasEditing = Boolean(state.editingHeadHouseId);
   resetHeadHouseForm();
   await refreshState();
-  alert(wasEditing ? "บันทึกข้อมูลหัวบ้านแล้ว" : `สร้างหัวบ้านแล้ว รหัสคือ ${saved.code}`);
+  showToast(wasEditing ? "บันทึกข้อมูลหัวบ้านแล้ว" : `สร้างหัวบ้านแล้ว รหัสคือ ${saved.code}`, "success");
 }
 
 function renderHeadHouses() {
@@ -1976,9 +2063,9 @@ async function copyViewerCredentials() {
   const text = `ลิงก์เข้าใช้งาน: ${credentials.url}\nชื่อผู้ใช้: ${credentials.username}\nรหัสผ่าน: ${credentials.password}`;
   try {
     await navigator.clipboard.writeText(text);
-    alert("คัดลอกข้อมูลแล้ว");
+    showToast("คัดลอกข้อมูลบัญชีดูยอดแล้ว", "success");
   } catch {
-    alert(text);
+    showToast("คัดลอกไม่สำเร็จ ใช้ข้อมูลที่แสดงในกล่องนี้ได้เลย", "warning");
   }
 }
 
@@ -2022,10 +2109,10 @@ async function deleteHeadHouse(id) {
     await refreshState();
   } catch (error) {
     if (error?.payload?.error === "head_house_has_customers") {
-      alert("ลบไม่ได้ เพราะยังมีลูกค้าอยู่ใต้หัวบ้านนี้");
+      showToast("ลบไม่ได้ เพราะยังมีลูกค้าอยู่ใต้หัวบ้านนี้", "warning");
       return;
     }
-    alert("ลบหัวบ้านไม่สำเร็จ");
+    showToast("ลบหัวบ้านไม่สำเร็จ", "danger");
   }
 }
 
@@ -2092,10 +2179,10 @@ async function deleteCustomer(id) {
     await refreshState();
   } catch (error) {
     if (error?.payload?.error === "customer_has_entries") {
-      alert("ลบไม่ได้ เพราะลูกค้านี้มีรายการอยู่แล้ว");
+      showToast("ลบไม่ได้ เพราะลูกค้านี้มีรายการอยู่แล้ว", "warning");
       return;
     }
-    alert("ลบลูกค้าไม่สำเร็จ");
+    showToast("ลบลูกค้าไม่สำเร็จ", "danger");
   }
 }
 
@@ -2154,10 +2241,10 @@ async function handleScheduleSubmit(event) {
     await refreshState();
   } catch (error) {
     if (error?.payload?.error === "schedule_exists") {
-      alert("หวยนี้มีตารางเวลาอยู่แล้ว ให้กดแก้ไขตารางเดิม");
+      showToast("หวยนี้มีตารางเวลาอยู่แล้ว ให้กดแก้ไขตารางเดิม", "warning");
       return;
     }
-    alert("บันทึกตารางเวลาไม่สำเร็จ");
+    showToast("บันทึกตารางเวลาไม่สำเร็จ", "danger");
   }
 }
 
@@ -2241,7 +2328,7 @@ async function generateUpcomingRounds() {
     body: { days: 14 },
   });
   await refreshState();
-  alert(`สร้างงวดอัตโนมัติเพิ่ม ${summary.created.toLocaleString("th-TH")} งวด ถึงวันที่ ${longDate(summary.toDate)}`);
+  showToast(`สร้างงวดอัตโนมัติเพิ่ม ${summary.created.toLocaleString("th-TH")} งวด ถึงวันที่ ${longDate(summary.toDate)}`, "success");
 }
 
 async function handleRoundSubmit(event) {
@@ -2274,10 +2361,10 @@ async function handleRoundSubmit(event) {
     await refreshState();
   } catch (error) {
     if (error?.payload?.error === "round_exists") {
-      alert("มีงวดชื่อนี้ในหวยเดียวกันอยู่แล้ว");
+      showToast("มีงวดชื่อนี้ในหวยเดียวกันอยู่แล้ว", "warning");
       return;
     }
-    alert("บันทึกงวดไม่สำเร็จ");
+    showToast("บันทึกงวดไม่สำเร็จ", "danger");
   }
 }
 
@@ -2527,10 +2614,10 @@ function renderResultEditor() {
       await refreshState();
     } catch (error) {
       if (error?.payload?.error === "result_incomplete") {
-        alert("ยังยืนยันผลไม่ได้ เพราะยังกรอกผลไม่ครบทุกประเภทเลขที่มีการขายในงวดนี้");
+        showToast("ยังยืนยันผลไม่ได้ เพราะยังกรอกผลไม่ครบทุกประเภทเลขที่มีการขายในงวดนี้", "warning");
         return;
       }
-      alert("ยังยืนยันผลไม่ได้ ตรวจว่ามีผลรางวัลครบแล้ว");
+      showToast("ยังยืนยันผลไม่ได้ ตรวจว่ามีผลรางวัลครบแล้ว", "warning");
     }
   });
   document.querySelector("#reopenResultBtn")?.addEventListener("click", async () => {
@@ -2539,7 +2626,7 @@ function renderResultEditor() {
       await api(`/api/results/${encodeURIComponent(roundId)}/reopen`, { method: "POST" });
       await refreshState();
     } catch {
-      alert("เปิดผลกลับมาแก้ไม่ได้");
+      showToast("เปิดผลกลับมาแก้ไม่ได้", "danger");
     }
   });
 }
@@ -2577,7 +2664,7 @@ function renderReview() {
         <tr>
           <td>${escapeHtml(ticket.code)}</td>
           <td>
-            ${escapeHtml(ticket.customer_code)}${ticket.customer_name ? ` · ${escapeHtml(ticket.customer_name)}` : ""}
+            ${escapeHtml(formatTicketCustomer(ticket))}
             <small>${escapeHtml(ticket.head_house_code || "-")} · ${escapeHtml(ticket.head_house_name || "-")}</small>
           </td>
           <td>${escapeHtml(ticket.lottery_name)} · ${escapeHtml(ticket.round_label)}</td>
@@ -2637,13 +2724,24 @@ function renderReview() {
         .map(
           (round) => `
             <article class="compact-row">
-              <strong>${escapeHtml(getLotteryName(round.lottery_id))} · ${escapeHtml(round.label)}</strong>
-              <span>${escapeHtml(resultNumbers(round.id, "three_top") || "-")} / ${escapeHtml(resultNumbers(round.id, "three_tod") || "-")} / ${escapeHtml(resultNumbers(round.id, "two_top") || "-")} / ${escapeHtml(resultNumbers(round.id, "two_bottom") || "-")}</span>
+              <div>
+                <strong>${escapeHtml(getLotteryName(round.lottery_id))} · ${escapeHtml(round.label)}</strong>
+                <span>${escapeHtml(resultNumbers(round.id, "three_top") || "-")} / ${escapeHtml(resultNumbers(round.id, "three_tod") || "-")} / ${escapeHtml(resultNumbers(round.id, "two_top") || "-")} / ${escapeHtml(resultNumbers(round.id, "two_bottom") || "-")}</span>
+              </div>
+              <button class="text-button review-result-button" type="button" data-round-id="${escapeHtml(round.id)}">ไปตรวจผล</button>
             </article>
           `,
         )
         .join("")
     : '<div class="empty-state">ไม่มีผลที่รอยืนยัน</div>';
+
+  elements.pendingResultsList.querySelectorAll(".review-result-button").forEach((button) => {
+    button.addEventListener("click", () => {
+      elements.resultRound.value = button.dataset.roundId;
+      activateView("results");
+      renderResultEditor();
+    });
+  });
 
   elements.auditLogList.innerHTML = state.auditLogs.length
     ? state.auditLogs
@@ -2673,7 +2771,7 @@ async function reviewTicket(ticketId, action) {
     await api(`/api/tickets/${encodeURIComponent(ticketId)}/${action}`, { method: "POST", body });
     await refreshState();
   } catch {
-    alert("ดำเนินการกับโพยไม่สำเร็จ");
+    showToast("ดำเนินการกับโพยไม่สำเร็จ", "danger");
   }
 }
 
@@ -2839,25 +2937,25 @@ async function handleUserSubmit(event) {
     });
     resetUserForm();
     await refreshState();
-    alert(wasEditing ? "บันทึกข้อมูลผู้ใช้แล้ว" : "เพิ่มผู้ใช้แล้ว");
+    showToast(wasEditing ? "บันทึกข้อมูลผู้ใช้แล้ว" : "เพิ่มผู้ใช้แล้ว", "success");
   } catch (error) {
     if (error?.payload?.error === "username_exists") {
-      alert("ชื่อผู้ใช้นี้ถูกใช้แล้ว");
+      showToast("ชื่อผู้ใช้นี้ถูกใช้แล้ว", "warning");
       return;
     }
     if (error?.payload?.error === "last_admin_required") {
-      alert("ต้องเหลือผู้ดูแลระบบอย่างน้อย 1 คน");
+      showToast("ต้องเหลือผู้ดูแลระบบอย่างน้อย 1 คน", "warning");
       return;
     }
     if (error?.payload?.error === "self_role_change_blocked") {
-      alert("เปลี่ยนสิทธิ์ของบัญชีที่กำลังใช้งานอยู่ไม่ได้");
+      showToast("เปลี่ยนสิทธิ์ของบัญชีที่กำลังใช้งานอยู่ไม่ได้", "warning");
       return;
     }
     if (error?.payload?.error === "viewer_account_exists") {
-      alert("หัวบ้านนี้มีบัญชีดูยอดอยู่แล้ว");
+      showToast("หัวบ้านนี้มีบัญชีดูยอดอยู่แล้ว", "warning");
       return;
     }
-    alert("บันทึกผู้ใช้ไม่สำเร็จ");
+    showToast("บันทึกผู้ใช้ไม่สำเร็จ", "danger");
   }
 }
 
@@ -2954,14 +3052,14 @@ async function deleteUser(id) {
     await refreshState();
   } catch (error) {
     if (error?.payload?.error === "last_admin_required") {
-      alert("ลบไม่ได้ เพราะต้องเหลือผู้ดูแลระบบอย่างน้อย 1 คน");
+      showToast("ลบไม่ได้ เพราะต้องเหลือผู้ดูแลระบบอย่างน้อย 1 คน", "warning");
       return;
     }
     if (error?.payload?.error === "self_delete_blocked") {
-      alert("ลบบัญชีที่กำลังใช้งานอยู่ไม่ได้");
+      showToast("ลบบัญชีที่กำลังใช้งานอยู่ไม่ได้", "warning");
       return;
     }
-    alert("ลบผู้ใช้ไม่สำเร็จ");
+    showToast("ลบผู้ใช้ไม่สำเร็จ", "danger");
   }
 }
 
@@ -3148,22 +3246,22 @@ function stripParserNoise(text) {
 
 function handleLimitError(error) {
   if (error?.payload?.error === "limit_exceeded") {
-    alert("เลขนี้เกินเพดานอั้นแล้ว ต้องเพิ่มเพดานก่อนจึงจะรับต่อได้");
+    showToast("เลขนี้เกินเพดานอั้นแล้ว ต้องเพิ่มเพดานก่อนจึงจะรับต่อได้", "warning");
     return;
   }
   if (error?.payload?.error === "round_not_accepting") {
-    alert("งวดนี้ปิดรับแล้ว เลือกงวดที่ยังเปิดรับหรือแก้เวลาในหน้างวดก่อน");
+    showToast("งวดนี้ปิดรับแล้ว เลือกงวดที่ยังเปิดรับหรือแก้เวลาในหน้างวดก่อน", "warning");
     return;
   }
   if (error?.payload?.error === "ticket_locked") {
-    alert("โพยนี้ผ่านการตรวจแล้ว จึงแก้หรือยกเลิกรายการเดี่ยวไม่ได้");
+    showToast("โพยนี้ผ่านการตรวจแล้ว จึงแก้หรือยกเลิกรายการเดี่ยวไม่ได้", "warning");
     return;
   }
   if (error?.payload?.error === "result_finalized") {
-    alert("ผลรางวัลงวดนี้ยืนยันแล้ว หากต้องแก้ต้องเปิดผลกลับมาก่อน");
+    showToast("ผลรางวัลงวดนี้ยืนยันแล้ว หากต้องแก้ต้องเปิดผลกลับมาก่อน", "warning");
     return;
   }
-  alert("บันทึกไม่สำเร็จ");
+  showToast("บันทึกไม่สำเร็จ", "danger");
 }
 
 async function api(url, { method = "GET", body } = {}) {
@@ -3304,6 +3402,18 @@ function getBetTypeName(id) {
 
 function getCustomerCode(id) {
   return state.customers.find((customer) => customer.id === id)?.code || "-";
+}
+
+function formatTicketCustomer(ticket) {
+  if (!ticket) return "-";
+  if (ticket.customer_id === "walkin" && ticket.note) return ticket.note;
+  return `${ticket.customer_code}${ticket.customer_name ? ` · ${ticket.customer_name}` : ""}`;
+}
+
+function formatEntryCustomer(entry) {
+  if (!entry) return "-";
+  if (entry.customer_id === "walkin" && entry.note) return entry.note;
+  return getCustomerCode(entry.customer_id);
 }
 
 function getLotteryName(id) {
@@ -3464,8 +3574,22 @@ function renderTimeSensitiveUi() {
   renderLotteryBoard();
   renderMarketAdmin();
   renderClosingSoonBanner();
+  renderSidebarRates();
   announceClosingSoonRounds();
   announceResultDueRounds();
+}
+
+function prepareRoundSwitch(nextRoundId) {
+  const currentRoundId = state.ticketDraftEntries[0]?.roundId;
+  if (!currentRoundId || currentRoundId === nextRoundId) return true;
+  return confirmDraftDiscard();
+}
+
+function confirmDraftDiscard() {
+  if (!state.ticketDraftEntries.length) return true;
+  const confirmed = confirm("ยังมีรายการในโพยที่ยังไม่บันทึก ต้องการทิ้งและออกจากหน้านี้ใช่หรือไม่");
+  if (confirmed) state.ticketDraftEntries = [];
+  return confirmed;
 }
 
 function announceClosingSoonRounds() {

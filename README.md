@@ -119,18 +119,17 @@ All roles use the same application entry point. Access is limited by role instea
 
 ## Admin workflow
 
-For common intake work, use `รับรายการ`:
+For daily intake work:
 
-1. Select the customer once.
-2. If the customer is new, add them inline from the same screen.
-3. Paste the LINE message, for example `01 02 03 04 05 06 ไทย 1000บาท`.
-4. Let the parser infer lottery, active round, bet type, amount, and numbers where possible.
-5. Review the generated rows.
-6. Save the whole batch in one action and use the generated ticket code for follow-up.
-7. A supervisor reviews the full ticket in `ตรวจงาน` before it is counted in official totals.
-8. After draw time, record results and finalize the round before payouts become official.
+1. Open `แทงหวย`.
+2. Pick the lottery card for the round that is currently accepting entries.
+3. Key the ticket in `คีย์โพย` using `แทงเร็ว`, `แทงแบบคลาสสิค`, or `วางโพย`.
+4. Put the customer's LINE name in the note field so it appears on the receipt immediately.
+5. Save the ticket and send the generated receipt code back to the customer.
+6. A supervisor reviews the full ticket in `ตรวจโพย` before it is counted in official totals.
+7. After draw time, record results in `ตรวจรางวัล`, review them, and finalize the round before payouts become official.
 
-Use the detailed form only for exceptional cases that need manual correction.
+Use `รายการแทง` for search and correction work, and keep long-lived setup work under `ตั้งค่า`.
 
 ## QA
 
