@@ -82,13 +82,12 @@ try {
     capture: "viewer",
   });
 
-  const portalHtml = await requestText("/");
-  const adminHtml = await requestText("/admin");
-  assert(portalHtml.includes("member portal"), "public portal shell should render");
-  assert(portalHtml.includes("รายการแทง/ยกเลิกโพย"), "public portal should expose ticket navigation");
-  assert(portalHtml.includes('data-view="finance"'), "public portal should expose finance view");
-  assert(portalHtml.includes('data-view="results"'), "public portal should expose results view");
-  assert(adminHtml.includes("ระบบหลังบ้าน"), "admin shell should render");
+  const appHtml = await requestText("/");
+  const adminRedirect = await requestRaw("/admin", { redirect: "manual" });
+  assert(appHtml.includes("ระบบจัดการหวย"), "main app shell should render from root");
+  assert(appHtml.includes('data-view-target="intake"'), "main app should expose intake navigation");
+  assert(appHtml.includes('data-view-target="headHouseReport"'), "main app should contain head-house report view");
+  assert(adminRedirect.status === 302, "/admin should redirect to the unified root app");
 
   await request("/api/users", {
     method: "POST",
@@ -367,6 +366,10 @@ async function requestText(url, expectedStatus = 200) {
     throw new Error(`GET ${url} expected ${expectedStatus}, got ${response.status}: ${await response.text()}`);
   }
   return response.text();
+}
+
+async function requestRaw(url, options = {}) {
+  return fetch(`${baseUrl}${url}`, options);
 }
 
 function assert(condition, message) {

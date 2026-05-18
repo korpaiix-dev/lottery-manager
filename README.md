@@ -1,6 +1,6 @@
 # Lottery Manager
 
-Back-office web app for managing:
+Role-based lottery management web app for:
 
 - customer codes
 - head houses
@@ -47,7 +47,7 @@ Then open `http://127.0.0.1:3001`.
 - Result entry
 - Result finalization and reopen flow
 - Settlement reports
-- Read-only head-house summary portal
+- Read-only head-house summary view
 - Login and first-admin setup
 - Dashboard summaries
 - JSON export
@@ -108,6 +108,14 @@ Example cron:
 ```cron
 0 3 * * * /bin/bash /var/www/lottery-manager/scripts/backup-db.sh
 ```
+
+## Role model
+
+- `admin`: access to every page, including ticket approval, user management, head-house management, schedules, payouts, and reports
+- `operator`: access to operational pages such as intake, entries, results entry, and day-to-day reports, but not admin-only user management or approval actions
+- `head_house_viewer`: read-only access to the head-house summary for their own account only
+
+All roles use the same application entry point. Access is limited by role instead of splitting customer and admin work into separate sites.
 
 ## Admin workflow
 
