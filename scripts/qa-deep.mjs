@@ -102,6 +102,10 @@ try {
   const publicState = await request("/api/public-state");
   assert(publicState.lotteries.length > 0, "public portal state should expose lotteries");
   assert(Array.isArray(publicState.rounds), "public portal state should expose rounds");
+  assert(
+    publicState.scheduleTemplates.every((scheduleTemplate) => scheduleTemplate.result_time !== "00:00" || scheduleTemplate.draw_time === "00:00"),
+    "seeded schedules should expose meaningful result times",
+  );
 
   const customer = await request("/api/customers", {
     method: "POST",

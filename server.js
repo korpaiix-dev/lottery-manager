@@ -186,10 +186,20 @@ ensureColumn("rounds", "open_time", "TEXT");
 ensureColumn("rounds", "schedule_template_id", "TEXT");
 ensureColumn("rounds", "auto_generated", "INTEGER NOT NULL DEFAULT 0");
 ensureColumn("rounds", "result_status", "TEXT NOT NULL DEFAULT 'draft'");
-ensureColumn("rounds", "result_finalized_by", "TEXT");
-ensureColumn("rounds", "result_finalized_at", "TEXT");
-ensureColumn("rounds", "result_time", "TEXT NOT NULL DEFAULT '00:00'");
-ensureColumn("schedule_templates", "result_time", "TEXT NOT NULL DEFAULT '00:00'");
+  ensureColumn("rounds", "result_finalized_by", "TEXT");
+  ensureColumn("rounds", "result_finalized_at", "TEXT");
+  ensureColumn("rounds", "result_time", "TEXT NOT NULL DEFAULT '00:00'");
+  ensureColumn("schedule_templates", "result_time", "TEXT NOT NULL DEFAULT '00:00'");
+  db.prepare(`
+    UPDATE schedule_templates
+    SET result_time = draw_time
+    WHERE result_time = '00:00' AND draw_time <> '00:00'
+  `).run();
+  db.prepare(`
+    UPDATE rounds
+    SET result_time = draw_time
+    WHERE result_time = '00:00' AND draw_time <> '00:00'
+  `).run();
 ensureColumn("customers", "head_house_id", "TEXT");
 ensureColumn("users", "head_house_id", "TEXT");
 ensureColumn("head_houses", "commission_percent", "REAL NOT NULL DEFAULT 0");
