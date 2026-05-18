@@ -81,6 +81,7 @@ const state = {
   latestReceiptTicketId: null,
   latestViewerCredentials: null,
   announcedRoundIds: new Set(),
+  announcedResultRoundIds: new Set(),
 };
 
 const elements = {
@@ -139,6 +140,7 @@ const elements = {
   ticketComposeDate: document.querySelector("#ticketComposeDate"),
   ticketSummaryRoundLabel: document.querySelector("#ticketSummaryRoundLabel"),
   ticketRound: document.querySelector("#ticketRoundInput"),
+  ticketHeadHouse: document.querySelector("#ticketHeadHouseInput"),
   ticketRateLabel: document.querySelector("#ticketRateLabel"),
   ticketBetTypeTabs: document.querySelector("#ticketBetTypeTabs"),
   ticketActionHint: document.querySelector("#ticketActionHint"),
@@ -170,6 +172,7 @@ const elements = {
   quickCustomerForm: document.querySelector("#quickCustomerForm"),
   quickCustomerName: document.querySelector("#quickCustomerNameInput"),
   quickCustomerHeadHouse: document.querySelector("#quickCustomerHeadHouseInput"),
+  quickHeadHouse: document.querySelector("#quickHeadHouse"),
   quickLottery: document.querySelector("#quickLottery"),
   quickRound: document.querySelector("#quickRound"),
   quickBetType: document.querySelector("#quickBetType"),
@@ -330,6 +333,7 @@ function bindEvents() {
   });
 
   elements.ticketRound.addEventListener("change", renderTicketWorkbench);
+  elements.ticketHeadHouse.addEventListener("change", renderTicketReceiptPreview);
   elements.ticketNote.addEventListener("input", renderTicketReceiptPreview);
   elements.ticketNumber.addEventListener("input", () => {
     if (getIntakeAction()?.target === "run_pair") {
@@ -537,6 +541,7 @@ function renderSelects() {
 
   preserveSelect(elements.quickCustomer, customerOptions);
   preserveSelect(elements.quickCustomerHeadHouse, headHouseOptions, "direct");
+  preserveSelect(elements.quickHeadHouse, headHouseOptions, "direct");
   preserveSelect(elements.customer, customerOptions);
   preserveSelect(elements.customerHeadHouse, headHouseOptions, "direct");
   preserveSelect(elements.filterCustomer, option("all", "ทั้งหมด") + customerOptions, "all");
@@ -548,6 +553,7 @@ function renderSelects() {
   preserveSelect(elements.filterBetType, option("all", "ทั้งหมด") + betTypeOptions, "all");
   preserveSelect(elements.round, acceptingRoundOptions || option("", "ยังไม่มีงวดที่เปิดรับ"));
   preserveSelect(elements.ticketRound, acceptingRoundOptions || option("", "ยังไม่มีงวดที่เปิดรับ"));
+  preserveSelect(elements.ticketHeadHouse, headHouseOptions, "direct");
   preserveSelect(elements.filterRound, option("all", "ทั้งหมด") + roundOptions, "all");
   preserveSelect(elements.limitRound, acceptingRoundOptions || roundOptions);
   preserveSelect(elements.limitBetType, betTypeOptions, "two_top");
@@ -617,9 +623,13 @@ function renderMarketAdmin() {
   if (!elements.marketAdminSummary || !elements.marketAdminBoard) return;
   const activeSchedules = state.scheduleTemplates.filter((schedule) => schedule.active);
   const inactiveSchedules = state.scheduleTemplates.filter((schedule) => !schedule.active);
+  const unscheduledLotteries = state.lotteries.filter(
+    (lottery) => !state.scheduleTemplates.some((schedule) => schedule.lottery_id === lottery.id),
+  );
   elements.marketAdminSummary.innerHTML = `
     <span>ใช้งาน ${activeSchedules.length.toLocaleString("th-TH")} หวย</span>
     <span>พักไว้ ${inactiveSchedules.length.toLocaleString("th-TH")} หวย</span>
+    <span>ยังไม่ตั้งเวลา ${unscheduledLotteries.length.toLocaleString("th-TH")} หวย</span>
     <span>ใกล้ปิด ${state.rounds.filter((round) => getRoundTimingStatus(round).state === "closing_soon").length.toLocaleString("th-TH")} งวด</span>
   `;
 
@@ -700,6 +710,9 @@ function renderSidebarSummary() {
 
 function renderTaskQueue(pendingTickets, pendingResults) {
   const zeroRateCount = state.payoutRates.filter((rate) => Number(rate.rate) <= 0).length;
+  const unscheduledLotteries = state.lotteries.filter(
+    (lottery) => !state.scheduleTemplates.some((schedule) => schedule.lottery_id === lottery.id),
+  );
   const waitingForResult = state.rounds.filter(
     (round) =>
       round.result_status !== "finalized" &&
@@ -733,6 +746,13 @@ function renderTaskQueue(pendingTickets, pendingResults) {
       tone: "danger",
       title: `${zeroRateCount.toLocaleString("th-TH")} อัตราจ่ายยังเป็นศูนย์`,
       detail: "ควรตั้งค่าก่อนรับยอดจริง",
+    });
+  }
+  if (unscheduledLotteries.length) {
+    tasks.push({
+      tone: "warning",
+      title: `${unscheduledLotteries.length.toLocaleString("th-TH")} หวยยังไม่มีตารางอัตโนมัติ`,
+      detail: unscheduledLotteries.map((lottery) => lottery.name).join(", "),
     });
   }
   if (!tasks.length) {
@@ -1231,6 +1251,7 @@ async function saveTicketDraft() {
       method: "POST",
       body: {
         sourceChannel: "manual",
+        headHouseId: elements.ticketHeadHouse.value,
         note: elements.ticketNote.value.trim(),
         entries: state.ticketDraftEntries.map((entry) => ({
           customerId: entry.customerId,
@@ -1259,6 +1280,8 @@ function renderTicketReceiptPreview() {
   const round = savedTicket ? getRound(savedTicket.round_id) : getRound(elements.ticketRound.value);
   const draftEntries = savedTicket ? savedEntries : state.ticketDraftEntries;
   const note = savedTicket?.note || elements.ticketNote.value.trim();
+  const headHouseId = savedTicket?.head_house_id || elements.ticketHeadHouse.value;
+  const headHouse = state.headHouses.find((item) => item.id === headHouseId);
   const code = savedTicket?.code || "รหัสบิลจะออกหลังบันทึก";
   const customerLabel = note || "ยังไม่ได้ใส่ชื่อ LINE ลูกค้า";
   const createdAt = savedTicket ? formatDateTime(savedTicket.created_at) : "ยังไม่บันทึก";
@@ -1309,6 +1332,10 @@ function renderTicketReceiptPreview() {
       <div>
         <span>หวย</span>
         <strong>${escapeHtml(round ? getLotteryName(round.lottery_id) : "-")}</strong>
+      </div>
+      <div>
+        <span>หัวบ้าน</span>
+        <strong>${escapeHtml(headHouse ? formatHeadHouse(headHouse) : "-")}</strong>
       </div>
       <div>
         <span>งวด</span>
@@ -1509,6 +1536,8 @@ function parseQuickMessage() {
   state.quickParsedEntries = entries;
   if (inferredCustomer) {
     elements.quickCustomer.value = inferredCustomer;
+    const customerHeadHouseId = getCustomer(inferredCustomer)?.head_house_id;
+    if (customerHeadHouseId) elements.quickHeadHouse.value = customerHeadHouseId;
   }
   renderQuickPreview({
     inferredLottery,
@@ -1574,16 +1603,18 @@ async function saveQuickBatch() {
       method: "POST",
       body: {
         sourceChannel: "line",
+        headHouseId: elements.quickHeadHouse.value,
         sourceText: elements.quickMessage.value.trim(),
         note: elements.quickNote.value.trim(),
         entries: normalizedEntries,
       },
     });
+    state.latestReceiptTicketId = inserted[0]?.ticket_id || null;
     clearQuickIntake();
     await refreshState();
     const ticketCode = getTicket(inserted[0]?.ticket_id)?.code;
     if (ticketCode) alert(`บันทึกโพยแล้ว รหัสโพย ${ticketCode}`);
-    activateView("entries");
+    activateView("intake");
   } catch (error) {
     handleLimitError(error);
   }
@@ -2542,7 +2573,10 @@ function renderReview() {
       return `
         <tr>
           <td>${escapeHtml(ticket.code)}</td>
-          <td>${escapeHtml(ticket.customer_code)}${ticket.customer_name ? ` · ${escapeHtml(ticket.customer_name)}` : ""}</td>
+          <td>
+            ${escapeHtml(ticket.customer_code)}${ticket.customer_name ? ` · ${escapeHtml(ticket.customer_name)}` : ""}
+            <small>${escapeHtml(ticket.head_house_code || "-")} · ${escapeHtml(ticket.head_house_name || "-")}</small>
+          </td>
           <td>${escapeHtml(ticket.lottery_name)} · ${escapeHtml(ticket.round_label)}</td>
           <td>${ticket.entry_count.toLocaleString("th-TH")}</td>
           <td class="amount">${money(ticket.total_amount)}</td>
@@ -3428,6 +3462,7 @@ function renderTimeSensitiveUi() {
   renderMarketAdmin();
   renderClosingSoonBanner();
   announceClosingSoonRounds();
+  announceResultDueRounds();
 }
 
 function announceClosingSoonRounds() {
@@ -3436,6 +3471,20 @@ function announceClosingSoonRounds() {
     if (state.announcedRoundIds.has(round.id)) return;
     state.announcedRoundIds.add(round.id);
     showToast(`${getLotteryName(round.lottery_id)} ${round.label} เหลือเวลาไม่ถึง 5 นาที จะปิดรับอัตโนมัติ`, "warning");
+  });
+}
+
+function announceResultDueRounds() {
+  const rounds = state.rounds.filter(
+    (round) =>
+      round.result_status !== "finalized" &&
+      Date.now() >= new Date(round.result_at || round.draw_at).getTime() &&
+      !state.results.some((result) => result.round_id === round.id),
+  );
+  rounds.forEach((round) => {
+    if (state.announcedResultRoundIds.has(round.id)) return;
+    state.announcedResultRoundIds.add(round.id);
+    showToast(`${getLotteryName(round.lottery_id)} ${round.label} ถึงเวลาตรวจผลแล้ว`, "warning");
   });
 }
 

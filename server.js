@@ -83,10 +83,12 @@ db.exec(`
     id TEXT PRIMARY KEY,
     code TEXT NOT NULL UNIQUE,
     customer_id TEXT NOT NULL REFERENCES customers(id) ON DELETE RESTRICT,
+    head_house_id TEXT REFERENCES head_houses(id) ON DELETE SET NULL,
     round_id TEXT NOT NULL REFERENCES rounds(id) ON DELETE RESTRICT,
     source_channel TEXT NOT NULL DEFAULT 'manual',
     source_text TEXT NOT NULL DEFAULT '',
     note TEXT NOT NULL DEFAULT '',
+    review_note TEXT NOT NULL DEFAULT '',
     status TEXT NOT NULL CHECK(status IN ('pending_review', 'approved', 'rejected', 'cancelled')) DEFAULT 'pending_review',
     checked_by TEXT REFERENCES users(id) ON DELETE SET NULL,
     checked_at TEXT,
@@ -194,10 +196,22 @@ ensureColumn("head_houses", "commission_percent", "REAL NOT NULL DEFAULT 0");
 ensureColumn("lotteries", "category", "TEXT NOT NULL DEFAULT 'other'");
 ensureColumn("lotteries", "display_order", "INTEGER NOT NULL DEFAULT 999");
 ensureColumn("entries", "ticket_id", "TEXT");
+ensureColumn("tickets", "review_note", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("tickets", "head_house_id", "TEXT");
 seedReferenceData();
 db.prepare("UPDATE customers SET head_house_id = 'direct' WHERE head_house_id IS NULL OR head_house_id = ''").run();
+db.prepare(`
+  UPDATE tickets
+  SET head_house_id = (
+    SELECT customers.head_house_id
+    FROM customers
+    WHERE customers.id = tickets.customer_id
+  )
+  WHERE head_house_id IS NULL OR head_house_id = ''
+`).run();
 backfillLegacyTickets();
 ensureUpcomingRounds();
+setInterval(() => ensureUpcomingRounds(), 10 * 60 * 1000).unref();
 
 const app = express();
 app.disable("x-powered-by");
@@ -983,6 +997,8 @@ app.delete("/api/limits/:id", requireAuth, requireWriteAccess, (req, res) => {
 app.post("/api/entries", requireAuth, requireWriteAccess, (req, res) => {
   const payload = normalizeEntryPayload(req.body);
   if (!payload.ok) return res.status(400).json({ error: payload.error });
+  const headHouseId = normalizeTicketHeadHouse(req.body.headHouseId, payload.value.customer_id);
+  if (!headHouseId) return res.status(400).json({ error: "invalid_head_house_payload" });
 
   const limitError = validateLimitCapacity(payload.value);
   if (limitError) return res.status(409).json(limitError);
@@ -991,6 +1007,7 @@ app.post("/api/entries", requireAuth, requireWriteAccess, (req, res) => {
     const ticket = createTicket(
       {
         customer_id: payload.value.customer_id,
+        head_house_id: headHouseId,
         round_id: payload.value.round_id,
         source_channel: cleanText(req.body.sourceChannel || "manual", 40),
         source_text: payload.value.source_text,
@@ -1022,6 +1039,8 @@ app.post("/api/entries/batch", requireAuth, requireWriteAccess, (req, res) => {
   if (batchLimitError) return res.status(409).json(batchLimitError);
 
   const first = normalized[0];
+  const headHouseId = normalizeTicketHeadHouse(req.body.headHouseId, first.customer_id);
+  if (!headHouseId) return res.status(400).json({ error: "invalid_head_house_payload" });
   const hasMixedTickets = normalized.some(
     (entry) => entry.customer_id !== first.customer_id || entry.round_id !== first.round_id,
   );
@@ -1031,6 +1050,7 @@ app.post("/api/entries/batch", requireAuth, requireWriteAccess, (req, res) => {
     const ticket = createTicket(
       {
         customer_id: first.customer_id,
+        head_house_id: headHouseId,
         round_id: first.round_id,
         source_channel: cleanText(req.body.sourceChannel || "manual", 40),
         source_text: cleanText(req.body.sourceText || first.source_text, 500),
@@ -1114,9 +1134,9 @@ app.post("/api/tickets/:id/reject", requireAuth, requireAdmin, (req, res) => {
   const reason = cleanText(req.body.reason, 240);
   db.prepare(`
     UPDATE tickets
-    SET status = 'rejected', checked_by = ?, checked_at = ?, note = ?, updated_at = ?
+    SET status = 'rejected', checked_by = ?, checked_at = ?, review_note = ?, updated_at = ?
     WHERE id = ?
-  `).run(req.user.id, now, reason || ticket.note, now, ticket.id);
+  `).run(req.user.id, now, reason, now, ticket.id);
 
   const updated = findTicket(ticket.id);
   logAudit(req.user.id, "reject", "ticket", ticket.id, { ...updated, reason });
@@ -1485,6 +1505,8 @@ function getFullState(user) {
         SELECT tickets.*,
                customers.code AS customer_code,
                customers.name AS customer_name,
+               COALESCE(ticket_head_houses.code, customer_head_houses.code) AS head_house_code,
+               COALESCE(ticket_head_houses.name, customer_head_houses.name) AS head_house_name,
                rounds.label AS round_label,
                rounds.draw_date,
                rounds.draw_time,
@@ -1495,6 +1517,8 @@ function getFullState(user) {
                COALESCE(SUM(entries.amount), 0) AS total_amount
         FROM tickets
         JOIN customers ON customers.id = tickets.customer_id
+        LEFT JOIN head_houses AS ticket_head_houses ON ticket_head_houses.id = tickets.head_house_id
+        LEFT JOIN head_houses AS customer_head_houses ON customer_head_houses.id = customers.head_house_id
         JOIN rounds ON rounds.id = tickets.round_id
         JOIN lotteries ON lotteries.id = rounds.lottery_id
         LEFT JOIN users AS creator ON creator.id = tickets.created_by
@@ -1573,6 +1597,12 @@ function findViewerForHeadHouse(headHouseId) {
 
 function findCustomer(id) {
   return db.prepare("SELECT * FROM customers WHERE id = ?").get(id);
+}
+
+function normalizeTicketHeadHouse(rawHeadHouseId, customerId) {
+  const requested = cleanText(rawHeadHouseId, 80);
+  if (requested) return findHeadHouse(requested)?.id || "";
+  return findCustomer(customerId)?.head_house_id || "direct";
 }
 
 function findRound(id) {
@@ -1723,6 +1753,7 @@ function createTicket(payload, userId) {
     id: crypto.randomUUID(),
     code: nextSequentialCode("tickets", "P", 6),
     customer_id: payload.customer_id,
+    head_house_id: payload.head_house_id || findCustomer(payload.customer_id)?.head_house_id || "direct",
     round_id: payload.round_id,
     source_channel: payload.source_channel || "manual",
     source_text: payload.source_text || "",
@@ -1736,14 +1767,15 @@ function createTicket(payload, userId) {
   };
   db.prepare(`
     INSERT INTO tickets (
-      id, code, customer_id, round_id, source_channel, source_text, note,
+      id, code, customer_id, head_house_id, round_id, source_channel, source_text, note,
       status, checked_by, checked_at, created_by, created_at, updated_at
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     ticket.id,
     ticket.code,
     ticket.customer_id,
+    ticket.head_house_id,
     ticket.round_id,
     ticket.source_channel,
     ticket.source_text,
@@ -1856,7 +1888,7 @@ function buildHeadHouseSummary(headHouseId) {
         JOIN customers ON customers.id = entries.customer_id
         JOIN rounds ON rounds.id = entries.round_id
         JOIN lotteries ON lotteries.id = rounds.lottery_id
-        WHERE customers.head_house_id = ?
+        WHERE COALESCE(tickets.head_house_id, customers.head_house_id) = ?
           AND tickets.status = 'approved'
         ORDER BY rounds.draw_date DESC, rounds.draw_time DESC, entries.created_at DESC
     `)

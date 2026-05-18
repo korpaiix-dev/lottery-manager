@@ -33,6 +33,21 @@ try {
   let state = await request("/api/state", { cookie: "admin" });
   const thai = state.lotteries.find((lottery) => lottery.id === "thai");
   assert(thai, "missing thai lottery");
+  const adminUser = state.users.find((user) => user.username === "qa-admin");
+  assert(adminUser?.role === "admin", "admin bootstrap user missing");
+
+  await request(`/api/users/${adminUser.id}`, {
+    method: "PUT",
+    cookie: "admin",
+    body: { username: "qa-admin", password: "", role: "operator" },
+    expectedStatus: 409,
+  });
+
+  await request(`/api/users/${adminUser.id}`, {
+    method: "DELETE",
+    cookie: "admin",
+    expectedStatus: 409,
+  });
 
   const headHouse = await request("/api/head-houses", {
     method: "POST",
@@ -67,6 +82,11 @@ try {
     capture: "viewer",
   });
 
+  const portalHtml = await requestText("/");
+  const adminHtml = await requestText("/admin");
+  assert(portalHtml.includes("ศูนย์ข้อมูลหวย"), "public portal shell should render");
+  assert(adminHtml.includes("ระบบหลังบ้าน"), "admin shell should render");
+
   await request("/api/users", {
     method: "POST",
     cookie: "operator",
@@ -76,6 +96,9 @@ try {
 
   await request("/api/state", { cookie: "viewer" });
   await request("/api/export", { cookie: "viewer", expectedStatus: 403 });
+  const publicState = await request("/api/public-state");
+  assert(publicState.lotteries.length > 0, "public portal state should expose lotteries");
+  assert(Array.isArray(publicState.rounds), "public portal state should expose rounds");
 
   const customer = await request("/api/customers", {
     method: "POST",
@@ -167,6 +190,19 @@ try {
   });
   assert(entries.length === 2, "batch create failed");
 
+  const headHouseWalkinEntries = await request("/api/entries/batch", {
+    method: "POST",
+    cookie: "admin",
+    body: {
+      sourceChannel: "manual",
+      headHouseId: headHouse.id,
+      note: "LINE: เจ๊แดง",
+      entries: [{ customerId: "walkin", roundId: round.id, betTypeId: "two_bottom", number: "88", amount: 40, note: "LINE: เจ๊แดง" }],
+    },
+    expectedStatus: 201,
+  });
+  assert(headHouseWalkinEntries.length === 1, "head-house walkin batch create failed");
+
   await request("/api/entries/batch", {
     method: "POST",
     cookie: "admin",
@@ -178,8 +214,11 @@ try {
   });
 
   state = await request("/api/state", { cookie: "admin" });
-  const ticket = state.tickets.find((item) => item.round_id === round.id);
+  const ticket = state.tickets.find((item) => item.id === entries[0].ticket_id);
   assert(ticket?.status === "pending_review", "ticket should start pending");
+  assert(ticket?.note === "LINE: ลูกค้า QA", "ticket note should persist from batch create");
+  const headHouseWalkinTicket = state.tickets.find((item) => item.id === headHouseWalkinEntries[0].ticket_id);
+  assert(headHouseWalkinTicket?.head_house_id === headHouse.id, "ticket head-house attribution missing");
 
   await request(`/api/tickets/${ticket.id}/approve`, { method: "POST", cookie: "admin" });
 
@@ -195,6 +234,7 @@ try {
     cookie: "operator",
     body: { roundId: round.id, betTypeId: "two_top", numbers: "45" },
   });
+  await request(`/api/results/${round.id}/finalize`, { method: "POST", cookie: "operator", expectedStatus: 403 });
   await request(`/api/results/${round.id}/finalize`, { method: "POST", cookie: "admin", expectedStatus: 409 });
   await request("/api/results", {
     method: "POST",
@@ -213,9 +253,14 @@ try {
   assert(settlement.totalStake === 110, "settlement stake mismatch");
   assert(settlement.winnerCount === 2, "settlement winners mismatch");
 
+  await request(`/api/tickets/${headHouseWalkinTicket.id}/approve`, { method: "POST", cookie: "admin" });
+
   const summary = await request(`/api/head-house-summary?headHouseId=${encodeURIComponent(headHouse.id)}`, { cookie: "admin" });
-  assert(summary.totalStake === 110, "head house stake mismatch");
-  assert(summary.commissionAmount === 13.75, "head house commission mismatch");
+  assert(summary.totalStake === 150, "head house stake mismatch");
+  assert(summary.commissionAmount === 18.75, "head house commission mismatch");
+  const viewerSummary = await request("/api/head-house-summary", { cookie: "viewer" });
+  assert(viewerSummary.headHouse.id === headHouse.id, "viewer should only see own head house");
+  assert(viewerSummary.totalStake === 150, "viewer head house summary mismatch");
 
   await request(`/api/results/${round.id}/reopen`, { method: "POST", cookie: "admin" });
   await request("/api/results", {
@@ -223,6 +268,28 @@ try {
     cookie: "operator",
     body: { roundId: round.id, betTypeId: "two_top", numbers: "67" },
   });
+
+  const rejectedEntries = await request("/api/entries/batch", {
+    method: "POST",
+    cookie: "admin",
+    body: {
+      sourceChannel: "manual",
+      note: "LINE: ต้องคงอยู่",
+      entries: [{ customerId: customer.id, roundId: round.id, betTypeId: "two_bottom", number: "89", amount: 20, note: "LINE: ต้องคงอยู่" }],
+    },
+    expectedStatus: 201,
+  });
+  state = await request("/api/state", { cookie: "admin" });
+  const rejectedTicket = state.tickets.find((item) => item.id === rejectedEntries[0].ticket_id);
+  await request(`/api/tickets/${rejectedTicket.id}/reject`, {
+    method: "POST",
+    cookie: "admin",
+    body: { reason: "ข้อมูลไม่ครบ" },
+  });
+  state = await request("/api/state", { cookie: "admin" });
+  const rejectedTicketAfterReview = state.tickets.find((item) => item.id === rejectedTicket.id);
+  assert(rejectedTicketAfterReview.note === "LINE: ต้องคงอยู่", "rejecting a ticket must not overwrite customer note");
+  assert(rejectedTicketAfterReview.review_note === "ข้อมูลไม่ครบ", "reject reason should be stored separately");
 
   await request(`/api/users/${operator.id}`, {
     method: "PUT",
@@ -285,6 +352,14 @@ async function request(url, { method = "GET", body, cookie = "", capture = "", e
 
   if (response.status === 204) return null;
   return response.json();
+}
+
+async function requestText(url, expectedStatus = 200) {
+  const response = await fetch(`${baseUrl}${url}`);
+  if (response.status !== expectedStatus) {
+    throw new Error(`GET ${url} expected ${expectedStatus}, got ${response.status}: ${await response.text()}`);
+  }
+  return response.text();
 }
 
 function assert(condition, message) {
