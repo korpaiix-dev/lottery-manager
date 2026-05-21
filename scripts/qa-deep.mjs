@@ -83,6 +83,7 @@ try {
   });
 
   const appHtml = await requestText("/");
+  const appJs = fs.readFileSync(path.join(root, "app.js"), "utf8");
   const adminRedirect = await requestRaw("/admin", { redirect: "manual" });
   assert(appHtml.includes("ระบบจัดการหวย"), "main app shell should render from root");
   assert(appHtml.includes('data-view-target="markets">แทงหวย'), "main app should expose แทงหวย as the lottery selection page");
@@ -90,8 +91,25 @@ try {
   assert(appHtml.includes('data-view-target="resultLinks">ลิงก์ผล'), "main app should expose result source links");
   assert(appHtml.includes('id="lotteryBoard"'), "main app should render the lottery selection board");
   assert(appHtml.includes('id="backToMarketsBtn"'), "intake should provide a return path to the lottery board");
+  assert(appHtml.includes('id="ticketDraftBody"'), "intake should show a visible ticket draft before saving");
+  assert(appHtml.includes("โพยที่กำลังคีย์"), "ticket draft wording should explain that add-to-ticket is not final save");
+  assert(appHtml.includes("บันทึกเข้ารายการแทง"), "ticket save button should tell staff where the ticket goes next");
+  assert(appHtml.includes('id="ticketReceiptPreview"'), "intake should show receipt preview for customer confirmation");
+  assert(appHtml.includes('id="ticketNoteInput"'), "intake should include LINE/customer note on the bill");
+  assert(appHtml.includes('id="ticketExpansionPreview"'), "intake should preview expanded 6 กลับ / 19 ประตู numbers before adding");
+  assert(appHtml.includes('id="addTicketEntryBtn"'), "intake should expose a clear add-to-ticket button");
   assert(appHtml.includes('data-view-target="headHouseReport"'), "main app should contain head-house report view");
   assert(adminRedirect.status === 302, "/admin should redirect to the unified root app");
+  assert(appJs.includes('{ id: "run_pair", label: "วิ่ง"'), "quick ticket actions should keep one วิ่ง button with top/bottom amount fields");
+  assert(!appJs.includes('label: "วิ่งบน"') && !appJs.includes('label: "วิ่งล่าง"'), "quick ticket actions should not split วิ่งบน/วิ่งล่าง into separate buttons");
+  assert(appJs.includes('if (action.target === "six_return") return [...new Set(permutations(number))];'), "6 กลับ should expand numbers before adding");
+  assert(appJs.includes('if (action.target === "nineteen_gate") return nineteenGateNumbers(number);'), "19 ประตู should expand numbers before adding");
+  assert(appJs.includes("state.ticketDraftEntries.push({ id: createClientId(), ...newEntry })"), "draft entries should use the HTTP-safe client id fallback");
+  assert(appJs.includes('state.latestReceiptTicketId = inserted[0]?.ticket_id || null'), "saving a ticket should remember the saved receipt id");
+  assert(appJs.includes('activateView("entries");'), "saving a ticket should navigate staff to รายการแทง");
+  assert(appJs.includes('if (!state.notificationBootstrapped)'), "time alerts should bootstrap without flooding the first login");
+  assert(appJs.includes("state.notificationBootstrapped = true"), "result-due alerts should mark the initial notification baseline");
+  assert(appJs.includes('showToast(`${getLotteryName(round.lottery_id)} ${round.label} ถึงเวลาตรวจผลแล้ว`'), "result-due alerts should still fire after bootstrap");
 
   await request("/api/users", {
     method: "POST",
@@ -235,11 +253,17 @@ try {
   state = await request("/api/state", { cookie: "admin" });
   const ticket = state.tickets.find((item) => item.id === entries[0].ticket_id);
   assert(ticket?.status === "pending_review", "ticket should start pending");
+  assert(ticket?.code, "ticket should receive a bill code for customer confirmation");
   assert(ticket?.note === "LINE: ลูกค้า QA", "ticket note should persist from batch create");
+  assert(state.entries.some((entry) => entry.ticket_id === ticket.id && entry.number === "45"), "saved ticket entries should appear in รายการแทง data");
   const headHouseWalkinTicket = state.tickets.find((item) => item.id === headHouseWalkinEntries[0].ticket_id);
   assert(headHouseWalkinTicket?.head_house_id === headHouse.id, "ticket head-house attribution missing");
+  assert(headHouseWalkinTicket?.note === "LINE: เจ๊แดง", "walk-in ticket should keep LINE note for receipt/search");
+  assert(headHouseWalkinEntries[0].customer_id === "walkin", "walk-in ticket entry should keep the walk-in customer marker");
 
   await request(`/api/tickets/${ticket.id}/approve`, { method: "POST", cookie: "admin" });
+  state = await request("/api/state", { cookie: "admin" });
+  assert(state.tickets.find((item) => item.id === ticket.id)?.status === "approved", "approved ticket should move out of pending review");
 
   await request(`/api/entries/${entries[0].id}`, {
     method: "PUT",
