@@ -165,6 +165,7 @@ const elements = {
   ticketInlineFeedback: document.querySelector("#ticketInlineFeedback"),
   addTicketEntryBtn: document.querySelector("#addTicketEntryBtn"),
   ticketLimitPreview: document.querySelector("#ticketLimitPreview"),
+  ticketDraftWrap: document.querySelector("#ticketDraftWrap"),
   ticketDraftBody: document.querySelector("#ticketDraftBody"),
   ticketDraftEmpty: document.querySelector("#ticketDraftEmpty"),
   clearTicketBtn: document.querySelector("#clearTicketBtn"),
@@ -1041,6 +1042,7 @@ function addTicketDraftEntry() {
   const number = elements.ticketNumber.value.trim();
   const validationMessage = getIntakeValidationMessage();
   if (validationMessage) {
+    showTicketInlineFeedback(validationMessage, "warning");
     showToast(validationMessage, "warning");
     return;
   }
@@ -1048,12 +1050,14 @@ function addTicketDraftEntry() {
   const issues = newEntries.length ? newEntries.flatMap((entry) => getDraftIssues(entry)) : ["ยังไม่มีรายการที่เพิ่มได้"];
 
   if (issues.length) {
+    showTicketInlineFeedback(issues[0], "warning");
     showToast(issues.join(", "), "warning");
     return;
   }
 
   const firstEntry = state.ticketDraftEntries[0];
   if (firstEntry && (firstEntry.customerId !== customerId || firstEntry.roundId !== roundId)) {
+    showTicketInlineFeedback("หนึ่งบิลต้องเป็นหัวบ้านและงวดเดียวกัน", "warning");
     showToast("หนึ่งโพยต้องเป็นลูกค้าและงวดเดียวกัน", "warning");
     return;
   }
@@ -1075,7 +1079,9 @@ function addTicketDraftEntry() {
   state.ticketRunDigits = [];
   elements.ticketNumber.focus();
   renderTicketWorkbench();
-  showToast(`เพิ่มแล้ว ${newEntries.length.toLocaleString("th-TH")} เลข`, "success");
+  flashTicketDraft();
+  showTicketInlineFeedback(`เพิ่มเข้าในบิลแล้ว ${newEntries.length.toLocaleString("th-TH")} เลข`, "success");
+  showToast(`เพิ่มเข้าในบิลแล้ว ${newEntries.length.toLocaleString("th-TH")} เลข`, "success");
 }
 
 function buildIntakeEntries({ customerId, roundId, number }) {
@@ -1290,10 +1296,14 @@ function clearTicketDraft() {
 }
 
 async function saveTicketDraft() {
-  if (!state.ticketDraftEntries.length) return;
+  if (!state.ticketDraftEntries.length) {
+    showTicketInlineFeedback("เพิ่มเลขลงบิลก่อน แล้วค่อยบันทึกบิล", "warning");
+    return;
+  }
 
   const groupedIssues = state.ticketDraftEntries.flatMap((entry) => getDraftIssues(entry));
   if (groupedIssues.length) {
+    showTicketInlineFeedback(groupedIssues[0], "warning");
     showToast("ยังมีรายการที่ข้อมูลไม่ครบ", "warning");
     return;
   }
@@ -1320,7 +1330,7 @@ async function saveTicketDraft() {
     elements.ticketNote.value = "";
     await refreshState();
     const ticketCode = getTicket(inserted[0]?.ticket_id)?.code;
-    showToast(ticketCode ? `บันทึกแล้ว ${ticketCode}` : "บันทึกแล้ว", "success");
+    showToast(ticketCode ? `บันทึกบิลแล้ว ${ticketCode} อยู่ในรายการแทง` : "บันทึกบิลแล้ว อยู่ในรายการแทง", "success");
     elements.ticketReceiptPreview.classList.add("is-fresh");
     window.setTimeout(() => elements.ticketReceiptPreview.classList.remove("is-fresh"), 1400);
     activateView("entries");
@@ -1539,6 +1549,19 @@ function renderTicketInlineFeedback() {
   if (!elements.ticketInlineFeedback) return;
   elements.ticketInlineFeedback.classList.add("hidden");
   elements.ticketInlineFeedback.textContent = "";
+}
+
+function showTicketInlineFeedback(message, tone = "warning") {
+  if (!elements.ticketInlineFeedback) return;
+  elements.ticketInlineFeedback.className = `ticket-inline-feedback ${tone}`;
+  elements.ticketInlineFeedback.textContent = message;
+}
+
+function flashTicketDraft() {
+  if (!elements.ticketDraftWrap) return;
+  elements.ticketDraftWrap.classList.remove("is-updated");
+  void elements.ticketDraftWrap.offsetWidth;
+  elements.ticketDraftWrap.classList.add("is-updated");
 }
 
 function renderTicketHistory() {

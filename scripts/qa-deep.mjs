@@ -92,12 +92,13 @@ try {
   assert(appHtml.includes('id="lotteryBoard"'), "main app should render the lottery selection board");
   assert(appHtml.includes('id="backToMarketsBtn"'), "intake should provide a return path to the lottery board");
   assert(appHtml.includes('id="ticketDraftBody"'), "intake should show a visible ticket draft before saving");
-  assert(appHtml.includes("โพยที่กำลังคีย์"), "ticket draft wording should explain that add-to-ticket is not final save");
-  assert(appHtml.includes("บันทึกเข้ารายการแทง"), "ticket save button should tell staff where the ticket goes next");
+  assert(appHtml.includes("รายการในบิล"), "ticket draft should be presented as the current bill");
+  assert(appHtml.includes("บันทึกบิล"), "ticket save button should finalize the current bill");
   assert(appHtml.includes('id="ticketReceiptPreview"'), "intake should show receipt preview for customer confirmation");
   assert(appHtml.includes('id="ticketNoteInput"'), "intake should include LINE/customer note on the bill");
   assert(appHtml.includes('id="ticketExpansionPreview"'), "intake should preview expanded 6 กลับ / 19 ประตู numbers before adding");
   assert(appHtml.includes('id="addTicketEntryBtn"'), "intake should expose a clear add-to-ticket button");
+  assert(appHtml.includes('id="ticketInlineFeedback"'), "intake should expose inline action feedback");
   assert(appHtml.includes('data-view-target="headHouseReport"'), "main app should contain head-house report view");
   assert(adminRedirect.status === 302, "/admin should redirect to the unified root app");
   assert(appJs.includes('{ id: "run_pair", label: "วิ่ง"'), "quick ticket actions should keep one วิ่ง button with top/bottom amount fields");

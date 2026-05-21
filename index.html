@@ -293,7 +293,7 @@
                       <span>โต๊ด</span>
                       <input id="ticketTodAmountInput" inputmode="decimal" placeholder="0.00" />
                     </label>
-                    <button id="addTicketEntryBtn" class="button button-primary" type="button">+ เพิ่มลงโพย</button>
+                    <button id="addTicketEntryBtn" class="button button-primary" type="button">+ เพิ่มเลขลงบิล</button>
                   </div>
 
                   <div id="ticketExpansionPreview" class="ticket-expansion-preview hidden"></div>
@@ -305,9 +305,9 @@
                   </label>
                 </section>
 
-                <section class="ticket-draft-wrap">
+                <section id="ticketDraftWrap" class="ticket-draft-wrap">
                   <div class="panel-heading compact-heading">
-                    <h3>โพยที่กำลังคีย์</h3>
+                    <h3>รายการในบิล</h3>
                     <button id="clearTicketBtn" class="text-button" type="button">ล้างโพย</button>
                   </div>
                   <div class="table-wrap">
@@ -323,7 +323,7 @@
                       <tbody id="ticketDraftBody"></tbody>
                     </table>
                   </div>
-                  <div id="ticketDraftEmpty" class="empty-state">ยังไม่มีเลข</div>
+                  <div id="ticketDraftEmpty" class="empty-state">ยังไม่มีเลขในบิล</div>
                 </section>
 
                 <section class="ticket-finalize-panel">
@@ -333,7 +333,7 @@
                       <span>รวมทั้งโพย</span>
                       <strong id="ticketTotalAmount">฿0.00</strong>
                     </div>
-                    <button id="saveTicketBtn" class="button button-primary" type="button">บันทึกเข้ารายการแทง</button>
+                    <button id="saveTicketBtn" class="button button-primary" type="button">บันทึกบิล</button>
                   </div>
                 </section>
               </section>

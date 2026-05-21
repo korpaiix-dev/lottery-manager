@@ -1105,6 +1105,18 @@ small {
   font-size: 13px;
 }
 
+.ticket-inline-feedback.success {
+  border-color: #8bd7aa;
+  background: #f0fdf4;
+  color: #166534;
+}
+
+.ticket-inline-feedback.warning {
+  border-color: #f7c36a;
+  background: #fff8eb;
+  color: #9a5800;
+}
+
 .ticket-preview-heading {
   display: flex !important;
   justify-content: space-between;
@@ -1146,6 +1158,16 @@ small {
   border-radius: 8px;
   background: #fff;
   padding: 14px;
+  transition:
+    border-color 180ms ease,
+    box-shadow 180ms ease,
+    transform 180ms ease;
+}
+
+.ticket-draft-wrap.is-updated {
+  border-color: #16a34a;
+  box-shadow: 0 0 0 4px rgba(22, 163, 74, 0.12);
+  transform: translateY(-1px);
 }
 
 .ticket-finalize-panel {
