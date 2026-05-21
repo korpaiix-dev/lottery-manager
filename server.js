@@ -12,6 +12,7 @@ const DB_PATH = path.resolve(process.env.DB_PATH || path.join(__dirname, ".data"
 const SESSION_TTL_DAYS = Number(process.env.SESSION_TTL_DAYS || 7);
 const SESSION_COOKIE = "lottery_session";
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+const ALLOWED_USER_ROLES = new Set(["admin", "operator", "head_house_viewer"]);
 
 fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
 
@@ -351,12 +352,10 @@ app.get("/api/state", requireAuth, (req, res) => {
 app.post("/api/users", requireAuth, requireAdmin, (req, res) => {
   const username = cleanText(req.body.username, 40);
   const password = String(req.body.password || "");
-  const role =
-    req.body.role === "operator"
-      ? "operator"
-      : req.body.role === "head_house_viewer"
-        ? "head_house_viewer"
-        : "admin";
+  const role = ALLOWED_USER_ROLES.has(req.body.role) ? req.body.role : null;
+  if (!role) {
+    return res.status(400).json({ error: "invalid_user_role" });
+  }
   const headHouseId = role === "head_house_viewer" ? cleanText(req.body.headHouseId, 80) : null;
 
   if (!username || password.length < 8 || (role === "head_house_viewer" && !findHeadHouse(headHouseId))) {
@@ -395,12 +394,10 @@ app.put("/api/users/:id", requireAuth, requireAdmin, (req, res) => {
 
   const username = cleanText(req.body.username, 40);
   const password = String(req.body.password || "");
-  const role =
-    req.body.role === "operator"
-      ? "operator"
-      : req.body.role === "head_house_viewer"
-        ? "head_house_viewer"
-        : "admin";
+  const role = ALLOWED_USER_ROLES.has(req.body.role) ? req.body.role : null;
+  if (!role) {
+    return res.status(400).json({ error: "invalid_user_role" });
+  }
   const headHouseId = role === "head_house_viewer" ? cleanText(req.body.headHouseId, 80) : null;
 
   if (!username || (password && password.length < 8) || (role === "head_house_viewer" && !findHeadHouse(headHouseId))) {
@@ -1125,21 +1122,36 @@ app.put("/api/entries/:id", requireAuth, requireWriteAccess, (req, res) => {
   const limitError = validateLimitCapacity(payload.value, existing.id);
   if (limitError) return res.status(409).json(limitError);
 
-  db.prepare(`
-    UPDATE entries
-    SET customer_id = ?, round_id = ?, bet_type_id = ?, number = ?, amount = ?, note = ?, source_text = ?, updated_at = ?
-    WHERE id = ?
-  `).run(
-    payload.value.customer_id,
-    payload.value.round_id,
-    payload.value.bet_type_id,
-    payload.value.number,
-    payload.value.amount,
-    payload.value.note,
-    payload.value.source_text,
-    nowIso(),
-    existing.id,
-  );
+  // B4 fix: re-check ticket status inside the transaction and abort if it was
+  // approved/cancelled between our first check and the UPDATE.
+  try {
+    withTransaction(() => {
+      const ticket = existing.ticket_id
+        ? db.prepare("SELECT status FROM tickets WHERE id = ?").get(existing.ticket_id)
+        : null;
+      if (ticket && ticket.status !== "pending_review") {
+        throw Object.assign(new Error("ticket_locked"), { code: "ticket_locked" });
+      }
+      db.prepare(`
+        UPDATE entries
+        SET customer_id = ?, round_id = ?, bet_type_id = ?, number = ?, amount = ?, note = ?, source_text = ?, updated_at = ?
+        WHERE id = ?
+      `).run(
+        payload.value.customer_id,
+        payload.value.round_id,
+        payload.value.bet_type_id,
+        payload.value.number,
+        payload.value.amount,
+        payload.value.note,
+        payload.value.source_text,
+        nowIso(),
+        existing.id,
+      );
+    });
+  } catch (error) {
+    if (error.code === "ticket_locked") return res.status(409).json({ error: "ticket_locked" });
+    throw error;
+  }
 
   const updated = findEntry(existing.id);
   logAudit(req.user.id, "update", "entry", existing.id, updated);
@@ -1369,9 +1381,43 @@ app.post("/api/import", requireAuth, requireWriteAccess, (req, res) => {
   res.json(imported);
 });
 
-app.listen(PORT, () => {
+// Request logging middleware (must run before listen so it sits in pipeline):
+//   logs JSON one-line per request to stdout (captured by systemd journald).
+app.use((req, res, next) => {
+  const start = Date.now();
+  res.on("finish", () => {
+    try {
+      console.log(JSON.stringify({
+        ts: new Date().toISOString(),
+        method: req.method,
+        url: req.url,
+        status: res.statusCode,
+        ms: Date.now() - start,
+        user: req.user?.username || "anon",
+        ip: req.headers["x-forwarded-for"] || req.socket.remoteAddress,
+      }));
+    } catch {
+      // never let logging crash the request
+    }
+  });
+  next();
+});
+
+const server = app.listen(PORT, () => {
   console.log(`lottery-manager listening on http://127.0.0.1:${PORT}`);
 });
+
+// Graceful shutdown — flush DB & close server cleanly so systemd restart never corrupts state.
+function gracefulShutdown(signal) {
+  console.log(`[shutdown] received ${signal}, closing…`);
+  server.close(() => {
+    try { db.close(); } catch {}
+    process.exit(0);
+  });
+  setTimeout(() => process.exit(1), 10_000).unref();
+}
+process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
+process.on("SIGINT", () => gracefulShutdown("SIGINT"));
 
 function seedReferenceData() {
   const now = nowIso();
@@ -1871,7 +1917,8 @@ function normalizeEntryPayload(body) {
     !betType ||
     !isNumberValidForBetType(number, betType) ||
     !Number.isFinite(amount) ||
-    amount <= 0
+    amount <= 0 ||
+    !Number.isInteger(amount)  // B19c fix: reject fractional baht
   ) {
     return { ok: false, error: "invalid_entry_payload" };
   }
@@ -1902,11 +1949,15 @@ function validateLimitCapacity(entry, excludedEntryId = null) {
 
   if (!limit) return null;
 
+  // H1 fix: only count entries whose tickets are still pending or approved
+  // (rejected / cancelled tickets release their capacity)
   const current = db.prepare(`
-    SELECT COALESCE(SUM(amount), 0) AS amount
+    SELECT COALESCE(SUM(entries.amount), 0) AS amount
     FROM entries
-    WHERE round_id = ? AND bet_type_id = ? AND number = ?
-      AND (? IS NULL OR id <> ?)
+    LEFT JOIN tickets ON tickets.id = entries.ticket_id
+    WHERE entries.round_id = ? AND entries.bet_type_id = ? AND entries.number = ?
+      AND (tickets.id IS NULL OR tickets.status IN ('pending_review', 'approved'))
+      AND (? IS NULL OR entries.id <> ?)
   `).get(entry.round_id, entry.bet_type_id, entry.number, excludedEntryId, excludedEntryId).amount;
   const projected = current + entry.amount;
 
@@ -1936,9 +1987,11 @@ function validateBatchLimitCapacity(entries) {
     if (!limit) continue;
 
     const current = db.prepare(`
-      SELECT COALESCE(SUM(amount), 0) AS amount
+      SELECT COALESCE(SUM(entries.amount), 0) AS amount
       FROM entries
-      WHERE round_id = ? AND bet_type_id = ? AND number = ?
+      LEFT JOIN tickets ON tickets.id = entries.ticket_id
+      WHERE entries.round_id = ? AND entries.bet_type_id = ? AND entries.number = ?
+        AND (tickets.id IS NULL OR tickets.status IN ('pending_review', 'approved'))
     `).get(roundId, betTypeId, number).amount;
 
     if (current + batchAmount > limit.max_amount) {
@@ -2037,25 +2090,31 @@ function normalizeResultNumbers(numbers, betTypeId) {
   const betType = findBetType(betTypeId);
   if (!betType) return [];
 
+  // H2 fix: don't silently truncate. Extract only digits, then reject anything that
+  // doesn't match expected length exactly so users get clear validation feedback.
   return [...new Set(String(numbers || "")
     .split(/[\s,]+/)
-    .map((item) => cleanDigits(item, 3))
+    .map((item) => String(item).replace(/\D/g, ""))
     .filter((item) => isNumberValidForBetType(item, betType)))];
 }
 
 async function importDueOfficialResults() {
+  // B3 fix: restrict auto-import to TODAY's draw_date to avoid injecting today's
+  // numbers into a stale round that an admin forgot to finalize.
+  const today = bangkokTodayIso();
   const dueRounds = db
     .prepare(`
       SELECT rounds.*
       FROM rounds
       JOIN result_sources ON result_sources.lottery_id = rounds.lottery_id
       WHERE rounds.result_status <> 'finalized'
+        AND rounds.draw_date = ?
         AND result_sources.active = 1
         AND result_sources.auto_confirm = 1
         AND result_sources.source_kind = 'official_glo'
       LIMIT 4
     `)
-    .all()
+    .all(today)
     .filter((round) => getRoundResultAt(round).getTime() <= Date.now());
 
   for (const round of dueRounds) {
@@ -2121,12 +2180,20 @@ async function fetchAndStoreResultImport(round, source, userId, options = {}) {
 }
 
 async function fetchOfficialGloLatest(endpoint) {
-  const response = await fetch(endpoint || "https://www.glo.or.th/api/lottery/getLatestLottery", {
-    method: "POST",
-    headers: { "content-type": "application/json", accept: "application/json" },
-  });
-  if (!response.ok) throw new Error(`GLO API ${response.status}`);
-  return response.json();
+  // H4 fix: enforce a 10-second timeout so a hung GLO endpoint can't lock up the import loop.
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 10_000);
+  try {
+    const response = await fetch(endpoint || "https://www.glo.or.th/api/lottery/getLatestLottery", {
+      method: "POST",
+      headers: { "content-type": "application/json", accept: "application/json" },
+      signal: controller.signal,
+    });
+    if (!response.ok) throw new Error(`GLO API ${response.status}`);
+    return response.json();
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 function extractGloResultNumbers(raw) {
@@ -2167,11 +2234,15 @@ function collectDigitsFromValue(value, length) {
 function findDeepValue(value, keys) {
   if (!value || typeof value !== "object") return "";
   const normalizedKeys = new Set(keys.map((key) => normalizeKey(key)));
+  // M7 fix: track visited nodes (defense against cycles) and skip prototype keys
+  const visited = new WeakSet();
   const stack = [value];
   while (stack.length) {
     const current = stack.pop();
-    if (!current || typeof current !== "object") continue;
+    if (!current || typeof current !== "object" || visited.has(current)) continue;
+    visited.add(current);
     for (const [key, item] of Object.entries(current)) {
+      if (key === "__proto__" || key === "constructor" || key === "prototype") continue;
       if (normalizedKeys.has(normalizeKey(key))) return item;
       if (item && typeof item === "object") stack.push(item);
     }
@@ -2501,14 +2572,16 @@ function purgeExpiredSessions() {
 }
 
 function setSessionCookie(res, token, expiresAt) {
+  const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
   res.setHeader(
     "Set-Cookie",
-    `${SESSION_COOKIE}=${token}; HttpOnly; Path=/; SameSite=Lax; Expires=${new Date(expiresAt).toUTCString()}`,
+    `${SESSION_COOKIE}=${token}; HttpOnly${secure}; Path=/; SameSite=Lax; Expires=${new Date(expiresAt).toUTCString()}`,
   );
 }
 
 function clearSessionCookie(res) {
-  res.setHeader("Set-Cookie", `${SESSION_COOKIE}=; HttpOnly; Path=/; SameSite=Lax; Max-Age=0`);
+  const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
+  res.setHeader("Set-Cookie", `${SESSION_COOKIE}=; HttpOnly${secure}; Path=/; SameSite=Lax; Max-Age=0`);
 }
 
 function parseCookies(header = "") {

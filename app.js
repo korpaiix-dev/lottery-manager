@@ -1635,7 +1635,9 @@ function parseQuickMessage() {
   const inferredRound = findLatestOpenRound(inferredLottery)?.id || elements.quickRound.value;
   const inferredCustomer = inferCustomer(raw) || elements.quickCustomer.value;
   const inferredBetType = inferBetType(raw);
-  const amountMatch = raw.match(/(\d+(?:,\d{3})*(?:\.\d+)?)\s*(?:บาท|บ)/i);
+  // FB-LINE-9 fix: anchor "บ" with a word boundary or whitespace so it cannot
+  // collide with "บน" inside a bet-type label.
+  const amountMatch = raw.match(/(\d+(?:,\d{3})*(?:\.\d+)?)\s*(?:บาท|บ(?![ก-๛]))/i);
   const inferredAmount = amountMatch ? parseAmount(amountMatch[1]) : parseAmount(elements.quickAmount.value);
 
   const stripped = stripParserNoise(raw);
@@ -3383,7 +3385,13 @@ function inferBetTypeFromDigits(digits) {
 }
 
 function stripParserNoise(text) {
-  let stripped = text.replace(/(\d+(?:,\d{3})*(?:\.\d+)?)\s*(?:บาท|บ)/gi, " ");
+  // FB-LINE-9 fix in strip too: same anchored "บ" pattern.
+  let stripped = text.replace(/(\d+(?:,\d{3})*(?:\.\d+)?)\s*(?:บาท|บ(?![ก-๛]))/gi, " ");
+  // FB-LINE-1/2/5 fix: strip time stamps, dates, and percent values so they
+  // don't get extracted as phantom bet numbers.
+  stripped = stripped.replace(/\b\d{1,2}[:.]\d{1,2}\b/g, " ");        // 13:45, 9.30
+  stripped = stripped.replace(/\b\d{1,2}[/\-.]\d{1,2}[/\-.]\d{2,4}\b/g, " "); // 16/05/2026
+  stripped = stripped.replace(/\d+(?:\.\d+)?\s*%/g, " ");             // 70%, 12.5%
   BET_TYPE_PATTERNS.forEach((item) => {
     item.patterns.forEach((pattern) => {
       stripped = stripped.replace(pattern, " ");
