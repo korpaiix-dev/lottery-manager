@@ -87,6 +87,7 @@ try {
   assert(appHtml.includes("ระบบจัดการหวย"), "main app shell should render from root");
   assert(appHtml.includes('data-view-target="markets">แทงหวย'), "main app should expose แทงหวย as the lottery selection page");
   assert(!appHtml.includes('data-view-target="intake">คีย์โพย'), "intake should not be a top-level navigation item");
+  assert(appHtml.includes('data-view-target="resultLinks">ลิงก์ผล'), "main app should expose result source links");
   assert(appHtml.includes('id="lotteryBoard"'), "main app should render the lottery selection board");
   assert(appHtml.includes('id="backToMarketsBtn"'), "intake should provide a return path to the lottery board");
   assert(appHtml.includes('data-view-target="headHouseReport"'), "main app should contain head-house report view");
@@ -108,6 +109,15 @@ try {
     publicState.scheduleTemplates.every((scheduleTemplate) => scheduleTemplate.result_time !== "00:00" || scheduleTemplate.draw_time === "00:00"),
     "seeded schedules should expose meaningful result times",
   );
+  assert(
+    state.resultSources.some((source) => source.source_kind === "official_glo" && source.auto_confirm === 1),
+    "GLO source should be available for automatic Thai result import",
+  );
+  assert(
+    state.resultSources.some((source) => source.source_kind === "api_reserved" && source.requires_key === 1),
+    "paid API provider should be prepared but key-gated",
+  );
+  assert(state.resultSources.some((source) => source.source_kind === "manual_link"), "manual result links should be available as fallback");
 
   const customer = await request("/api/customers", {
     method: "POST",

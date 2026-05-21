@@ -10,6 +10,7 @@ const VIEW_META = {
   limits: { eyebrow: "ควบคุมเพดานรับ", title: "อั้นเลข" },
   payouts: { eyebrow: "ตั้งค่าอัตราจ่าย", title: "อัตราจ่าย" },
   results: { eyebrow: "บันทึกผลที่ออก", title: "ผลรางวัล" },
+  resultLinks: { eyebrow: "แหล่งดึงผลและลิงก์สำรอง", title: "ลิงก์ผล" },
   reports: { eyebrow: "กระแสเงินและผลประกอบการ", title: "บัญชีการเงิน" },
   headHouseReport: { eyebrow: "ยอดรวมแบบอ่านอย่างเดียว", title: "ยอดหัวบ้าน" },
   manage: { eyebrow: "ตั้งค่าและควบคุมระบบ", title: "จัดการระบบ" },
@@ -63,6 +64,8 @@ const state = {
   tickets: [],
   entries: [],
   results: [],
+  resultSources: [],
+  resultImports: [],
   auditLogs: [],
   users: [],
   editingEntryId: null,
@@ -82,6 +85,7 @@ const state = {
   latestViewerCredentials: null,
   announcedRoundIds: new Set(),
   announcedResultRoundIds: new Set(),
+  notificationBootstrapped: false,
 };
 
 const elements = {
@@ -113,7 +117,7 @@ const elements = {
   headHousesView: document.querySelector('[data-view="headHouses"]'),
   headHouseReportNavButton: document.querySelector('[data-view-target="headHouseReport"]'),
   staffOnlyNavButtons: document.querySelectorAll(
-    '[data-view-target="dashboard"], [data-view-target="markets"], [data-view-target="intake"], [data-view-target="review"], [data-view-target="entries"], [data-view-target="customers"], [data-view-target="lotteries"], [data-view-target="limits"], [data-view-target="payouts"], [data-view-target="results"], [data-view-target="reports"], [data-view-target="manage"]',
+    '[data-view-target="dashboard"], [data-view-target="markets"], [data-view-target="intake"], [data-view-target="review"], [data-view-target="entries"], [data-view-target="customers"], [data-view-target="lotteries"], [data-view-target="limits"], [data-view-target="payouts"], [data-view-target="results"], [data-view-target="resultLinks"], [data-view-target="reports"], [data-view-target="manage"]',
   ),
   exportBtn: document.querySelector("#exportBtn"),
   logoutBtn: document.querySelector("#logoutBtn"),
@@ -273,6 +277,8 @@ const elements = {
   resultEditor: document.querySelector("#resultEditor"),
   resultsOverviewBody: document.querySelector("#resultsOverviewBody"),
   resultStatusBar: document.querySelector("#resultStatusBar"),
+  resultSourcesList: document.querySelector("#resultSourcesList"),
+  resultImportsBody: document.querySelector("#resultImportsBody"),
   pendingTicketsBody: document.querySelector("#pendingTicketsBody"),
   pendingTicketsEmpty: document.querySelector("#pendingTicketsEmpty"),
   pendingResultsList: document.querySelector("#pendingResultsList"),
@@ -537,6 +543,7 @@ function render() {
   renderPayouts();
   renderResultEditor();
   renderResultsOverview();
+  renderResultLinks();
   renderFinanceLedger();
   renderSettlement();
   renderHeadHouseReport();
@@ -2654,6 +2661,137 @@ function renderResultsOverview() {
   elements.resultsOverviewBody.innerHTML = rows || '<tr><td colspan="8">ยังไม่มีงวด</td></tr>';
 }
 
+function renderResultLinks() {
+  if (!elements.resultSourcesList) return;
+  const grouped = state.resultSources.reduce((groups, source) => {
+    const key = source.source_kind === "official_glo" ? "ดึงฟรี/ทางการ" : source.source_kind === "api_reserved" ? "รอ API Key" : "ลิงก์ตรวจมือ";
+    groups[key] = groups[key] || [];
+    groups[key].push(source);
+    return groups;
+  }, {});
+
+  elements.resultSourcesList.innerHTML =
+    Object.entries(grouped)
+      .map(([group, sources]) => {
+        const cards = sources
+          .map((source) => {
+            const lotteryName = source.lottery_name || "หลายหวย";
+            const statusText = source.source_kind === "official_glo" ? "พร้อมดึงอัตโนมัติ" : source.source_kind === "api_reserved" ? "ปิดไว้จนกว่าจะมี API key" : "เปิดลิงก์ตรวจมือ";
+            const sourceClass = source.source_kind === "official_glo" ? "source-auto" : source.source_kind === "api_reserved" ? "source-reserved" : "source-link";
+            const nextRound = source.lottery_id ? getLatestResultTargetRound(source.lottery_id) : null;
+            return `
+              <article class="result-source-card ${sourceClass}">
+                <div class="result-source-main">
+                  <span class="lottery-card-flag ${getLotteryFlagClass(source.lottery_id || "")}" aria-hidden="true"></span>
+                  <div>
+                    <strong>${escapeHtml(source.name)}</strong>
+                    <span>${escapeHtml(lotteryName)} · ${escapeHtml(source.provider || "-")}</span>
+                    <small>${escapeHtml(source.note || "")}</small>
+                  </div>
+                </div>
+                <div class="result-source-meta">
+                  <span class="status-pill ${source.active ? "normal" : "muted"}">${source.active ? statusText : "ปิดใช้งาน"}</span>
+                  ${source.requires_key ? `<span class="source-key">ENV: ${escapeHtml(source.key_env)}</span>` : ""}
+                  ${
+                    source.url
+                      ? `<a class="button button-secondary" href="${escapeHtml(source.url)}" target="_blank" rel="noreferrer">เปิดเว็บผล</a>`
+                      : ""
+                  }
+                  ${
+                    source.source_kind === "official_glo" && nextRound
+                      ? `<button class="button button-primary fetch-result-button" type="button" data-source-id="${escapeHtml(source.id)}" data-round-id="${escapeHtml(nextRound.id)}">ดึงผลล่าสุด</button>`
+                      : ""
+                  }
+                </div>
+              </article>
+            `;
+          })
+          .join("");
+        return `
+          <section class="result-source-group">
+            <h3>${escapeHtml(group)}</h3>
+            <div class="result-source-grid">${cards}</div>
+          </section>
+        `;
+      })
+      .join("") || '<div class="empty-state">ยังไม่มีแหล่งผล</div>';
+
+  elements.resultSourcesList.querySelectorAll(".fetch-result-button").forEach((button) => {
+    button.addEventListener("click", async () => {
+      try {
+        const imported = await api("/api/result-imports/fetch", {
+          method: "POST",
+          body: {
+            roundId: button.dataset.roundId,
+            sourceId: button.dataset.sourceId,
+          },
+        });
+        if (imported.status === "failed") {
+          showToast(`ดึงผลไม่สำเร็จ: ${imported.error || "ต้องตรวจมือ"}`, "warning");
+        } else {
+          showToast("ดึงผลเข้าระบบแล้ว ตรวจในหน้าตรวจรางวัลได้ทันที", "success");
+        }
+        await refreshState();
+      } catch (error) {
+        showToast(error?.payload?.message || "ดึงผลจากแหล่งนี้ไม่ได้", "warning");
+      }
+    });
+  });
+
+  if (elements.resultImportsBody) {
+    elements.resultImportsBody.innerHTML =
+      state.resultImports
+        .map((item) => {
+          const numbers = formatImportedNumbers(item.numbers_json);
+          return `
+            <tr>
+              <td>${escapeHtml(formatDateTime(item.fetched_at))}</td>
+              <td>${escapeHtml(item.lottery_name || "-")} · ${escapeHtml(item.round_label || "-")}</td>
+              <td>${escapeHtml(item.source_name || "-")}</td>
+              <td><span class="status-pill ${resultImportStatusClass(item.status)}">${escapeHtml(resultImportStatusLabel(item.status))}</span></td>
+              <td>${escapeHtml(numbers || "-")}</td>
+              <td>${escapeHtml(item.error || "")}</td>
+            </tr>
+          `;
+        })
+        .join("") || '<tr><td colspan="6">ยังไม่มีประวัติการดึงผล</td></tr>';
+  }
+}
+
+function getLatestResultTargetRound(lotteryId) {
+  return state.rounds
+    .filter((round) => round.lottery_id === lotteryId && round.result_status !== "finalized")
+    .sort((a, b) => new Date(`${b.draw_date}T${b.result_time || b.draw_time}:00`) - new Date(`${a.draw_date}T${a.result_time || a.draw_time}:00`))[0];
+}
+
+function formatImportedNumbers(value) {
+  let payload = {};
+  try {
+    payload = JSON.parse(value || "{}");
+  } catch {
+    return "";
+  }
+  return Object.entries(payload)
+    .map(([betTypeId, numbers]) => `${getBetTypeName(betTypeId)}: ${(numbers || []).join(", ")}`)
+    .join(" · ");
+}
+
+function resultImportStatusLabel(status) {
+  return {
+    draft: "ผลร่าง",
+    confirmed: "ยืนยันจาก API",
+    applied: "ลงผลแล้ว",
+    failed: "ดึงไม่สำเร็จ",
+    skipped: "ข้าม",
+  }[status] || status;
+}
+
+function resultImportStatusClass(status) {
+  if (status === "applied" || status === "confirmed") return "normal";
+  if (status === "failed") return "danger";
+  return "warning";
+}
+
 function renderReview() {
   const pendingTickets = state.tickets.filter((ticket) => ticket.status === "pending_review");
   elements.pendingTicketsEmpty.classList.toggle("hidden", pendingTickets.length > 0);
@@ -3594,6 +3732,10 @@ function confirmDraftDiscard() {
 
 function announceClosingSoonRounds() {
   const rounds = state.rounds.filter((round) => getRoundTimingStatus(round).state === "closing_soon");
+  if (!state.notificationBootstrapped) {
+    rounds.forEach((round) => state.announcedRoundIds.add(round.id));
+    return;
+  }
   rounds.forEach((round) => {
     if (state.announcedRoundIds.has(round.id)) return;
     state.announcedRoundIds.add(round.id);
@@ -3602,12 +3744,27 @@ function announceClosingSoonRounds() {
 }
 
 function announceResultDueRounds() {
+  const dueGraceMs = 2 * 60_000;
+  const now = Date.now();
   const rounds = state.rounds.filter(
     (round) =>
       round.result_status !== "finalized" &&
-      Date.now() >= new Date(round.result_at || round.draw_at).getTime() &&
+      now >= new Date(round.result_at || round.draw_at).getTime() &&
+      now - new Date(round.result_at || round.draw_at).getTime() <= dueGraceMs &&
       !state.results.some((result) => result.round_id === round.id),
   );
+  if (!state.notificationBootstrapped) {
+    state.rounds
+      .filter(
+        (round) =>
+          round.result_status !== "finalized" &&
+          now >= new Date(round.result_at || round.draw_at).getTime() &&
+          !state.results.some((result) => result.round_id === round.id),
+      )
+      .forEach((round) => state.announcedResultRoundIds.add(round.id));
+    state.notificationBootstrapped = true;
+    return;
+  }
   rounds.forEach((round) => {
     if (state.announcedResultRoundIds.has(round.id)) return;
     state.announcedResultRoundIds.add(round.id);
@@ -3617,6 +3774,10 @@ function announceResultDueRounds() {
 
 function showToast(message, tone = "") {
   if (!elements.toastStack) return;
+  const maxToasts = 4;
+  while (elements.toastStack.children.length >= maxToasts) {
+    elements.toastStack.firstElementChild?.remove();
+  }
   const toast = document.createElement("div");
   toast.className = `toast ${tone}`;
   toast.textContent = message;

@@ -167,6 +167,39 @@ db.exec(`
     UNIQUE(round_id, bet_type_id, number)
   );
 
+  CREATE TABLE IF NOT EXISTS result_sources (
+    id TEXT PRIMARY KEY,
+    lottery_id TEXT REFERENCES lotteries(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    source_kind TEXT NOT NULL CHECK(source_kind IN ('official_glo', 'api_reserved', 'manual_link')),
+    provider TEXT NOT NULL DEFAULT '',
+    url TEXT NOT NULL DEFAULT '',
+    api_endpoint TEXT NOT NULL DEFAULT '',
+    requires_key INTEGER NOT NULL DEFAULT 0,
+    key_env TEXT NOT NULL DEFAULT '',
+    active INTEGER NOT NULL DEFAULT 1,
+    auto_confirm INTEGER NOT NULL DEFAULT 0,
+    priority INTEGER NOT NULL DEFAULT 100,
+    note TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS result_imports (
+    id TEXT PRIMARY KEY,
+    round_id TEXT NOT NULL REFERENCES rounds(id) ON DELETE CASCADE,
+    source_id TEXT REFERENCES result_sources(id) ON DELETE SET NULL,
+    status TEXT NOT NULL CHECK(status IN ('draft', 'confirmed', 'applied', 'failed', 'skipped')),
+    numbers_json TEXT NOT NULL DEFAULT '{}',
+    raw_json TEXT NOT NULL DEFAULT '{}',
+    error TEXT NOT NULL DEFAULT '',
+    fetched_at TEXT NOT NULL,
+    confirmed_by TEXT REFERENCES users(id) ON DELETE SET NULL,
+    confirmed_at TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+
   CREATE TABLE IF NOT EXISTS audit_logs (
     id TEXT PRIMARY KEY,
     user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
@@ -222,6 +255,7 @@ db.prepare(`
 backfillLegacyTickets();
 ensureUpcomingRounds();
 setInterval(() => ensureUpcomingRounds(), 10 * 60 * 1000).unref();
+setInterval(() => importDueOfficialResults().catch((error) => console.error("result import failed", error)), 10 * 60 * 1000).unref();
 
 const app = express();
 app.disable("x-powered-by");
@@ -245,6 +279,10 @@ app.get("/api/public-state", (_req, res) => {
     results: state.results,
     scheduleTemplates: state.scheduleTemplates,
   });
+});
+
+app.get("/api/result-sources", requireAuth, requireStaff, (_req, res) => {
+  res.json(getResultSources());
 });
 
 app.post("/api/setup", (req, res) => {
@@ -1262,6 +1300,44 @@ app.post("/api/results/:roundId/reopen", requireAuth, requireAdmin, (req, res) =
   res.json(presentRound(updated));
 });
 
+app.post("/api/result-imports/fetch", requireAuth, requireAdmin, async (req, res) => {
+  const roundId = cleanText(req.body.roundId, 80);
+  const sourceId = cleanText(req.body.sourceId, 80);
+  const round = findRound(roundId);
+  const source = findResultSource(sourceId);
+  if (!round || !source) return res.status(404).json({ error: "result_target_not_found" });
+  if (source.lottery_id && source.lottery_id !== round.lottery_id) {
+    return res.status(400).json({ error: "source_lottery_mismatch" });
+  }
+
+  try {
+    const imported = await fetchAndStoreResultImport(round, source, req.user.id, { applyIfTrusted: true });
+    res.json(imported);
+  } catch (error) {
+    if (error.code) return res.status(error.status || 409).json({ error: error.code, message: error.message });
+    throw error;
+  }
+});
+
+app.post("/api/result-imports/:importId/apply", requireAuth, requireAdmin, (req, res) => {
+  const imported = findResultImport(req.params.importId);
+  if (!imported) return res.status(404).json({ error: "result_import_not_found" });
+  const round = findRound(imported.round_id);
+  if (!round) return res.status(404).json({ error: "round_not_found" });
+  if (round.result_status === "finalized") return res.status(409).json({ error: "result_finalized" });
+
+  const numbers = safeParseJson(imported.numbers_json, {});
+  applyImportedResult(round, numbers);
+  db.prepare(`
+    UPDATE result_imports
+    SET status = 'applied', confirmed_by = ?, confirmed_at = ?, updated_at = ?
+    WHERE id = ?
+  `).run(req.user.id, nowIso(), nowIso(), imported.id);
+
+  logAudit(req.user.id, "apply", "result_import", imported.id, { roundId: round.id, numbers });
+  res.json(findResultImport(imported.id));
+});
+
 app.get("/api/settlements", requireAuth, requireStaff, (req, res) => {
   const roundId = cleanText(req.query.roundId, 80);
   if (!findRound(roundId)) return res.status(404).json({ error: "round_not_found" });
@@ -1375,6 +1451,94 @@ function seedReferenceData() {
 
   lotteries.forEach(([id]) => seedPayoutRatesForLottery(id));
   seedScheduleTemplates();
+  seedResultSources();
+}
+
+function seedResultSources() {
+  const now = nowIso();
+  const sources = [
+    {
+      id: "glo_latest",
+      lotteryId: "thai",
+      name: "สำนักงานสลากกินแบ่งรัฐบาล - งวดล่าสุด",
+      sourceKind: "official_glo",
+      provider: "GLO",
+      url: "https://www.glo.or.th/mission/awarding/orderby-time",
+      apiEndpoint: "https://www.glo.or.th/api/lottery/getLatestLottery",
+      requiresKey: 0,
+      keyEnv: "",
+      active: 1,
+      autoConfirm: 1,
+      priority: 1,
+      note: "แหล่งฟรีทางการสำหรับหวยรัฐบาลไทย ดึงแล้วใช้ยืนยันอัตโนมัติได้",
+    },
+    {
+      id: "apilotto_reserved",
+      lotteryId: null,
+      name: "API Lotto - รอ API Key",
+      sourceKind: "api_reserved",
+      provider: "API Lotto",
+      url: "https://apilotto.com/Documents/",
+      apiEndpoint: "https://api.apilotto.com/api/v1",
+      requiresKey: 1,
+      keyEnv: "APILOTTO_API_KEY",
+      active: 0,
+      autoConfirm: 0,
+      priority: 20,
+      note: "เตรียมไว้สำหรับหวยลาว ฮานอย มาเลย์ หุ้น เมื่อมี API key แล้วค่อยเปิดใช้",
+    },
+    ...[
+      ["link_lao_tv", "ลิงก์ผลลาว TV", "lao_tv", "https://lao-tv.com", "ตรวจมือ/สำรอง"],
+      ["link_lao_hd", "ลิงก์ผลลาว HD", "lao_hd", "https://xosohd.com", "ตรวจมือ/สำรอง"],
+      ["link_lao_star", "ลิงก์ผลลาวสตาร์", "lao_star", "https://minhngocstar.com", "ตรวจมือ/สำรอง"],
+      ["link_hanoi_tv", "ลิงก์ผลฮานอย TV", "hanoi_tv", "https://minhngoctv.com/", "ตรวจมือ/สำรอง"],
+      ["link_lao_union_vip", "ลิงก์ผลลาวสามัคคี VIP", "lao_unity", "https://laounionvip.com", "ตรวจมือ/สำรอง"],
+      ["link_hanoi_special", "ลิงก์ผลฮานอยพิเศษ", "hanoi_special", "http://www.xsthm.com/", "ตรวจมือ/สำรอง"],
+      ["link_hanoi", "ลิงก์ผลฮานอยปกติ", "hanoi", "https://www.minhngoc.net.vn/xo-so-truc-tiep/mien-bac.html", "ตรวจมือ/สำรอง"],
+    ].map(([id, name, lotteryId, url, note], index) => ({
+      id,
+      lotteryId,
+      name,
+      sourceKind: "manual_link",
+      provider: "Manual",
+      url,
+      apiEndpoint: "",
+      requiresKey: 0,
+      keyEnv: "",
+      active: 1,
+      autoConfirm: 0,
+      priority: 100 + index,
+      note,
+    })),
+  ];
+
+  const insert = db.prepare(`
+    INSERT OR IGNORE INTO result_sources (
+      id, lottery_id, name, source_kind, provider, url, api_endpoint, requires_key,
+      key_env, active, auto_confirm, priority, note, created_at, updated_at
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+
+  sources.forEach((source) => {
+    insert.run(
+      source.id,
+      source.lotteryId,
+      source.name,
+      source.sourceKind,
+      source.provider,
+      source.url,
+      source.apiEndpoint,
+      source.requiresKey,
+      source.keyEnv,
+      source.active,
+      source.autoConfirm,
+      source.priority,
+      source.note,
+      now,
+      now,
+    );
+  });
 }
 
 function seedScheduleTemplates() {
@@ -1472,6 +1636,8 @@ function getFullState(user) {
       tickets: [],
       entries: [],
       results: [],
+      resultSources: [],
+      resultImports: [],
       auditLogs: [],
       users: [],
     };
@@ -1539,6 +1705,19 @@ function getFullState(user) {
       .all(),
     entries: db.prepare("SELECT * FROM entries ORDER BY created_at DESC").all(),
     results: db.prepare("SELECT * FROM results ORDER BY created_at DESC").all(),
+    resultSources: getResultSources(),
+    resultImports: db
+      .prepare(`
+        SELECT result_imports.*, result_sources.name AS source_name, result_sources.provider,
+               rounds.label AS round_label, rounds.draw_date, lotteries.name AS lottery_name
+        FROM result_imports
+        LEFT JOIN result_sources ON result_sources.id = result_imports.source_id
+        JOIN rounds ON rounds.id = result_imports.round_id
+        JOIN lotteries ON lotteries.id = rounds.lottery_id
+        ORDER BY result_imports.created_at DESC
+        LIMIT 80
+      `)
+      .all(),
     auditLogs:
       user?.role === "admin"
         ? db
@@ -1568,6 +1747,25 @@ function getFullState(user) {
 
 function getBetTypes() {
   return db.prepare("SELECT * FROM bet_types ORDER BY digits, name").all();
+}
+
+function getResultSources() {
+  return db
+    .prepare(`
+      SELECT result_sources.*, lotteries.name AS lottery_name, lotteries.category AS lottery_category
+      FROM result_sources
+      LEFT JOIN lotteries ON lotteries.id = result_sources.lottery_id
+      ORDER BY result_sources.priority, COALESCE(lotteries.display_order, 999), result_sources.name
+    `)
+    .all();
+}
+
+function findResultSource(id) {
+  return db.prepare("SELECT * FROM result_sources WHERE id = ?").get(cleanText(id, 80));
+}
+
+function findResultImport(id) {
+  return db.prepare("SELECT * FROM result_imports WHERE id = ?").get(cleanText(id, 80));
 }
 
 function countRows(table) {
@@ -1843,6 +2041,238 @@ function normalizeResultNumbers(numbers, betTypeId) {
     .split(/[\s,]+/)
     .map((item) => cleanDigits(item, 3))
     .filter((item) => isNumberValidForBetType(item, betType)))];
+}
+
+async function importDueOfficialResults() {
+  const dueRounds = db
+    .prepare(`
+      SELECT rounds.*
+      FROM rounds
+      JOIN result_sources ON result_sources.lottery_id = rounds.lottery_id
+      WHERE rounds.result_status <> 'finalized'
+        AND result_sources.active = 1
+        AND result_sources.auto_confirm = 1
+        AND result_sources.source_kind = 'official_glo'
+      LIMIT 4
+    `)
+    .all()
+    .filter((round) => getRoundResultAt(round).getTime() <= Date.now());
+
+  for (const round of dueRounds) {
+    const source = db
+      .prepare("SELECT * FROM result_sources WHERE lottery_id = ? AND active = 1 AND auto_confirm = 1 ORDER BY priority LIMIT 1")
+      .get(round.lottery_id);
+    if (!source || resultAlreadyImported(round.id, source.id)) continue;
+    await fetchAndStoreResultImport(round, source, null, { applyIfTrusted: true });
+  }
+}
+
+async function fetchAndStoreResultImport(round, source, userId, options = {}) {
+  if (source.source_kind === "manual_link") {
+    throw Object.assign(new Error("แหล่งนี้เป็นลิงก์สำหรับเปิดตรวจมือ ไม่ใช่ API"), { code: "manual_link_only", status: 409 });
+  }
+  if (source.requires_key && !process.env[source.key_env]) {
+    throw Object.assign(new Error(`ยังไม่ได้ตั้งค่า ${source.key_env}`), { code: "api_key_not_configured", status: 409 });
+  }
+  if (source.source_kind === "api_reserved") {
+    throw Object.assign(new Error("เตรียม provider ไว้แล้ว แต่ยังไม่เปิดใช้เพราะต้องมี API key"), { code: "paid_api_reserved", status: 409 });
+  }
+
+  const fetchedAt = nowIso();
+  try {
+    const raw = await fetchOfficialGloLatest(source.api_endpoint);
+    const numbers = extractGloResultNumbers(raw);
+    const importRow = storeResultImport({
+      roundId: round.id,
+      sourceId: source.id,
+      status: source.auto_confirm ? "confirmed" : "draft",
+      numbers,
+      raw,
+      error: "",
+      fetchedAt,
+      userId,
+    });
+
+    if (options.applyIfTrusted && source.auto_confirm) {
+      applyImportedResult(round, numbers);
+      db.prepare(`
+        UPDATE result_imports
+        SET status = 'applied', confirmed_by = ?, confirmed_at = ?, updated_at = ?
+        WHERE id = ?
+      `).run(userId, nowIso(), nowIso(), importRow.id);
+      const updatedRound = findRound(round.id);
+      if (updatedRound?.result_status !== "finalized") finalizeImportedRound(round.id, userId);
+      return findResultImport(importRow.id);
+    }
+
+    return importRow;
+  } catch (error) {
+    return storeResultImport({
+      roundId: round.id,
+      sourceId: source.id,
+      status: "failed",
+      numbers: {},
+      raw: {},
+      error: error.message || String(error),
+      fetchedAt,
+      userId,
+    });
+  }
+}
+
+async function fetchOfficialGloLatest(endpoint) {
+  const response = await fetch(endpoint || "https://www.glo.or.th/api/lottery/getLatestLottery", {
+    method: "POST",
+    headers: { "content-type": "application/json", accept: "application/json" },
+  });
+  if (!response.ok) throw new Error(`GLO API ${response.status}`);
+  return response.json();
+}
+
+function extractGloResultNumbers(raw) {
+  const firstPrize = findDeepValue(raw, ["first", "firstPrize", "first_prize", "รางวัลที่1"]);
+  const last2 = findDeepValue(raw, ["last2", "lastTwo", "last_2", "เลขท้าย2ตัว"]);
+  const firstNumber = collectDigitsFromValue(firstPrize, 6)[0] || "";
+  const bottom2 = collectDigitsFromValue(last2, 2)[0] || "";
+
+  if (firstNumber.length < 3 || bottom2.length !== 2) {
+    throw new Error("อ่านผลจาก GLO ไม่ครบ ต้องตรวจมือ");
+  }
+
+  const threeTop = firstNumber.slice(-3);
+  return {
+    three_top: [threeTop],
+    three_tod: [threeTop],
+    two_top: [firstNumber.slice(-2)],
+    two_bottom: [bottom2],
+  };
+}
+
+function collectDigitsFromValue(value, length) {
+  if (value == null) return [];
+  if (typeof value === "string" || typeof value === "number") {
+    const digits = cleanDigits(value, length);
+    return digits.length === length ? [digits] : [];
+  }
+  if (Array.isArray(value)) return value.flatMap((item) => collectDigitsFromValue(item, length));
+  if (typeof value === "object") {
+    const direct = ["number", "value", "reward", "result", "lotteryNumber", "lottery_number"]
+      .flatMap((key) => collectDigitsFromValue(value[key], length));
+    if (direct.length) return direct;
+    return Object.values(value).flatMap((item) => collectDigitsFromValue(item, length));
+  }
+  return [];
+}
+
+function findDeepValue(value, keys) {
+  if (!value || typeof value !== "object") return "";
+  const normalizedKeys = new Set(keys.map((key) => normalizeKey(key)));
+  const stack = [value];
+  while (stack.length) {
+    const current = stack.pop();
+    if (!current || typeof current !== "object") continue;
+    for (const [key, item] of Object.entries(current)) {
+      if (normalizedKeys.has(normalizeKey(key))) return item;
+      if (item && typeof item === "object") stack.push(item);
+    }
+  }
+  return "";
+}
+
+function normalizeKey(value) {
+  return String(value || "").toLowerCase().replace(/[\s_-]/g, "");
+}
+
+function storeResultImport({ roundId, sourceId, status, numbers, raw, error, fetchedAt, userId }) {
+  const row = {
+    id: crypto.randomUUID(),
+    round_id: roundId,
+    source_id: sourceId,
+    status,
+    numbers_json: JSON.stringify(numbers || {}),
+    raw_json: JSON.stringify(raw || {}),
+    error: cleanText(error || "", 500),
+    fetched_at: fetchedAt,
+    confirmed_by: status === "confirmed" ? userId : null,
+    confirmed_at: status === "confirmed" ? nowIso() : null,
+    created_at: nowIso(),
+    updated_at: nowIso(),
+  };
+  db.prepare(`
+    INSERT INTO result_imports (
+      id, round_id, source_id, status, numbers_json, raw_json, error, fetched_at,
+      confirmed_by, confirmed_at, created_at, updated_at
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    row.id,
+    row.round_id,
+    row.source_id,
+    row.status,
+    row.numbers_json,
+    row.raw_json,
+    row.error,
+    row.fetched_at,
+    row.confirmed_by,
+    row.confirmed_at,
+    row.created_at,
+    row.updated_at,
+  );
+  return row;
+}
+
+function applyImportedResult(round, numbers) {
+  const insert = db.prepare(`
+    INSERT OR IGNORE INTO results (id, round_id, bet_type_id, number, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `);
+  const now = nowIso();
+  withTransaction(() => {
+    for (const [betTypeId, rawNumbers] of Object.entries(numbers || {})) {
+      const normalized = normalizeResultNumbers((rawNumbers || []).join(" "), betTypeId);
+      db.prepare("DELETE FROM results WHERE round_id = ? AND bet_type_id = ?").run(round.id, betTypeId);
+      normalized.forEach((number) => insert.run(crypto.randomUUID(), round.id, betTypeId, number, now, now));
+    }
+  });
+}
+
+function finalizeImportedRound(roundId, userId) {
+  const round = findRound(roundId);
+  if (!round || round.result_status === "finalized") return;
+  const soldBetTypes = db
+    .prepare(`
+      SELECT DISTINCT entries.bet_type_id
+      FROM entries
+      JOIN tickets ON tickets.id = entries.ticket_id
+      WHERE entries.round_id = ?
+        AND tickets.status = 'approved'
+    `)
+    .all(round.id)
+    .map((row) => row.bet_type_id);
+  const resultBetTypes = new Set(
+    db.prepare("SELECT DISTINCT bet_type_id FROM results WHERE round_id = ?").all(round.id).map((row) => row.bet_type_id),
+  );
+  if (soldBetTypes.some((betTypeId) => !resultBetTypes.has(betTypeId))) return;
+  const now = nowIso();
+  db.prepare(`
+    UPDATE rounds
+    SET result_status = 'finalized', result_finalized_by = ?, result_finalized_at = ?, updated_at = ?
+    WHERE id = ?
+  `).run(userId, now, now, round.id);
+}
+
+function resultAlreadyImported(roundId, sourceId) {
+  return Boolean(
+    db.prepare("SELECT 1 FROM result_imports WHERE round_id = ? AND source_id = ? AND status IN ('confirmed', 'applied')").get(roundId, sourceId),
+  );
+}
+
+function safeParseJson(value, fallback) {
+  try {
+    return JSON.parse(value);
+  } catch {
+    return fallback;
+  }
 }
 
 function buildSettlement(roundId) {

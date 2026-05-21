@@ -78,6 +78,7 @@
             <button class="nav-button" type="button" data-view-target="review">ตรวจโพย</button>
             <button class="nav-button" type="button" data-view-target="entries">รายการแทง</button>
             <button class="nav-button" type="button" data-view-target="results">ตรวจรางวัล</button>
+            <button class="nav-button" type="button" data-view-target="resultLinks">ลิงก์ผล</button>
             <button class="nav-button" type="button" data-view-target="reports">บัญชีการเงิน</button>
             <button class="nav-button" type="button" data-view-target="manage">ตั้งค่า</button>
           </nav>
@@ -940,6 +941,39 @@
                     </tr>
                   </thead>
                   <tbody id="resultsOverviewBody"></tbody>
+                </table>
+              </div>
+            </section>
+          </section>
+
+          <section class="view" data-view="resultLinks" hidden>
+            <section class="panel result-links-panel">
+              <div class="panel-heading">
+                <div>
+                  <h2>แหล่งผลหวย</h2>
+                  <p>ใช้ฟรีที่มีตอนนี้ก่อน: รัฐบาลไทยดึงจาก GLO, หวยอื่นเป็นลิงก์ตรวจมือ/เตรียม API key ไว้</p>
+                </div>
+              </div>
+              <div id="resultSourcesList" class="result-source-list"></div>
+            </section>
+
+            <section class="panel records-panel">
+              <div class="panel-heading">
+                <h2>ประวัติการดึงผล</h2>
+              </div>
+              <div class="table-wrap dense-table">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>เวลา</th>
+                      <th>หวย</th>
+                      <th>แหล่ง</th>
+                      <th>สถานะ</th>
+                      <th>เลขที่ได้</th>
+                      <th>หมายเหตุ</th>
+                    </tr>
+                  </thead>
+                  <tbody id="resultImportsBody"></tbody>
                 </table>
               </div>
             </section>
