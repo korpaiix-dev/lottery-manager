@@ -1039,6 +1039,11 @@ function addTicketDraftEntry() {
   const customerId = "walkin";
   const roundId = elements.ticketRound.value;
   const number = elements.ticketNumber.value.trim();
+  const validationMessage = getIntakeValidationMessage();
+  if (validationMessage) {
+    showToast(validationMessage, "warning");
+    return;
+  }
   const newEntries = buildIntakeEntries({ customerId, roundId, number });
   const issues = newEntries.length ? newEntries.flatMap((entry) => getDraftIssues(entry)) : ["ยังไม่มีรายการที่เพิ่มได้"];
 
@@ -1062,7 +1067,7 @@ function addTicketDraftEntry() {
         entry.number === newEntry.number,
     );
     if (duplicate) duplicate.amount += newEntry.amount;
-    else state.ticketDraftEntries.push({ id: crypto.randomUUID(), ...newEntry });
+    else state.ticketDraftEntries.push({ id: createClientId(), ...newEntry });
   });
   state.latestReceiptTicketId = null;
   elements.ticketNumber.value = "";
@@ -1139,15 +1144,9 @@ function renderTicketActionTools() {
   const isRun = action?.target === "run_pair";
   const supportsDoubles = action?.target === "pair";
   const supportsReverse = action?.target === "pair" || action?.target === "three_pair";
-  const hintByAction = {
-    run_pair: "เลขวิ่ง เลือกได้หลายตัว แล้วใส่ยอดบนหรือล่างก่อนเพิ่มลงโพย",
-    two_pair: "2 ตัว เลือกเลขเดี่ยว กลับเลข หรือเลขเบิ้ลได้ในชุดเดียว",
-    six_return: "6 กลับ ใส่เลข 3 ตัว ระบบจะแตกชุดกลับให้ครบก่อนเพิ่มลงโพย",
-    nineteen_gate: "19 ประตู ใส่เลขหลักเดียว ระบบจะแตกเลข 2 ตัวที่เกี่ยวข้องให้ครบ",
-    three_pair: "3 ตัว ใส่ยอดบนและโต๊ดในครั้งเดียวได้",
-  };
 
-  elements.ticketActionHint.textContent = hintByAction[action?.id] || "เลือกประเภทเลขเพื่อเริ่มคีย์";
+  elements.ticketActionHint.textContent = "";
+  elements.ticketActionHint.classList.add("hidden");
   elements.ticketDoubleBtn.classList.toggle("hidden", !supportsDoubles);
   elements.ticketReverseBtn.classList.toggle("hidden", !supportsReverse);
   elements.ticketDoubleBtn.classList.toggle("is-active", state.ticketUseDoubles);
@@ -1508,7 +1507,7 @@ function renderTicketExpansionPreview() {
   if (!action || !isNumberReady || !previewNumbers.length) {
     elements.ticketExpansionPreview.classList.add("hidden");
     elements.ticketExpansionPreview.innerHTML = "";
-    elements.addTicketEntryBtn.disabled = true;
+    elements.addTicketEntryBtn.disabled = false;
     elements.addTicketEntryBtn.title = getIntakeValidationMessage();
     renderTicketInlineFeedback();
     return;
@@ -1516,7 +1515,7 @@ function renderTicketExpansionPreview() {
   const previewEntries = buildIntakeEntries({ customerId: "walkin", roundId, number });
   const previewTotal = sum(previewEntries.map((entry) => entry.amount));
   const validationMessage = getIntakeValidationMessage();
-  elements.addTicketEntryBtn.disabled = Boolean(validationMessage);
+  elements.addTicketEntryBtn.disabled = false;
   elements.addTicketEntryBtn.title = validationMessage;
 
   elements.ticketExpansionPreview.classList.remove("hidden");
@@ -1537,9 +1536,8 @@ function renderTicketExpansionPreview() {
 
 function renderTicketInlineFeedback() {
   if (!elements.ticketInlineFeedback) return;
-  const message = getIntakeValidationMessage();
-  elements.ticketInlineFeedback.classList.toggle("hidden", !message);
-  elements.ticketInlineFeedback.textContent = message || "";
+  elements.ticketInlineFeedback.classList.add("hidden");
+  elements.ticketInlineFeedback.textContent = "";
 }
 
 function renderTicketHistory() {
@@ -2664,7 +2662,7 @@ function renderResultsOverview() {
 function renderResultLinks() {
   if (!elements.resultSourcesList) return;
   const grouped = state.resultSources.reduce((groups, source) => {
-    const key = source.source_kind === "official_glo" ? "ดึงฟรี/ทางการ" : source.source_kind === "api_reserved" ? "รอ API Key" : "ลิงก์ตรวจมือ";
+    const key = source.source_kind === "official_glo" ? "ทางการ" : source.source_kind === "api_reserved" ? "API" : "ตรวจมือ";
     groups[key] = groups[key] || [];
     groups[key].push(source);
     return groups;
@@ -2676,7 +2674,7 @@ function renderResultLinks() {
         const cards = sources
           .map((source) => {
             const lotteryName = source.lottery_name || "หลายหวย";
-            const statusText = source.source_kind === "official_glo" ? "พร้อมดึงอัตโนมัติ" : source.source_kind === "api_reserved" ? "ปิดไว้จนกว่าจะมี API key" : "เปิดลิงก์ตรวจมือ";
+            const statusText = source.source_kind === "official_glo" ? "พร้อมใช้" : source.source_kind === "api_reserved" ? "รอคีย์" : "ลิงก์";
             const sourceClass = source.source_kind === "official_glo" ? "source-auto" : source.source_kind === "api_reserved" ? "source-reserved" : "source-link";
             const nextRound = source.lottery_id ? getLatestResultTargetRound(source.lottery_id) : null;
             return `
@@ -2686,7 +2684,6 @@ function renderResultLinks() {
                   <div>
                     <strong>${escapeHtml(source.name)}</strong>
                     <span>${escapeHtml(lotteryName)} · ${escapeHtml(source.provider || "-")}</span>
-                    <small>${escapeHtml(source.note || "")}</small>
                   </div>
                 </div>
                 <div class="result-source-meta">
@@ -3828,6 +3825,10 @@ function groupBy(items, getKey) {
     groups.get(key).push(item);
     return groups;
   }, new Map());
+}
+
+function createClientId() {
+  return globalThis.crypto?.randomUUID?.() || `draft-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
 function escapeHtml(value) {

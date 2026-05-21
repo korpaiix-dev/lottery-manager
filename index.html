@@ -247,9 +247,6 @@
                     <span>หัวบ้านของบิล</span>
                     <select id="ticketHeadHouseInput"></select>
                   </label>
-                  <div class="ticket-round-helper">
-                    เลือกงวดก่อนเริ่มคีย์ ระบบจะกันการลงโพยผิดงวดให้เอง
-                  </div>
                 </div>
 
                 <div class="ticket-mode-tabs" aria-label="โหมดการคีย์">
@@ -262,7 +259,7 @@
                   <div class="ticket-compose-heading">
                     <div>
                       <h3>แทงเร็ว</h3>
-                      <span id="ticketComposeRoundLabel">-</span>
+                      <span id="ticketComposeRoundLabel" class="compact-muted">-</span>
                     </div>
                     <span id="ticketComposeDate">-</span>
                   </div>
@@ -270,7 +267,7 @@
                   <div id="ticketBetTypeTabs" class="ticket-tabs" aria-label="ประเภทเลข"></div>
 
                   <div class="ticket-action-strip">
-                    <p id="ticketActionHint">เลือกประเภทเลขเพื่อเริ่มคีย์</p>
+                    <p id="ticketActionHint" class="hidden"></p>
                     <div class="ticket-tool-row">
                       <button id="ticketDoubleBtn" class="button button-secondary" type="button">เลขเบิ้ล</button>
                       <button id="ticketReverseBtn" class="button button-secondary" type="button">กลับเลข</button>
@@ -951,7 +948,6 @@
               <div class="panel-heading">
                 <div>
                   <h2>แหล่งผลหวย</h2>
-                  <p>ใช้ฟรีที่มีตอนนี้ก่อน: รัฐบาลไทยดึงจาก GLO, หวยอื่นเป็นลิงก์ตรวจมือ/เตรียม API key ไว้</p>
                 </div>
               </div>
               <div id="resultSourcesList" class="result-source-list"></div>
