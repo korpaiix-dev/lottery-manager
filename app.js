@@ -1075,7 +1075,7 @@ function addTicketDraftEntry() {
   state.ticketRunDigits = [];
   elements.ticketNumber.focus();
   renderTicketWorkbench();
-  showToast(`เพิ่ม ${newEntries.length.toLocaleString("th-TH")} รายการลงโพยแล้ว`, "success");
+  showToast(`เพิ่มแล้ว ${newEntries.length.toLocaleString("th-TH")} เลข`, "success");
 }
 
 function buildIntakeEntries({ customerId, roundId, number }) {
@@ -1320,9 +1320,10 @@ async function saveTicketDraft() {
     elements.ticketNote.value = "";
     await refreshState();
     const ticketCode = getTicket(inserted[0]?.ticket_id)?.code;
-    showToast(ticketCode ? `บันทึกโพยแล้ว รหัสโพย ${ticketCode}` : "บันทึกโพยแล้ว", "success");
+    showToast(ticketCode ? `บันทึกแล้ว ${ticketCode}` : "บันทึกแล้ว", "success");
     elements.ticketReceiptPreview.classList.add("is-fresh");
     window.setTimeout(() => elements.ticketReceiptPreview.classList.remove("is-fresh"), 1400);
+    activateView("entries");
   } catch (error) {
     handleLimitError(error);
   }
