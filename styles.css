@@ -4,7 +4,7 @@
 :root {
   color-scheme: light;
 
-  /* === เรือนเลขเศรษฐี Brand Theme === */
+  /* === บ้านหวยเรือนเลขเศรษฐี Brand Theme === */
   /* Light mode — cream background, deep green panels, gold accents */
   --bg: #f5f1e6;
   --bg-tint: #ebe4cd;
@@ -3553,5 +3553,47 @@ h3 { font-weight: 600; }
 .closing-soon-banner::before {
   content: "⚠";
   font-size: 18px;
+}
+
+
+/* ============================================================================
+   Brand rename 2026-05-22 — "บ้านหวยเรือนเลขเศรษฐี" (longer text)
+   Adjust eyebrow + brand-block h1 sizing so longer text doesn't overflow
+   ============================================================================ */
+.brand-block .eyebrow {
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  text-transform: none;
+  font-weight: 600;
+  margin-bottom: 4px;
+  background: var(--gold-gradient);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+  text-shadow: 0 0 16px rgba(244, 211, 94, 0.18);
+}
+.brand-block h1 {
+  font-size: 19px;
+  line-height: 1.2;
+  letter-spacing: 0.01em;
+  font-weight: 700;
+  margin: 0;
+  color: #f4e9c1;
+  -webkit-text-fill-color: #f4e9c1;
+  background: none;
+}
+
+/* Auth card brand block — adapt as well */
+.auth-card .eyebrow {
+  font-weight: 600;
+  font-size: 13px;
+  letter-spacing: 0.02em;
+  text-transform: none;
+}
+.auth-card h1 {
+  font-size: 22px;
+  line-height: 1.25;
+  letter-spacing: 0;
 }
 
