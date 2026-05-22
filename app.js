@@ -4274,7 +4274,27 @@ function showCandidatePicker(data, sourceId) {
       ${
         data.isJavaScriptApp
           ? `<div class="candidate-warning">
-              ⚠️ เว็บนี้ใช้ JavaScript โหลดผล (server scrape ไม่เจอตัวเลข) — เปิดต้นทางด้วยตัวเองแล้ว copy เลขมาวางในช่องด้านล่าง
+              ⚠️ เว็บนี้ใช้ JavaScript โหลดผล — ระบบดึงเลขให้ไม่ได้ <br>
+              <strong>วิธีใช้:</strong> กดปุ่ม "เปิดต้นทาง ↗" ด้านบนเพื่อเปิดเว็บ → copy เลข → กลับมาวางในช่องด้านล่าง → กด "ใส่ลงในแบบฟอร์ม"
+            </div>
+            <div class="manual-paste-grid">
+              <label class="field">
+                <span>3 ตัวบน</span>
+                <input id="manualPaste3Top" type="text" inputmode="numeric" maxlength="20" placeholder="เช่น 685 (คั่นช่องว่างถ้ามีหลายเลข)" />
+              </label>
+              <label class="field">
+                <span>3 ตัวโต๊ด (ปกติเดียวกับ 3 ตัวบน)</span>
+                <input id="manualPaste3Tod" type="text" inputmode="numeric" maxlength="20" placeholder="เช่น 685" />
+              </label>
+              <label class="field">
+                <span>2 ตัวบน</span>
+                <input id="manualPaste2Top" type="text" inputmode="numeric" maxlength="20" placeholder="เช่น 85" />
+              </label>
+              <label class="field">
+                <span>2 ตัวล่าง</span>
+                <input id="manualPaste2Bottom" type="text" inputmode="numeric" maxlength="20" placeholder="เช่น 74" />
+              </label>
+              <button id="manualPasteApply" class="button button-primary" type="button">✓ ใส่ลงในแบบฟอร์ม</button>
             </div>`
           : ""
       }
@@ -4353,6 +4373,38 @@ function showCandidatePicker(data, sourceId) {
       }
     });
   });
+
+  // Manual paste apply (for JS-app sites)
+  const applyBtn = overlay.querySelector("#manualPasteApply");
+  if (applyBtn) {
+    applyBtn.addEventListener("click", () => {
+      const fields = [
+        { id: "manualPaste3Top", betType: "three_top", label: "3 ตัวบน" },
+        { id: "manualPaste3Tod", betType: "three_tod", label: "3 ตัวโต๊ด" },
+        { id: "manualPaste2Top", betType: "two_top", label: "2 ตัวบน" },
+        { id: "manualPaste2Bottom", betType: "two_bottom", label: "2 ตัวล่าง" },
+      ];
+      let applied = 0;
+      fields.forEach(({ id, betType, label }) => {
+        const src = overlay.querySelector(`#${id}`);
+        const value = src?.value?.trim();
+        if (!value) return;
+        const target = elements.resultEditor.querySelector(`input[data-bet-type-id="${betType}"]`);
+        if (target) {
+          target.value = value;
+          target.classList.add("scrape-filled");
+          setTimeout(() => target.classList.remove("scrape-filled"), 1200);
+          applied += 1;
+        }
+      });
+      if (applied > 0) {
+        showToast(`ใส่ ${applied} ช่องเรียบร้อย — อย่าลืมกดบันทึกในแต่ละแถว`, "success");
+        overlay.remove();
+      } else {
+        showToast("ยังไม่ได้กรอกเลขในช่องไหนเลย", "warning");
+      }
+    });
+  }
 }
 
 /** Init polish features on app load */
