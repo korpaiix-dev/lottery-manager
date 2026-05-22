@@ -70,6 +70,22 @@ try {
   });
   assert(operator.role === "operator", "operator creation failed");
 
+  await request("/api/users", {
+    method: "POST",
+    cookie: "admin",
+    body: { username: "qa-invalid-role", password: "qa-password-123", role: "hacker" },
+    expectedStatus: 400,
+  });
+
+  await request("/api/login", {
+    method: "POST",
+    body: { username: "qa-operator", password: "qa-password-123" },
+    capture: "operator",
+  });
+
+  await request("/api/logout", { method: "POST", cookie: "operator", expectedStatus: 204 });
+  await request("/api/me", { cookie: "operator", expectedStatus: 401 });
+  await request("/api/logout", { method: "POST", expectedStatus: 204 });
   await request("/api/login", {
     method: "POST",
     body: { username: "qa-operator", password: "qa-password-123" },
@@ -111,6 +127,8 @@ try {
   assert(appJs.includes('if (!state.notificationBootstrapped)'), "time alerts should bootstrap without flooding the first login");
   assert(appJs.includes("state.notificationBootstrapped = true"), "result-due alerts should mark the initial notification baseline");
   assert(appJs.includes('showToast(`${getLotteryName(round.lottery_id)} ${round.label} ถึงเวลาตรวจผลแล้ว`'), "result-due alerts should still fire after bootstrap");
+  assert(appJs.includes("บ(?![ก-๛])"), "LINE parser should not treat บ in บน as baht");
+  assert(appJs.includes("\\b\\d{1,2}[:.]\\d{1,2}\\b"), "LINE parser should strip time strings before extracting numbers");
 
   await request("/api/users", {
     method: "POST",
@@ -251,6 +269,16 @@ try {
     expectedStatus: 409,
   });
 
+  await request("/api/entries/batch", {
+    method: "POST",
+    cookie: "admin",
+    body: {
+      sourceChannel: "manual",
+      entries: [{ customerId: customer.id, roundId: round.id, betTypeId: "two_top", number: "46", amount: 1.5 }],
+    },
+    expectedStatus: 400,
+  });
+
   state = await request("/api/state", { cookie: "admin" });
   const ticket = state.tickets.find((item) => item.id === entries[0].ticket_id);
   assert(ticket?.status === "pending_review", "ticket should start pending");
@@ -277,6 +305,12 @@ try {
     method: "POST",
     cookie: "operator",
     body: { roundId: round.id, betTypeId: "two_top", numbers: "45" },
+  });
+  await request("/api/results", {
+    method: "POST",
+    cookie: "operator",
+    body: { roundId: round.id, betTypeId: "three_top", numbers: "1234" },
+    expectedStatus: 400,
   });
   await request(`/api/results/${round.id}/finalize`, { method: "POST", cookie: "operator", expectedStatus: 403 });
   await request(`/api/results/${round.id}/finalize`, { method: "POST", cookie: "admin", expectedStatus: 409 });
@@ -335,10 +369,34 @@ try {
   assert(rejectedTicketAfterReview.note === "LINE: ต้องคงอยู่", "rejecting a ticket must not overwrite customer note");
   assert(rejectedTicketAfterReview.review_note === "ข้อมูลไม่ครบ", "reject reason should be stored separately");
 
+  await request("/api/limits", {
+    method: "POST",
+    cookie: "admin",
+    body: { roundId: round.id, betTypeId: "two_bottom", number: "89", maxAmount: 25 },
+    expectedStatus: 201,
+  });
+
+  await request("/api/entries/batch", {
+    method: "POST",
+    cookie: "admin",
+    body: {
+      sourceChannel: "manual",
+      entries: [{ customerId: customer.id, roundId: round.id, betTypeId: "two_bottom", number: "89", amount: 20 }],
+    },
+    expectedStatus: 201,
+  });
+
   await request(`/api/users/${operator.id}`, {
     method: "PUT",
     cookie: "admin",
     body: { username: "qa-operator-renamed", password: "", role: "operator" },
+  });
+
+  await request(`/api/users/${operator.id}`, {
+    method: "PUT",
+    cookie: "admin",
+    body: { username: "qa-operator-renamed", password: "", role: "hacker" },
+    expectedStatus: 400,
   });
 
   await request(`/api/users/${viewerProvision.user.id}`, {

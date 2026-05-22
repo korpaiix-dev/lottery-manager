@@ -333,10 +333,15 @@ app.post("/api/login", (req, res) => {
   res.json({ user: publicUser(user) });
 });
 
-app.post("/api/logout", requireAuth, (req, res) => {
-  db.prepare("DELETE FROM sessions WHERE token_hash = ?").run(req.session.tokenHash);
+app.post("/api/logout", (req, res) => {
+  const token = parseCookies(req.headers.cookie)[SESSION_COOKIE];
+  const tokenHash = token ? hashToken(token) : "";
+  const session = tokenHash ? db.prepare("SELECT user_id FROM sessions WHERE token_hash = ?").get(tokenHash) : null;
+  if (tokenHash) {
+    db.prepare("DELETE FROM sessions WHERE token_hash = ?").run(tokenHash);
+  }
   clearSessionCookie(res);
-  logAudit(req.user.id, "logout", "session", req.session.tokenHash, {});
+  if (session) logAudit(session.user_id, "logout", "session", tokenHash, {});
   res.status(204).end();
 });
 
@@ -352,10 +357,8 @@ app.get("/api/state", requireAuth, (req, res) => {
 app.post("/api/users", requireAuth, requireAdmin, (req, res) => {
   const username = cleanText(req.body.username, 40);
   const password = String(req.body.password || "");
-  const role = ALLOWED_USER_ROLES.has(req.body.role) ? req.body.role : null;
-  if (!role) {
-    return res.status(400).json({ error: "invalid_user_role" });
-  }
+  const role = normalizeUserRole(req.body.role);
+  if (!role) return res.status(400).json({ error: "invalid_user_role" });
   const headHouseId = role === "head_house_viewer" ? cleanText(req.body.headHouseId, 80) : null;
 
   if (!username || password.length < 8 || (role === "head_house_viewer" && !findHeadHouse(headHouseId))) {
@@ -394,10 +397,8 @@ app.put("/api/users/:id", requireAuth, requireAdmin, (req, res) => {
 
   const username = cleanText(req.body.username, 40);
   const password = String(req.body.password || "");
-  const role = ALLOWED_USER_ROLES.has(req.body.role) ? req.body.role : null;
-  if (!role) {
-    return res.status(400).json({ error: "invalid_user_role" });
-  }
+  const role = normalizeUserRole(req.body.role);
+  if (!role) return res.status(400).json({ error: "invalid_user_role" });
   const headHouseId = role === "head_house_viewer" ? cleanText(req.body.headHouseId, 80) : null;
 
   if (!username || (password && password.length < 8) || (role === "head_house_viewer" && !findHeadHouse(headHouseId))) {
@@ -1878,6 +1879,11 @@ function findTicket(id) {
   return db.prepare("SELECT * FROM tickets WHERE id = ?").get(id);
 }
 
+function normalizeUserRole(role) {
+  const normalized = cleanText(role, 40);
+  return ALLOWED_USER_ROLES.has(normalized) ? normalized : "";
+}
+
 function normalizeLimitPayload(body) {
   const roundId = cleanText(body.roundId, 80);
   const betTypeId = cleanText(body.betTypeId, 80);
@@ -1917,8 +1923,8 @@ function normalizeEntryPayload(body) {
     !betType ||
     !isNumberValidForBetType(number, betType) ||
     !Number.isFinite(amount) ||
-    amount <= 0 ||
-    !Number.isInteger(amount)  // B19c fix: reject fractional baht
+    !Number.isInteger(amount) ||
+    amount <= 0
   ) {
     return { ok: false, error: "invalid_entry_payload" };
   }
@@ -1956,8 +1962,8 @@ function validateLimitCapacity(entry, excludedEntryId = null) {
     FROM entries
     LEFT JOIN tickets ON tickets.id = entries.ticket_id
     WHERE entries.round_id = ? AND entries.bet_type_id = ? AND entries.number = ?
-      AND (tickets.id IS NULL OR tickets.status IN ('pending_review', 'approved'))
       AND (? IS NULL OR entries.id <> ?)
+      AND (entries.ticket_id IS NULL OR tickets.status IN ('pending_review', 'approved'))
   `).get(entry.round_id, entry.bet_type_id, entry.number, excludedEntryId, excludedEntryId).amount;
   const projected = current + entry.amount;
 
@@ -1991,7 +1997,7 @@ function validateBatchLimitCapacity(entries) {
       FROM entries
       LEFT JOIN tickets ON tickets.id = entries.ticket_id
       WHERE entries.round_id = ? AND entries.bet_type_id = ? AND entries.number = ?
-        AND (tickets.id IS NULL OR tickets.status IN ('pending_review', 'approved'))
+        AND (entries.ticket_id IS NULL OR tickets.status IN ('pending_review', 'approved'))
     `).get(roundId, betTypeId, number).amount;
 
     if (current + batchAmount > limit.max_amount) {
@@ -2094,7 +2100,7 @@ function normalizeResultNumbers(numbers, betTypeId) {
   // doesn't match expected length exactly so users get clear validation feedback.
   return [...new Set(String(numbers || "")
     .split(/[\s,]+/)
-    .map((item) => String(item).replace(/\D/g, ""))
+    .map((item) => exactDigits(item, betType.digits))
     .filter((item) => isNumberValidForBetType(item, betType)))];
 }
 
@@ -2218,7 +2224,7 @@ function extractGloResultNumbers(raw) {
 function collectDigitsFromValue(value, length) {
   if (value == null) return [];
   if (typeof value === "string" || typeof value === "number") {
-    const digits = cleanDigits(value, length);
+    const digits = exactDigits(value, length);
     return digits.length === length ? [digits] : [];
   }
   if (Array.isArray(value)) return value.flatMap((item) => collectDigitsFromValue(item, length));
@@ -2620,6 +2626,11 @@ function cleanText(value, maxLength) {
 
 function cleanDigits(value, maxLength) {
   return String(value || "").replace(/\D/g, "").slice(0, maxLength);
+}
+
+function exactDigits(value, length) {
+  const digits = String(value || "").replace(/\D/g, "");
+  return digits.length === length ? digits : "";
 }
 
 function isNumberValidForBetType(number, betType) {
