@@ -1355,6 +1355,97 @@ app.post("/api/result-imports/:importId/apply", requireAuth, requireAdmin, (req,
   res.json(findResultImport(imported.id));
 });
 
+
+// Scrape candidate numbers from a manual-link source page.
+// Returns extracted numbers + raw text snippet; admin then picks which to use.
+app.post("/api/result-imports/scrape", requireAuth, requireAdmin, async (req, res) => {
+  const sourceId = cleanText(req.body.sourceId, 80);
+  const source = findResultSource(sourceId);
+  if (!source) return res.status(404).json({ error: "result_source_not_found" });
+  if (!source.url) return res.status(400).json({ error: "result_source_no_url" });
+
+  try {
+    const result = await scrapeResultSource(source);
+    res.json(result);
+  } catch (error) {
+    if (error.code) {
+      return res.status(error.status || 502).json({ error: error.code, message: error.message });
+    }
+    res.status(502).json({ error: "scrape_failed", message: String(error.message || error) });
+  }
+});
+
+async function scrapeResultSource(source) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 12_000);
+  let html = "";
+  try {
+    const response = await fetch(source.url, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "th,en;q=0.9,vi;q=0.8",
+      },
+      signal: controller.signal,
+      redirect: "follow",
+    });
+    if (!response.ok) {
+      throw Object.assign(new Error(`HTTP ${response.status}`), { code: "scrape_http_error", status: 502 });
+    }
+    html = await response.text();
+  } finally {
+    clearTimeout(timer);
+  }
+
+  // Strip <script>, <style>, then tags. Decode minimal entities.
+  let text = html
+    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  // Extract candidate digit groups
+  const digits6 = unique(text.match(/\b\d{6}\b/g) || []).slice(0, 12);
+  const digits5 = unique(text.match(/\b\d{5}\b/g) || []).slice(0, 12);
+  const digits3 = unique(text.match(/\b\d{3}\b/g) || []).slice(0, 30);
+  const digits2 = unique(text.match(/\b\d{2}\b/g) || []).slice(0, 30);
+
+  // Heuristic: if a 6-digit prize number is found, derive 3-top from last 3, 2-top from last 2
+  let suggested = {};
+  if (digits6.length > 0) {
+    const first = digits6[0];
+    suggested.three_top = first.slice(-3);
+    suggested.two_top = first.slice(-2);
+  }
+  // 2-bottom is typically the last 2 from a 2-digit prize — pick a different number than 2-top
+  if (digits2.length > 0) {
+    suggested.two_bottom = suggested.two_top
+      ? (digits2.find((n) => n !== suggested.two_top) || digits2[0])
+      : digits2[0];
+  }
+
+  return {
+    url: source.url,
+    sourceName: source.name,
+    found6Digit: digits6,
+    found5Digit: digits5,
+    found3Digit: digits3,
+    found2Digit: digits2,
+    suggested,
+    isJavaScriptApp: text.length < 200,
+    textPreview: text.slice(0, 600),
+  };
+}
+
+function unique(arr) {
+  return [...new Set(arr)];
+}
+
 app.get("/api/settlements", requireAuth, requireStaff, (req, res) => {
   const roundId = cleanText(req.query.roundId, 80);
   if (!findRound(roundId)) return res.status(404).json({ error: "round_not_found" });

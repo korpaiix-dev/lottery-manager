@@ -2721,6 +2721,7 @@ async function renderResultEditor() {
     </div>
   `;
 
+  const sourceForLottery = getSourceForLottery(round?.lottery_id);
   elements.resultEditor.innerHTML = state.betTypes
     .map((betType) => {
       const numbers = state.results
@@ -2736,6 +2737,20 @@ async function renderResultEditor() {
       `;
     })
     .join("");
+
+  // Insert "ดึงจากเว็บ" button at the top of the editor if source exists
+  if (sourceForLottery && !isFinalized) {
+    const fetchBtnHtml = `
+      <div class="scrape-toolbar">
+        <button id="scrapeResultBtn" class="button button-secondary" type="button" data-source-id="${escapeHtml(sourceForLottery.id)}">
+          🌐 ดึงจากเว็บ (${escapeHtml(sourceForLottery.name)})
+        </button>
+        <small class="scrape-hint">ดึงเลขจาก ${escapeHtml(sourceForLottery.url)} อัตโนมัติ — คุณจะได้เลือกเลขก่อนบันทึก</small>
+      </div>
+    `;
+    elements.resultEditor.insertAdjacentHTML("afterbegin", fetchBtnHtml);
+    elements.resultEditor.querySelector("#scrapeResultBtn")?.addEventListener("click", (e) => scrapeResultFromSource(e.currentTarget.dataset.sourceId));
+  }
 
   elements.resultEditor.querySelectorAll(".save-result-button").forEach((button) => {
     button.addEventListener("click", async () => {
@@ -3623,6 +3638,12 @@ function findLatestOpenRound(lotteryId) {
   return getAcceptingRounds(lotteryId)[0];
 }
 
+function getSourceForLottery(lotteryId) {
+  // Prefer active manual_link or auto_confirm source for this lottery
+  const sources = state.resultSources || [];
+  return sources.find((s) => s.lottery_id === lotteryId && s.active && s.url);
+}
+
 function getScheduleForLottery(lotteryId) {
   return state.scheduleTemplates.find((s) => s.lottery_id === lotteryId);
 }
@@ -4211,6 +4232,126 @@ function initKeyboardShortcuts() {
       const target = order[Number(e.key) - 1];
       if (target) activateView(target);
     }
+  });
+}
+
+/** Scrape result from configured source URL */
+async function scrapeResultFromSource(sourceId) {
+  const btn = elements.resultEditor.querySelector("#scrapeResultBtn");
+  if (btn) {
+    btn.disabled = true;
+    btn.dataset.loading = "true";
+  }
+  try {
+    const data = await api("/api/result-imports/scrape", {
+      method: "POST",
+      body: { sourceId },
+    });
+    showCandidatePicker(data, sourceId);
+  } catch (error) {
+    showToast(`ดึงผลไม่สำเร็จ — ${error?.message || "เว็บไม่ตอบกลับ หรือใช้ JS โหลด"}`, "warning");
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      delete btn.dataset.loading;
+    }
+  }
+}
+
+/** Modal showing candidate numbers from scrape result; admin picks per bet type */
+function showCandidatePicker(data, sourceId) {
+  const overlay = document.createElement("div");
+  overlay.className = "candidate-overlay";
+  overlay.innerHTML = `
+    <div class="candidate-modal" role="dialog" aria-label="เลือกผลจากเว็บ">
+      <div class="candidate-header">
+        <div>
+          <strong>เลือกผลจากเว็บ</strong>
+          <small>${escapeHtml(data.sourceName || "")} · <a href="${escapeHtml(data.url || "")}" target="_blank" rel="noopener">เปิดต้นทาง ↗</a></small>
+        </div>
+        <button class="candidate-close" type="button" aria-label="ปิด">✕</button>
+      </div>
+      ${
+        data.isJavaScriptApp
+          ? `<div class="candidate-warning">
+              ⚠️ เว็บนี้ใช้ JavaScript โหลดผล (server scrape ไม่เจอตัวเลข) — เปิดต้นทางด้วยตัวเองแล้ว copy เลขมาวางในช่องด้านล่าง
+            </div>`
+          : ""
+      }
+      <div class="candidate-section">
+        <h4>3 ตัวบน / โต๊ด</h4>
+        <p class="candidate-hint">ถ้ามีรางวัลที่ 1 (6 หลัก) ระบบจะแนะนำเป็น 3 หลักท้ายให้</p>
+        ${
+          data.suggested?.three_top
+            ? `<div class="candidate-suggested">แนะนำ: <button class="candidate-chip candidate-chip-primary" data-fill="three_top" data-value="${data.suggested.three_top}">${data.suggested.three_top}</button></div>`
+            : ""
+        }
+        <div class="candidate-chips">
+          ${(data.found3Digit || []).slice(0, 20).map((n) => `<button class="candidate-chip" data-fill="three_top" data-value="${n}">${n}</button>`).join("")}
+        </div>
+      </div>
+      <div class="candidate-section">
+        <h4>2 ตัวบน</h4>
+        ${
+          data.suggested?.two_top
+            ? `<div class="candidate-suggested">แนะนำ: <button class="candidate-chip candidate-chip-primary" data-fill="two_top" data-value="${data.suggested.two_top}">${data.suggested.two_top}</button></div>`
+            : ""
+        }
+        <div class="candidate-chips">
+          ${(data.found2Digit || []).slice(0, 20).map((n) => `<button class="candidate-chip" data-fill="two_top" data-value="${n}">${n}</button>`).join("")}
+        </div>
+      </div>
+      <div class="candidate-section">
+        <h4>2 ตัวล่าง</h4>
+        ${
+          data.suggested?.two_bottom
+            ? `<div class="candidate-suggested">แนะนำ: <button class="candidate-chip candidate-chip-primary" data-fill="two_bottom" data-value="${data.suggested.two_bottom}">${data.suggested.two_bottom}</button></div>`
+            : ""
+        }
+        <div class="candidate-chips">
+          ${(data.found2Digit || []).slice(0, 20).map((n) => `<button class="candidate-chip" data-fill="two_bottom" data-value="${n}">${n}</button>`).join("")}
+        </div>
+      </div>
+      ${
+        data.found6Digit && data.found6Digit.length > 0
+          ? `<div class="candidate-section">
+              <h4>เลข 6 หลัก (รางวัลที่ 1 เต็ม)</h4>
+              <div class="candidate-chips">
+                ${data.found6Digit.slice(0, 10).map((n) => `<span class="candidate-chip candidate-chip-info">${n}</span>`).join("")}
+              </div>
+            </div>`
+          : ""
+      }
+      <div class="candidate-actions">
+        <button class="button button-primary candidate-done" type="button">เสร็จแล้ว — กดบันทึกในแต่ละแถวต่อ</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+
+  // Wire up
+  overlay.addEventListener("click", (e) => {
+    if (e.target === overlay) overlay.remove();
+  });
+  overlay.querySelector(".candidate-close")?.addEventListener("click", () => overlay.remove());
+  overlay.querySelector(".candidate-done")?.addEventListener("click", () => overlay.remove());
+
+  overlay.querySelectorAll(".candidate-chip[data-value]").forEach((chip) => {
+    chip.addEventListener("click", () => {
+      const betTypeId = chip.dataset.fill;
+      const value = chip.dataset.value;
+      const input = elements.resultEditor.querySelector(`input[data-bet-type-id="${betTypeId}"]`);
+      if (input) {
+        // Append space + value (allow multiple)
+        const existing = input.value.trim();
+        if (!existing.split(/\s+/).includes(value)) {
+          input.value = existing ? `${existing} ${value}` : value;
+          input.classList.add("scrape-filled");
+          setTimeout(() => input.classList.remove("scrape-filled"), 1000);
+        }
+        showToast(`ใส่ ${value} ใน ${getBetTypeName(betTypeId)} แล้ว — กด "บันทึก" ที่แถวนั้น`, "success");
+      }
+    });
   });
 }
 
