@@ -53,6 +53,9 @@ const LOTTERY_CATEGORIES = [
 
 const state = {
   user: null,
+  customerFilter: "",
+  headHouseFilter: "",
+  userFilter: "",
   headHouses: [],
   lotteries: [],
   customers: [],
