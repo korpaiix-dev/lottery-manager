@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>บ้านหวยเรือนเลขเศรษฐี — ระบบจัดการหวย</title>
-    <link rel="stylesheet" href="styles.css?v=20260522-polish10" />
+    <link rel="stylesheet" href="styles.css?v=20260522-search" />
   </head>
   <body>
     <section id="authShell" class="auth-shell">
@@ -599,7 +599,15 @@
                 <p class="helper-copy">ระบบจะออกรหัสลูกค้าให้อัตโนมัติ เช่น C0001 และจะไม่ให้ย้ายหัวบ้านหลังมีรายการแล้วเพื่อคงยอดย้อนหลังให้ถูกต้อง</p>
                 <button id="customerSubmitBtn" class="button button-primary" type="submit">เพิ่มลูกค้า</button>
               </form>
+              <div class="list-toolbar">
+                <label class="field compact-field list-search">
+                  <span class="sr-only">ค้นหาลูกค้า</span>
+                  <input id="customerSearchInput" type="search" placeholder="🔍 ค้นหาด้วยรหัส / ชื่อ / หัวบ้าน" />
+                </label>
+                <span id="customerListCount" class="list-count"></span>
+              </div>
               <div id="customerList" class="customer-list"></div>
+              <div id="customerEmpty" class="empty-state hidden">ไม่มีลูกค้าที่ตรงกับคำค้น</div>
             </section>
           </section>
 
@@ -643,7 +651,15 @@
                     <button id="copyViewerCredentialsBtn" class="button button-secondary" type="button">คัดลอกข้อมูล</button>
                   </div>
                 </div>
+                <div class="list-toolbar">
+                  <label class="field compact-field list-search">
+                    <span class="sr-only">ค้นหาหัวบ้าน</span>
+                    <input id="headHouseSearchInput" type="search" placeholder="🔍 ค้นหาด้วยรหัส / ชื่อ" />
+                  </label>
+                  <span id="headHouseListCount" class="list-count"></span>
+                </div>
                 <div id="headHouseList" class="customer-list"></div>
+                <div id="headHouseEmpty" class="empty-state hidden">ไม่มีหัวบ้านที่ตรงกับคำค้น</div>
               </section>
             </section>
           </section>
@@ -1142,6 +1158,13 @@
                 <div class="panel-heading">
                   <h2>ผู้ใช้ทั้งหมด</h2>
                 </div>
+                <div class="list-toolbar">
+                  <label class="field compact-field list-search">
+                    <span class="sr-only">ค้นหาผู้ใช้</span>
+                    <input id="userSearchInput" type="search" placeholder="🔍 ค้นหาด้วยชื่อผู้ใช้ / สิทธิ์ / หัวบ้าน" />
+                  </label>
+                  <span id="userListCount" class="list-count"></span>
+                </div>
                 <div class="table-wrap">
                   <table>
                     <thead>
@@ -1198,6 +1221,6 @@
     <!-- Mobile nav hamburger (only visible on small screens) -->
     <button id="navToggleBtn" class="nav-toggle" type="button" aria-label="เปิดเมนู" aria-expanded="false" aria-controls="primaryNav" title="เปิดเมนู">☰</button>
 
-    <script src="app.js?v=20260522-polish10"></script>
+    <script src="app.js?v=20260522-search"></script>
   </body>
 </html>

@@ -3832,3 +3832,135 @@ h3 { font-weight: 600; }
   padding-right: 20px;
 }
 
+
+/* ============================================================================
+   List search toolbar (Customers / Head houses / Users)
+   ============================================================================ */
+.list-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--line-soft);
+  position: sticky;
+  top: 0;
+  background: var(--panel);
+  z-index: 5;
+}
+.list-search {
+  flex: 1 1 280px;
+  margin: 0;
+  max-width: 480px;
+}
+.list-search input[type="search"] {
+  width: 100%;
+  min-height: 40px;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--panel-soft);
+  font: inherit;
+  color: var(--text);
+}
+.list-search input[type="search"]::placeholder {
+  color: var(--muted);
+}
+.list-count {
+  font-size: 13px;
+  color: var(--muted);
+  font-weight: 500;
+  padding: 6px 12px;
+  background: var(--soft-gold);
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+/* Customer / head house list — ทำให้ scrollable แทนยาวเป็นพรืด */
+.customer-list {
+  max-height: 60vh;
+  overflow-y: auto;
+  padding: 8px 20px 20px;
+  display: grid;
+  gap: 8px;
+}
+.customer-item {
+  padding: 14px 16px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line-soft);
+  background: var(--panel-soft);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  transition: border-color var(--dur) var(--ease), background var(--dur) var(--ease);
+}
+.customer-item:hover {
+  border-color: var(--primary);
+  background: var(--panel);
+}
+.customer-item strong {
+  display: block;
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--text);
+  margin-bottom: 2px;
+}
+.customer-item span {
+  color: var(--muted);
+  font-size: 13px;
+}
+.head-house-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.head-house-actions small {
+  color: var(--muted);
+  font-size: 12px;
+  background: var(--bg-tint);
+  padding: 4px 10px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.mini-actions {
+  display: flex;
+  gap: 6px;
+}
+.mini-actions .button {
+  min-height: 32px;
+  padding: 0 10px;
+  font-size: 12px;
+}
+
+/* Screen-reader-only utility */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Mobile responsive */
+@media (max-width: 640px) {
+  .list-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .list-search {
+    max-width: 100%;
+  }
+  .list-count {
+    text-align: center;
+  }
+  .customer-list {
+    max-height: 50vh;
+  }
+}
+

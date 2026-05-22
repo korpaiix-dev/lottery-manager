@@ -427,6 +427,25 @@ async function bindEvents() {
     input.addEventListener("change", renderEntries);
   });
   elements.searchInput.addEventListener("input", renderEntries);
+  // Polish: list search filters (customers, head houses, users)
+  if (elements.customerSearchInput) {
+    elements.customerSearchInput.addEventListener("input", (e) => {
+      state.customerFilter = e.target.value;
+      renderCustomers();
+    });
+  }
+  if (elements.headHouseSearchInput) {
+    elements.headHouseSearchInput.addEventListener("input", (e) => {
+      state.headHouseFilter = e.target.value;
+      renderHeadHouses();
+    });
+  }
+  if (elements.userSearchInput) {
+    elements.userSearchInput.addEventListener("input", (e) => {
+      state.userFilter = e.target.value;
+      renderUsers();
+    });
+  }
 
   elements.customerForm.addEventListener("submit", handleCustomerSubmit);
   elements.resetCustomerBtn.addEventListener("click", resetCustomerForm);
@@ -2031,7 +2050,20 @@ async function handleHeadHouseSubmit(event) {
 }
 
 function renderHeadHouses() {
-  elements.headHouseList.innerHTML = state.headHouses
+  const q = state.headHouseFilter.trim().toLowerCase();
+  const filtered = state.headHouses.filter((h) => {
+    if (!q) return true;
+    return `${h.code || ""} ${h.name || ""} ${h.note || ""}`.toLowerCase().includes(q);
+  });
+  if (elements.headHouseListCount) {
+    elements.headHouseListCount.textContent = q
+      ? `แสดง ${filtered.length.toLocaleString("th-TH")} จาก ${state.headHouses.length.toLocaleString("th-TH")} รายการ`
+      : `${state.headHouses.length.toLocaleString("th-TH")} หัวบ้าน`;
+  }
+  if (elements.headHouseEmpty) {
+    elements.headHouseEmpty.classList.toggle("hidden", filtered.length > 0);
+  }
+  elements.headHouseList.innerHTML = filtered
     .map((headHouse) => {
       const customers = state.customers.filter((customer) => customer.head_house_id === headHouse.id).length;
       const viewer = state.users.find((user) => user.role === "head_house_viewer" && user.head_house_id === headHouse.id);
@@ -3143,10 +3175,20 @@ async function handleUserSubmit(event) {
 function renderUsers() {
   if (state.user?.role !== "admin") {
     elements.usersBody.innerHTML = "";
+    if (elements.userListCount) elements.userListCount.textContent = "";
     return;
   }
-
-    elements.usersBody.innerHTML = state.users
+  const q = state.userFilter.trim().toLowerCase();
+  const filtered = state.users.filter((u) => {
+    if (!q) return true;
+    return `${u.username || ""} ${u.role || ""} ${u.head_house_code || ""} ${u.head_house_name || ""}`.toLowerCase().includes(q);
+  });
+  if (elements.userListCount) {
+    elements.userListCount.textContent = q
+      ? `แสดง ${filtered.length.toLocaleString("th-TH")} จาก ${state.users.length.toLocaleString("th-TH")} รายการ`
+      : `${state.users.length.toLocaleString("th-TH")} ผู้ใช้`;
+  }
+    elements.usersBody.innerHTML = filtered
       .map(
         (user) => `
           <tr>
