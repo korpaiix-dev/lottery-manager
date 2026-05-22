@@ -4183,3 +4183,33 @@ h3 { font-weight: 600; }
   border-top: 1px solid var(--line-soft);
 }
 
+
+/* ============================================================================
+   Searchable select — search input above a native <select>
+   ============================================================================ */
+.searchable-select {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.searchable-select-input {
+  min-height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--panel-soft);
+  font: inherit;
+  color: var(--text);
+}
+.searchable-select-input:focus {
+  border-color: var(--primary);
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(15, 81, 50, 0.14);
+}
+.searchable-select-input::placeholder {
+  color: var(--muted);
+}
+.searchable-select select {
+  width: 100%;
+}
+

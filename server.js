@@ -1415,15 +1415,40 @@ async function scrapeResultSource(source) {
   const digits3 = unique(text.match(/\b\d{3}\b/g) || []).slice(0, 30);
   const digits2 = unique(text.match(/\b\d{2}\b/g) || []).slice(0, 30);
 
-  // Heuristic: if a 6-digit prize number is found, derive 3-top from last 3, 2-top from last 2
+  // Smarter heuristic: look for context-keyed prize numbers
+  //   - Vietnamese (Hanoi): "Giải ĐB" / "ĐB" / "Giải đặc biệt" → 5-digit special prize
+  //   - Thai (GLO): 6-digit first prize
+  //   - "Giải bảy" / "Giải 7" → last 2-digit prizes (used for 2-bottom)
   let suggested = {};
-  if (digits6.length > 0) {
+
+  // Look for ĐB pattern: "Giải ĐB ... 12345" or "Giải đặc biệt ... 12345"
+  const dbMatch = text.match(/(?:Giải\s*ĐB|Giải\s*đặc\s*biệt|ĐB)\s*[:\-]?\s*(\d{5,6})/i);
+  if (dbMatch) {
+    const special = dbMatch[1];
+    suggested.three_top = special.slice(-3);
+    suggested.two_top = special.slice(-2);
+    suggested.special = special;
+  } else if (digits6.length > 0) {
+    // Fallback: 6-digit (Thai GLO style)
     const first = digits6[0];
     suggested.three_top = first.slice(-3);
     suggested.two_top = first.slice(-2);
+  } else if (digits5.length > 0) {
+    // Fallback: 5-digit (likely Hanoi style)
+    const first = digits5[0];
+    suggested.three_top = first.slice(-3);
+    suggested.two_top = first.slice(-2);
   }
-  // 2-bottom is typically the last 2 from a 2-digit prize — pick a different number than 2-top
-  if (digits2.length > 0) {
+
+  // 2-bottom: look for Giải bảy (Hanoi style) last 2-digit prize
+  const bayMatch = text.match(/(?:Giải\s*bảy|Giải\s*7|G7|รางวัลที่\s*7)\s*[:\-]?\s*([\d\s,]{4,40})/i);
+  if (bayMatch) {
+    const ns = bayMatch[1].match(/\b\d{2}\b/g);
+    if (ns && ns.length > 0) {
+      suggested.two_bottom = ns[ns.length - 1]; // last number of Giải bảy
+    }
+  }
+  if (!suggested.two_bottom && digits2.length > 0) {
     suggested.two_bottom = suggested.two_top
       ? (digits2.find((n) => n !== suggested.two_top) || digits2[0])
       : digits2[0];
@@ -1432,6 +1457,11 @@ async function scrapeResultSource(source) {
   return {
     url: source.url,
     sourceName: source.name,
+    confidenceNote: suggested.special
+      ? `ดึงจาก "Giải ĐB ${suggested.special}" (รางวัลพิเศษหวยฮานอย)`
+      : suggested.three_top
+        ? "เดาจากเลขใหญ่สุดในหน้า — ตรวจให้แน่ใจก่อนบันทึก"
+        : "ไม่พบเลขที่น่าจะเป็นผล — เปิดต้นทางตรวจมือ",
     found6Digit: digits6,
     found5Digit: digits5,
     found3Digit: digits3,

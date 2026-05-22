@@ -4358,6 +4358,7 @@ function showCandidatePicker(data, sourceId) {
 /** Init polish features on app load */
 function initPolish() {
   initThemeToggle();
+  applySearchableSelects();
   initNavToggle();
   initKeyboardShortcuts();
   if (elements.copyReceiptBtn) elements.copyReceiptBtn.addEventListener("click", copyReceipt);
@@ -4371,3 +4372,57 @@ if (document.readyState === "loading") {
   setTimeout(initPolish, 0);
 }
 
+/* ============================================================================
+   Searchable select — wraps a <select> with a search input that filters options
+   ============================================================================ */
+function makeSelectSearchable(selectEl, placeholder = "🔍 ค้นหา...") {
+  if (!selectEl || selectEl.dataset.searchable === "true") return;
+  selectEl.dataset.searchable = "true";
+
+  const wrap = document.createElement("div");
+  wrap.className = "searchable-select";
+  selectEl.parentNode.insertBefore(wrap, selectEl);
+  wrap.appendChild(selectEl);
+
+  const search = document.createElement("input");
+  search.type = "search";
+  search.className = "searchable-select-input";
+  search.placeholder = placeholder;
+  search.autocomplete = "off";
+  wrap.insertBefore(search, selectEl);
+
+  const filter = () => {
+    const q = search.value.trim().toLowerCase();
+    let visible = 0;
+    Array.from(selectEl.options).forEach((opt) => {
+      if (!opt.value && !q) {
+        opt.hidden = false;
+        return;
+      }
+      const match = !q || opt.textContent.toLowerCase().includes(q);
+      opt.hidden = !match;
+      if (match) visible += 1;
+    });
+    selectEl.dataset.visibleCount = String(visible);
+  };
+  search.addEventListener("input", filter);
+  // Also re-filter when select gets new options dynamically (we observe it)
+  const observer = new MutationObserver(filter);
+  observer.observe(selectEl, { childList: true });
+}
+
+function applySearchableSelects() {
+  // Big dropdowns that benefit from search
+  const targets = [
+    elements.ticketRound, // intake round selector (293+ rounds)
+    elements.resultRound, // result editor round
+    elements.reportRound, // settlement round
+    elements.scheduleLottery, // schedule form lottery
+    elements.filterRound, // entries filter
+    elements.filterCustomer, // entries filter customer
+    elements.filterBetType, // entries filter bet type (small, skip)
+  ];
+  targets.forEach((sel) => sel && makeSelectSearchable(sel, sel.id?.toLowerCase().includes("customer") ? "🔍 ชื่อ/รหัสลูกค้า" : "🔍 ค้นหา..."));
+}
+
+// Hook into existing initPolish + after renderSelects
