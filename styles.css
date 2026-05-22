@@ -3085,3 +3085,473 @@ h3 { font-weight: 600; }
     scroll-behavior: auto !important;
   }
 }
+
+/* ============================================================================
+   Layout Balance Fix 2026-05-22 — Visual consistency + spacing pass
+   Fixes:
+   - Hero panel still using old blue gradient → switch to brand green→gold
+   - User pill in topbar looks like a button → distinct chip styling
+   - Result source cards have inconsistent backgrounds → unified card + status stripe
+   - Dashboard 3-column cards uneven heights → grid-stretch
+   - "เปิดเว็บผล" inline link → proper outline button
+   - Ticket-tab yellow → brand gold tone
+   - Spacing breathing room throughout
+   ============================================================================ */
+
+/* ---- Hero panel: now uses brand green→gold gradient ---- */
+.hero-panel {
+  min-height: 120px;
+  padding: 24px 28px;
+  border-radius: var(--radius);
+  background:
+    radial-gradient(800px 300px at 80% -20%, rgba(244, 211, 94, 0.22), transparent 60%),
+    linear-gradient(135deg, #0a3a24 0%, #0f5132 55%, #166843 100%) !important;
+  color: #fef3c7;
+  box-shadow:
+    var(--shadow),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  position: relative;
+  overflow: hidden;
+}
+.hero-panel::before {
+  content: "";
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 3px;
+  background: var(--gold-gradient);
+  background-size: 200% 100%;
+  animation: gold-shimmer 5s linear infinite;
+}
+.hero-panel h2 {
+  font-size: 22px;
+  font-weight: 700;
+  background: linear-gradient(135deg, #fef3c7 0%, #f4d35e 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+.hero-panel .eyebrow {
+  color: rgba(244, 211, 94, 0.7);
+}
+.hero-steps span {
+  background: rgba(244, 211, 94, 0.14);
+  border: 1px solid rgba(244, 211, 94, 0.28);
+  color: #fef3c7;
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+/* ---- Top bar grouping: user chip distinct from action buttons ---- */
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.topbar-actions .user-pill {
+  background: var(--soft-gold);
+  border: 1px solid rgba(200, 153, 11, 0.32);
+  color: var(--gold-deep);
+  font-weight: 600;
+  padding: 0 16px 0 14px;
+  position: relative;
+  cursor: default;
+  pointer-events: none;
+}
+.topbar-actions .user-pill::before {
+  content: "👤";
+  margin-right: 6px;
+  font-size: 13px;
+  filter: saturate(0.6);
+}
+.topbar-actions .button {
+  min-height: 38px;
+  padding: 0 14px;
+  font-size: 14px;
+}
+.topbar-actions #logoutBtn {
+  background: transparent;
+  border-color: var(--line);
+  color: var(--muted);
+}
+.topbar-actions #logoutBtn:hover:not(:disabled) {
+  background: var(--soft-red);
+  border-color: rgba(220, 38, 38, 0.32);
+  color: var(--danger);
+}
+
+/* ---- Metric tiles: uniform sizing + subtle hover ---- */
+.metric {
+  min-height: 110px;
+  padding: 18px;
+  border-radius: var(--radius);
+  border: 1px solid var(--line-soft);
+  background: var(--panel) !important;
+  box-shadow: var(--shadow-soft);
+  display: grid;
+  gap: 6px;
+  align-content: space-between;
+  position: relative;
+  overflow: hidden;
+  transition: transform var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
+}
+.metric:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow);
+}
+.metric::before {
+  content: "";
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 3px;
+  background: var(--primary-gradient);
+}
+.metric-blue::before  { background: linear-gradient(180deg, #2563eb, #0f5132); }
+.metric-green::before { background: linear-gradient(180deg, #16a34a, #0f5132); }
+.metric-indigo::before { background: linear-gradient(180deg, #c8990b, #e8b73d); }
+.metric-amber::before  { background: linear-gradient(180deg, #c8990b, #e8b73d); }
+.metric-red::before    { background: linear-gradient(180deg, #dc2626, #b91c1c); }
+.metric .eyebrow,
+.metric span:first-child {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.metric strong {
+  font-size: 26px;
+  font-weight: 700;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+/* ---- Summary-grid: more breathing room ---- */
+.summary-grid {
+  gap: 16px;
+}
+
+/* ---- Analytics 3-column: equal heights + uniform padding ---- */
+.analytics-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+  align-items: stretch;
+}
+.analytics-grid > .panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 280px;
+}
+.analytics-grid > .panel > .panel-heading {
+  flex-shrink: 0;
+}
+.analytics-grid > .panel > *:not(.panel-heading) {
+  flex: 1;
+}
+
+/* ---- Task queue items (left card with red/pink/brown alerts): consistent styling ---- */
+.task-queue-item {
+  border-left: 3px solid var(--danger);
+  background: var(--soft-red);
+  padding: 14px 16px;
+  border-radius: var(--radius-sm);
+  margin-bottom: 10px;
+}
+.task-queue-item:last-child { margin-bottom: 0; }
+.task-queue-item strong {
+  display: block;
+  margin-bottom: 4px;
+  font-weight: 600;
+}
+.task-queue-item.warning,
+.task-queue-item.priority-medium {
+  border-left-color: var(--warning);
+  background: var(--soft-amber);
+  color: var(--warning);
+}
+.task-queue-item.priority-medium strong { color: var(--warning); }
+.task-queue-item.danger,
+.task-queue-item.priority-high {
+  border-left-color: var(--danger);
+  background: var(--soft-red);
+  color: var(--danger);
+}
+.task-queue-item.priority-high strong { color: var(--danger); }
+.task-queue-item.info,
+.task-queue-item.priority-low {
+  border-left-color: var(--gold);
+  background: var(--soft-gold);
+  color: var(--gold-deep);
+}
+.task-queue-item.priority-low strong { color: var(--gold-deep); }
+
+/* ---- Status pills row at hero panel ---- */
+.hero-steps {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* ---- Ticket tabs: brand gold tone (instead of orange) ---- */
+.ticket-tab {
+  min-height: 40px;
+  border: 1px solid rgba(200, 153, 11, 0.32);
+  border-radius: var(--radius-sm);
+  padding: 0 18px;
+  background: var(--soft-gold);
+  color: var(--gold-deep);
+  font-weight: 500;
+  letter-spacing: 0.01em;
+}
+.ticket-tab.is-active {
+  background: var(--gold-gradient);
+  background-size: 200% 100%;
+  border-color: transparent;
+  color: #fff;
+  box-shadow: 0 4px 14px rgba(200, 153, 11, 0.34);
+  font-weight: 600;
+}
+.ticket-tab:hover:not(.is-active) {
+  background: #f9ecc4;
+  transform: translateY(-1px);
+}
+
+/* ---- Result source cards: UNIFORM background, status stripe instead ---- */
+.result-source-card {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 14px;
+  align-items: start;
+  min-height: 100px;
+  padding: 16px 18px;
+  border: 1px solid var(--line-soft) !important;
+  border-radius: var(--radius) !important;
+  background: var(--panel) !important;
+  box-shadow: var(--shadow-soft);
+  position: relative;
+  overflow: hidden;
+  transition: transform var(--dur) var(--ease), box-shadow var(--dur) var(--ease), border-color var(--dur) var(--ease);
+}
+.result-source-card::before {
+  content: "";
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 3px;
+  background: var(--muted);
+  opacity: 0.4;
+}
+.result-source-card.source-auto::before { background: var(--success); opacity: 1; }
+.result-source-card.source-reserved::before { background: var(--warning); opacity: 1; }
+.result-source-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow);
+  border-color: var(--primary) !important;
+}
+
+/* Result source: status pill instead of background tint */
+.result-source-card .status-pill {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+}
+
+/* ---- Result source grid: uniform spacing ---- */
+.result-source-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 14px;
+}
+
+/* ---- "เปิดเว็บผล" / "ดึงผลล่าสุด" links → proper outline buttons ---- */
+.result-source-card a,
+.result-source-card .text-button,
+.result-source-card .button-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 36px;
+  padding: 0 14px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--primary);
+  font-weight: 500;
+  font-size: 13px;
+  text-decoration: none;
+  transition: all var(--dur) var(--ease);
+}
+.result-source-card a:hover,
+.result-source-card .button-link:hover {
+  background: var(--soft-green);
+  border-color: var(--primary);
+  text-decoration: none;
+}
+.result-source-card .button-primary {
+  background: var(--primary-gradient);
+  color: #fff;
+  border: 0;
+}
+
+/* Result-source action row */
+.result-source-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
+/* ---- Empty state — uniform style (overrides the two duplicates) ---- */
+.empty-state {
+  padding: 28px 16px !important;
+  text-align: center;
+  color: var(--muted);
+  background: var(--panel-soft) !important;
+  border: 1px dashed var(--line) !important;
+  border-radius: var(--radius-sm) !important;
+  font-size: 14px;
+}
+.empty-state::before {
+  content: "✦";
+  display: block;
+  font-size: 24px;
+  color: var(--gold);
+  opacity: 0.5;
+  margin-bottom: 8px;
+}
+
+/* ---- Panel headings: tighter, more prominent ---- */
+.panel-heading {
+  padding: 18px 20px 14px;
+  border-bottom: 1px solid var(--line-soft);
+}
+.panel-heading h2,
+.panel-heading h3 {
+  font-size: 16px;
+  font-weight: 600;
+  margin: 0;
+  letter-spacing: -0.01em;
+}
+.panel > *:not(.panel-heading) {
+  padding-left: 20px;
+  padding-right: 20px;
+}
+.panel > *:last-child {
+  padding-bottom: 20px;
+}
+.compact-heading {
+  padding: 16px 18px 10px;
+}
+
+/* ---- View stack: more space between panels ---- */
+.view-stack {
+  display: grid;
+  gap: 18px;
+}
+
+/* ---- Top nav: refined active state w/ gold underline ---- */
+.nav-button {
+  padding: 8px 16px;
+  font-size: 14px;
+}
+.nav-button.is-active {
+  background: var(--soft-green);
+  color: var(--primary);
+}
+.nav-button.is-active::after {
+  background: var(--gold-gradient);
+  height: 2px;
+}
+
+/* ---- Section heading inside source list ---- */
+.result-source-group {
+  margin-bottom: 24px;
+}
+.result-source-group:last-child {
+  margin-bottom: 0;
+}
+.result-source-group h3 {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin: 0 0 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+/* ---- Sidebar action buttons: better hover ---- */
+.sidebar-link {
+  padding: 0 12px;
+}
+
+/* ---- Receipt card: better visual hierarchy ---- */
+.receipt-card {
+  padding: 20px;
+  background: linear-gradient(180deg, var(--panel) 0%, var(--panel-soft) 100%);
+  border: 1px solid var(--gold);
+  position: relative;
+}
+.receipt-card::before {
+  content: "";
+  position: absolute;
+  top: 0; left: 12px; right: 12px;
+  height: 2px;
+  background: var(--gold-gradient);
+  border-radius: 0 0 2px 2px;
+}
+.receipt-header strong {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--gold-deep);
+  letter-spacing: 0.02em;
+}
+.receipt-status {
+  background: var(--soft-amber);
+  color: var(--warning);
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 500;
+}
+.receipt-meta {
+  display: grid;
+  gap: 12px;
+  margin-top: 16px;
+  font-size: 13px;
+}
+.receipt-meta > div {
+  display: grid;
+  gap: 2px;
+}
+.receipt-meta > div span {
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.receipt-meta > div strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
+/* ---- Closing-soon banner (warning at top) ---- */
+.closing-soon-banner {
+  padding: 14px 18px;
+  border-radius: var(--radius);
+  background: var(--soft-amber);
+  border: 1px solid rgba(196, 65, 12, 0.28);
+  color: var(--warning);
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.closing-soon-banner::before {
+  content: "⚠";
+  font-size: 18px;
+}
+
