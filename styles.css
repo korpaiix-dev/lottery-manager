@@ -3964,3 +3964,39 @@ h3 { font-weight: 600; }
   }
 }
 
+
+/* Lottery card: distinct visual state when waiting for upcoming round or no schedule */
+.lottery-card.is-upcoming {
+  background: linear-gradient(135deg, var(--soft-gold) 0%, var(--panel) 60%);
+  border-color: rgba(200, 153, 11, 0.4);
+  cursor: pointer;
+  opacity: 1;
+}
+.lottery-card.is-upcoming:hover {
+  border-color: var(--gold);
+  box-shadow: var(--shadow-hover);
+}
+.lottery-card.is-upcoming em {
+  color: var(--gold-deep);
+  font-weight: 500;
+}
+
+.lottery-card.is-no-schedule {
+  background: var(--panel-soft);
+  border: 1px dashed var(--line);
+  cursor: pointer;
+  opacity: 0.95;
+}
+.lottery-card.is-no-schedule:hover {
+  background: var(--soft-blue);
+  border-style: solid;
+  border-color: var(--primary);
+}
+.lottery-card.is-no-schedule strong {
+  color: var(--muted);
+}
+.lottery-card.is-no-schedule small {
+  color: var(--primary);
+  font-weight: 500;
+}
+

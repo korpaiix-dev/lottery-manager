@@ -874,19 +874,49 @@ function renderLotteryBoard() {
             .map((lottery) => {
               const round = getDisplayRoundForLottery(lottery.id);
               const status = getRoundTimingStatus(round);
+              // Smart empty-state: show next expected draw from schedule, or prompt to set up
+              const schedule = getScheduleForLottery(lottery.id);
+              const nextExpected = !round ? getNextExpectedDrawFromSchedule(lottery.id) : null;
+              const hasInfo = round || nextExpected;
               return `
                 <button
-                  class="lottery-card ${status.cardClass}"
+                  class="lottery-card ${status.cardClass} ${!round && nextExpected ? "is-upcoming" : ""} ${!round && !schedule ? "is-no-schedule" : ""}"
                   type="button"
                   data-lottery-id="${escapeHtml(lottery.id)}"
-                  ${round ? "" : "disabled"}
+                  ${round ? "" : nextExpected ? "" : !schedule ? "" : ""}
                 >
                   <span class="lottery-card-flag ${getLotteryFlagClass(lottery.id)}" aria-hidden="true"></span>
                   <strong>${escapeHtml(lottery.name)}</strong>
-                  <span>${round ? escapeHtml(round.label) : "ยังไม่มีงวด"}</span>
-                  <small>${round ? `ปิดรับ ${formatRoundCloseTime(round)} · ออก ${escapeHtml(round.draw_time)}` : "-"}</small>
-                  <small>${round ? `ประกาศผล ${escapeHtml(round.result_time || round.draw_time)}` : "-"}</small>
-                  <em>${round ? `${status.label}${isRoundAcceptingNow(round) ? ` ${formatCountdownCompact(round)}` : ""}` : "ยังไม่ตั้งงวด"}</em>
+                  <span>${
+                    round
+                      ? escapeHtml(round.label)
+                      : nextExpected
+                        ? `งวดถัดไป · ${shortDate(nextExpected.date)}`
+                        : !schedule
+                          ? "ยังไม่ตั้งเวลาอัตโนมัติ"
+                          : "ยังไม่มีงวด"
+                  }</span>
+                  <small>${
+                    round
+                      ? `ปิดรับ ${formatRoundCloseTime(round)} · ออก ${escapeHtml(round.draw_time)}`
+                      : nextExpected
+                        ? `อีก ${nextExpected.daysAhead.toLocaleString("th-TH")} วัน · ออก ${escapeHtml(nextExpected.time)}`
+                        : "-"
+                  }</small>
+                  <small>${
+                    round
+                      ? `ประกาศผล ${escapeHtml(round.result_time || round.draw_time)}`
+                      : !schedule
+                        ? "กดเพื่อตั้งเวลา →"
+                        : "ระบบจะสร้างงวดอัตโนมัติเมื่อใกล้วัน"
+                  }</small>
+                  <em>${
+                    round
+                      ? `${status.label}${isRoundAcceptingNow(round) ? ` ${formatCountdownCompact(round)}` : ""}`
+                      : nextExpected
+                        ? "ยังไม่ถึงรอบรับ"
+                        : "กดเพื่อตั้งค่า"
+                  }</em>
                 </button>
               `;
             })
@@ -898,15 +928,49 @@ function renderLotteryBoard() {
 
   elements.lotteryBoard.querySelectorAll("[data-lottery-id]").forEach((button) => {
     button.addEventListener("click", async () => {
-      const round = getDisplayRoundForLottery(button.dataset.lotteryId);
-      if (!isRoundAcceptingNow(round)) {
-        showToast(round ? `${getLotteryName(round.lottery_id)} ยังไม่เปิดรับหรือปิดรับแล้ว` : "หวยนี้ยังไม่มีงวด", "warning");
+      const lotteryId = button.dataset.lotteryId;
+      const round = getDisplayRoundForLottery(lotteryId);
+      const schedule = getScheduleForLottery(lotteryId);
+      const nextExpected = !round ? getNextExpectedDrawFromSchedule(lotteryId) : null;
+
+      // Case 1: round exists and is open — go to intake
+      if (round && isRoundAcceptingNow(round)) {
+        if (!(await prepareRoundSwitch(round.id))) return;
+        activateView("intake");
+        elements.ticketRound.value = round.id;
+        renderTicketWorkbench();
         return;
       }
-      if (!(await prepareRoundSwitch(round.id))) return;
-      activateView("intake");
-      elements.ticketRound.value = round.id;
-      renderTicketWorkbench();
+      // Case 2: round exists but closed
+      if (round) {
+        showToast(`${getLotteryName(round.lottery_id)} ยังไม่เปิดรับหรือปิดรับแล้ว`, "warning");
+        return;
+      }
+      // Case 3: no round but schedule exists — generate rounds + open intake for nearest
+      if (nextExpected || schedule) {
+        showToast("กำลังสร้างงวดล่วงหน้าให้...", "success");
+        try {
+          await api("/api/schedule-templates/generate", { method: "POST", body: { days: 60 } });
+          await refreshState();
+          const newRound = getDisplayRoundForLottery(lotteryId);
+          if (newRound) {
+            if (!(await prepareRoundSwitch(newRound.id))) return;
+            activateView("intake");
+            elements.ticketRound.value = newRound.id;
+            renderTicketWorkbench();
+            showToast(`เปิดงวด ${escapeHtml ? newRound.label : newRound.label} แล้ว — เริ่มคีย์ได้เลย`, "success");
+            return;
+          }
+          showToast("ระบบไม่พบงวดถัดไปจากตารางเวลา ลองสร้างงวดมือในหน้าตั้งค่า", "warning");
+          activateView("lotteries");
+        } catch {
+          showToast("สร้างงวดอัตโนมัติไม่สำเร็จ ลองอีกครั้ง", "danger");
+        }
+        return;
+      }
+      // Case 4: no round, no schedule — guide admin to set up
+      showToast(`${getLotteryName(lotteryId)} ยังไม่ตั้งเวลาอัตโนมัติ — เปิดหน้าตั้งค่าให้`, "warning");
+      activateView("lotteries");
     });
   });
 }
@@ -3557,6 +3621,37 @@ function formatScheduleFrequency(schedule) {
 
 function findLatestOpenRound(lotteryId) {
   return getAcceptingRounds(lotteryId)[0];
+}
+
+function getScheduleForLottery(lotteryId) {
+  return state.scheduleTemplates.find((s) => s.lottery_id === lotteryId);
+}
+
+function getNextExpectedDrawFromSchedule(lotteryId) {
+  const schedule = getScheduleForLottery(lotteryId);
+  if (!schedule || !schedule.active) return null;
+  const today = new Date();
+  // search forward up to 90 days to find next matching date
+  for (let i = 0; i < 90; i += 1) {
+    const d = new Date(today);
+    d.setDate(today.getDate() + i);
+    const isoDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    const dayOfWeek = d.getDay();
+    const dayOfMonth = d.getDate();
+    let runs = false;
+    if (schedule.frequency === "monthly") {
+      const monthDays = (schedule.month_days || []).map((n) => Number(n));
+      runs = monthDays.includes(dayOfMonth);
+    } else {
+      const weekdays = (schedule.weekdays || []).map((n) => Number(n));
+      runs = weekdays.includes(dayOfWeek);
+    }
+    if (runs) {
+      const drawTime = schedule.draw_time || "00:00";
+      return { date: isoDate, time: drawTime, daysAhead: i };
+    }
+  }
+  return null;
 }
 
 function getDisplayRoundForLottery(lotteryId) {

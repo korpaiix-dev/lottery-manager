@@ -254,9 +254,13 @@ db.prepare(`
   WHERE head_house_id IS NULL OR head_house_id = ''
 `).run();
 backfillLegacyTickets();
-ensureUpcomingRounds();
-setInterval(() => ensureUpcomingRounds(), 10 * 60 * 1000).unref();
-setInterval(() => importDueOfficialResults().catch((error) => console.error("result import failed", error)), 10 * 60 * 1000).unref();
+// Heavy startup work (round generation, GLO import) is deferred to AFTER server.listen
+// so the HTTP port binds immediately and health checks pass quickly.
+const __deferredStartupTasks = () => {
+  ensureUpcomingRounds();
+  setInterval(() => ensureUpcomingRounds(), 10 * 60 * 1000).unref();
+  setInterval(() => importDueOfficialResults().catch((error) => console.error("result import failed", error)), 10 * 60 * 1000).unref();
+};
 
 const app = express();
 app.disable("x-powered-by");
@@ -764,7 +768,7 @@ app.post("/api/schedule-templates", requireAuth, requireWriteAccess, (req, res) 
     schedule.updated_at,
   );
 
-  generateRoundsForSchedule(schedule, bangkokTodayIso(), shiftIsoDate(bangkokTodayIso(), 14));
+  generateRoundsForSchedule(schedule, bangkokTodayIso(), shiftIsoDate(bangkokTodayIso(), 45));
   logAudit(req.user.id, "create", "schedule_template", schedule.id, schedule);
   res.status(201).json(presentScheduleTemplate(schedule));
 });
@@ -804,7 +808,7 @@ app.put("/api/schedule-templates/:id", requireAuth, requireWriteAccess, (req, re
 
   const updated = findScheduleTemplate(existing.id);
   syncFutureGeneratedRounds(updated);
-  generateRoundsForSchedule(updated, bangkokTodayIso(), shiftIsoDate(bangkokTodayIso(), 14));
+  generateRoundsForSchedule(updated, bangkokTodayIso(), shiftIsoDate(bangkokTodayIso(), 45));
   logAudit(req.user.id, "update", "schedule_template", updated.id, updated);
   res.json(presentScheduleTemplate(updated));
 });
@@ -1406,6 +1410,8 @@ app.use((req, res, next) => {
 
 const server = app.listen(PORT, () => {
   console.log(`lottery-manager listening on http://127.0.0.1:${PORT}`);
+  // Defer heavy work so the port is ready first
+  setImmediate(__deferredStartupTasks);
 });
 
 // Graceful shutdown — flush DB & close server cleanly so systemd restart never corrupts state.
@@ -2893,7 +2899,7 @@ function parseIntegerList(value) {
   return normalizeIntegerList(value, 0, 31);
 }
 
-function ensureUpcomingRounds(days = 14) {
+function ensureUpcomingRounds(days = 45) {
   const fromDate = bangkokTodayIso();
   const toDate = shiftIsoDate(fromDate, days);
   const schedules = db.prepare("SELECT * FROM schedule_templates WHERE active = 1").all();
