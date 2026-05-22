@@ -229,6 +229,18 @@ const elements = {
   viewerCredentialCard: document.querySelector("#viewerCredentialCard"),
   viewerCredentialSummary: document.querySelector("#viewerCredentialSummary"),
   copyViewerCredentialsBtn: document.querySelector("#copyViewerCredentialsBtn"),
+  // Modal + UX additions (polish-to-10)
+  confirmDialog: document.querySelector("#confirmDialog"),
+  confirmDialogTitle: document.querySelector("#confirmDialogTitle"),
+  confirmDialogBody: document.querySelector("#confirmDialogBody"),
+  confirmDialogReason: document.querySelector("#confirmDialogReason"),
+  confirmDialogYes: document.querySelector("#confirmDialogYes"),
+  confirmDialogNo: document.querySelector("#confirmDialogNo"),
+  copyReceiptBtn: document.querySelector("#copyReceiptBtn"),
+  printReceiptBtn: document.querySelector("#printReceiptBtn"),
+  themeToggleBtn: document.querySelector("#themeToggleBtn"),
+  navToggleBtn: document.querySelector("#navToggleBtn"),
+  primaryNav: document.querySelector("#primaryNav"),
   lotteryForm: document.querySelector("#lotteryForm"),
   lotteryName: document.querySelector("#lotteryNameInput"),
   lotteryCategory: document.querySelector("#lotteryCategoryInput"),
@@ -332,14 +344,14 @@ async function initialize() {
   if (window.location.hash === "#intake") activateView("intake");
 }
 
-function bindEvents() {
+async function bindEvents() {
   elements.setupForm.addEventListener("submit", handleSetup);
   elements.loginForm.addEventListener("submit", handleLogin);
   elements.logoutBtn.addEventListener("click", handleLogout);
   elements.sidebarLogoutBtn.addEventListener("click", handleLogout);
   elements.sidebarProfileBtn.addEventListener("click", () => activateView("users"));
-  elements.backToMarketsBtn.addEventListener("click", () => {
-    if (!confirmDraftDiscard()) return;
+  elements.backToMarketsBtn.addEventListener("click", async () => {
+    if (!(await confirmDraftDiscard())) return;
     activateView("markets");
   });
   elements.exportBtn.addEventListener("click", exportData);
@@ -348,9 +360,9 @@ function bindEvents() {
     button.addEventListener("click", () => activateView(button.dataset.viewTarget));
   });
 
-  elements.ticketRound.addEventListener("change", () => {
+  elements.ticketRound.addEventListener("change", async () => {
     const nextRoundId = elements.ticketRound.value;
-    if (!prepareRoundSwitch(nextRoundId)) {
+    if (!(await prepareRoundSwitch(nextRoundId))) {
       elements.ticketRound.value = state.ticketDraftEntries[0]?.roundId || "";
       return;
     }
@@ -863,13 +875,13 @@ function renderLotteryBoard() {
   }).join("");
 
   elements.lotteryBoard.querySelectorAll("[data-lottery-id]").forEach((button) => {
-    button.addEventListener("click", () => {
+    button.addEventListener("click", async () => {
       const round = getDisplayRoundForLottery(button.dataset.lotteryId);
       if (!isRoundAcceptingNow(round)) {
         showToast(round ? `${getLotteryName(round.lottery_id)} ยังไม่เปิดรับหรือปิดรับแล้ว` : "หวยนี้ยังไม่มีงวด", "warning");
         return;
       }
-      if (!prepareRoundSwitch(round.id)) return;
+      if (!(await prepareRoundSwitch(round.id))) return;
       activateView("intake");
       elements.ticketRound.value = round.id;
       renderTicketWorkbench();
@@ -1297,9 +1309,9 @@ function renderTicketDraft() {
   });
 }
 
-function clearTicketDraft() {
+async function clearTicketDraft() {
   if (!state.ticketDraftEntries.length) return;
-  if (!confirm("ล้างรายการในโพยทั้งหมดใช่หรือไม่")) return;
+  if (!(await confirmDialog({ title: "ล้างรายการในบิล", body: "เลขในบิลทั้งหมดจะถูกลบ คุณยืนยันใช่หรือไม่?", danger: true }))) return;
   state.ticketDraftEntries = [];
   renderTicketWorkbench();
 }
@@ -1956,7 +1968,7 @@ function beginEntryEdit(id) {
 }
 
 async function deleteEntry(id) {
-  if (!confirm("ลบรายการนี้ใช่หรือไม่")) return;
+  if (!(await confirmDialog({ title: "ลบรายการ", body: "รายการนี้จะถูกลบถาวร ต้องการดำเนินการต่อหรือไม่?", danger: true }))) return;
   try {
     await api(`/api/entries/${id}`, { method: "DELETE" });
     await refreshState();
@@ -2135,13 +2147,13 @@ function viewHeadHouseReport(id) {
 }
 
 async function resetHeadHouseViewerPassword(id) {
-  if (!confirm("รีเซ็ตรหัสผ่านบัญชีดูยอดของหัวบ้านนี้ใช่หรือไม่")) return;
+  if (!(await confirmDialog({ title: "รีเซ็ตรหัสผ่าน", body: "ระบบจะสุ่มรหัสผ่านใหม่ให้บัญชีดูยอดของหัวบ้านนี้ และล็อกเอาท์ทุก session ปัจจุบัน", danger: true }))) return;
   const credentials = await api(`/api/head-houses/${id}/viewer-account/reset-password`, { method: "POST" });
   showViewerCredentials(credentials);
 }
 
 async function deleteHeadHouse(id) {
-  if (!confirm("ลบหัวบ้านนี้ใช่หรือไม่")) return;
+  if (!(await confirmDialog({ title: "ลบหัวบ้าน", body: "หัวบ้านนี้และบัญชี viewer ที่เกี่ยวข้องจะถูกลบถาวร ดำเนินการต่อหรือไม่?", danger: true }))) return;
   try {
     await api(`/api/head-houses/${id}`, { method: "DELETE" });
     await refreshState();
@@ -2211,7 +2223,7 @@ function resetCustomerForm() {
 }
 
 async function deleteCustomer(id) {
-  if (!confirm("ลบลูกค้านี้ใช่หรือไม่")) return;
+  if (!(await confirmDialog({ title: "ลบลูกค้า", body: "ลูกค้านี้จะถูกลบถาวร (จะทำได้ก็ต่อเมื่อยังไม่มีรายการแทง)", danger: true }))) return;
   try {
     await api(`/api/customers/${id}`, { method: "DELETE" });
     await refreshState();
@@ -2541,7 +2553,7 @@ function beginLimitEdit(id) {
 }
 
 async function deleteLimit(id) {
-  if (!confirm("ลบอั้นเลขนี้ใช่หรือไม่")) return;
+  if (!(await confirmDialog({ title: "ลบเลขอั้น", body: "เพดานของเลขนี้จะถูกลบ และระบบจะเริ่มรับใหม่โดยไม่มีลิมิต", danger: true }))) return;
   await api(`/api/limits/${id}`, { method: "DELETE" });
   await refreshState();
 }
@@ -2586,7 +2598,7 @@ function renderPayouts() {
   });
 }
 
-function renderResultEditor() {
+async function renderResultEditor() {
   const roundId = elements.resultRound.value || state.rounds[0]?.id;
   if (!roundId) {
     elements.resultStatusBar.innerHTML = "";
@@ -2659,7 +2671,7 @@ function renderResultEditor() {
     }
   });
   document.querySelector("#reopenResultBtn")?.addEventListener("click", async () => {
-    if (!confirm("เปิดผลรางวัลกลับมาแก้ไขอีกครั้งใช่หรือไม่")) return;
+    if (!(await confirmDialog({ title: "เปิดผลกลับมาแก้", body: "ผลรางวัลที่ยืนยันแล้วจะเปลี่ยนสถานะกลับเป็น draft เพื่อแก้ไข", danger: false }))) return;
     try {
       await api(`/api/results/${encodeURIComponent(roundId)}/reopen`, { method: "POST" });
       await refreshState();
@@ -2930,11 +2942,12 @@ async function reviewTicket(ticketId, action) {
   if (!ticketId) return;
   const body = {};
   if (action === "reject") {
-    const reason = prompt("ระบุเหตุผลที่ตีกลับโพย");
+    const _ans = await confirmDialog({ title: "ตี้กลับโพย", body: "ระบุเหตุผลเพื่อบันทึกไว้ใน audit log:", danger: true, withReason: true });
+      const reason = _ans?.confirmed ? _ans.reason : null;
     if (reason === null) return;
     body.reason = reason.trim();
   }
-  if (action === "cancel" && !confirm("ยกเลิกโพยนี้ใช่หรือไม่")) return;
+  if (action === "cancel" && !(await confirmDialog({ title: "ยกเลิกโพย", body: "สถานะของโพยนี้จะกลายเป็น cancelled และไม่นับยอด", danger: true }))) return;
   try {
     await api(`/api/tickets/${encodeURIComponent(ticketId)}/${action}`, { method: "POST", body });
     await refreshState();
@@ -3214,7 +3227,7 @@ function resetUserForm() {
 }
 
 async function deleteUser(id) {
-  if (!confirm("ลบผู้ใช้นี้ใช่หรือไม่")) return;
+  if (!(await confirmDialog({ title: "ลบผู้ใช้", body: "บัญชีนี้จะถูกลบถาวรและ session ทั้งหมดจะถูกยกเลิก", danger: true }))) return;
   try {
     await api(`/api/users/${id}`, { method: "DELETE" });
     await refreshState();
@@ -3754,15 +3767,15 @@ function renderTimeSensitiveUi() {
   announceResultDueRounds();
 }
 
-function prepareRoundSwitch(nextRoundId) {
+async function prepareRoundSwitch(nextRoundId) {
   const currentRoundId = state.ticketDraftEntries[0]?.roundId;
   if (!currentRoundId || currentRoundId === nextRoundId) return true;
   return confirmDraftDiscard();
 }
 
-function confirmDraftDiscard() {
+async function confirmDraftDiscard() {
   if (!state.ticketDraftEntries.length) return true;
-  const confirmed = confirm("ยังมีรายการในโพยที่ยังไม่บันทึก ต้องการทิ้งและออกจากหน้านี้ใช่หรือไม่");
+  const confirmed = await confirmDialog({ title: "ยังมีรายการในบิล", body: "มีเลขในบิลที่ยังไม่บันทึก หากออกตอนนี้ข้อมูลจะหายทั้งหมด", danger: true });
   if (confirmed) state.ticketDraftEntries = [];
   return confirmed;
 }
@@ -3883,3 +3896,197 @@ function escapeHtml(value) {
 function escapeRegExp(value) {
   return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
+
+/* ============================================================================
+   Polish-to-10 — Modal, loading, copy/print, inline errors, dark mode, shortcuts
+   ============================================================================ */
+
+/**
+ * Custom replacement for native confirm()/prompt().
+ * @returns boolean (or {confirmed, reason} when withReason=true)
+ */
+async function confirmDialog({ title = "ยืนยัน", body = "", danger = false, withReason = false } = {}) {
+  const dlg = elements.confirmDialog;
+  if (!dlg || typeof dlg.showModal !== "function") {
+    // Fallback to native (legacy browsers)
+    if (withReason) {
+      const r = prompt(body || title);
+      return r != null ? { confirmed: true, reason: r } : { confirmed: false };
+    }
+    return confirm(body || title);
+  }
+  elements.confirmDialogTitle.textContent = title;
+  elements.confirmDialogBody.textContent = body;
+  if (elements.confirmDialogReason) {
+    elements.confirmDialogReason.classList.toggle("hidden", !withReason);
+    elements.confirmDialogReason.value = "";
+  }
+  elements.confirmDialogYes.classList.toggle("button-danger", danger);
+  elements.confirmDialogYes.classList.toggle("button-primary", !danger);
+  elements.confirmDialogYes.textContent = danger ? "ยืนยัน" : "ตกลง";
+  return new Promise((resolve) => {
+    const onClose = () => {
+      const confirmed = dlg.returnValue === "confirm";
+      const reason = elements.confirmDialogReason?.value || "";
+      if (withReason) resolve({ confirmed, reason });
+      else resolve(confirmed);
+    };
+    dlg.addEventListener("close", onClose, { once: true });
+    dlg.showModal();
+    if (withReason) {
+      setTimeout(() => elements.confirmDialogReason?.focus(), 60);
+    } else {
+      setTimeout(() => elements.confirmDialogYes?.focus(), 60);
+    }
+  });
+}
+
+/**
+ * Wrap an async action to show a loading state on the triggering button.
+ */
+async function withLoading(button, fn) {
+  if (!button) return await fn();
+  const wasDisabled = button.disabled;
+  const original = button.textContent;
+  button.disabled = true;
+  button.dataset.loading = "true";
+  try {
+    return await fn();
+  } finally {
+    button.disabled = wasDisabled;
+    delete button.dataset.loading;
+    button.textContent = original;
+  }
+}
+
+/** Inline form error helper (under each .field) */
+function setFieldError(input, message) {
+  const field = input?.closest?.(".field");
+  if (!field) return;
+  let errEl = field.querySelector(".field-error");
+  if (!errEl) {
+    errEl = document.createElement("span");
+    errEl.className = "field-error";
+    errEl.setAttribute("role", "alert");
+    field.appendChild(errEl);
+  }
+  errEl.textContent = message || "";
+  field.classList.toggle("invalid", Boolean(message));
+  input.setAttribute("aria-invalid", message ? "true" : "false");
+}
+
+function clearFieldErrors(form) {
+  if (!form) return;
+  form.querySelectorAll(".field.invalid").forEach((f) => f.classList.remove("invalid"));
+  form.querySelectorAll(".field-error").forEach((e) => (e.textContent = ""));
+  form.querySelectorAll("[aria-invalid='true']").forEach((i) => i.setAttribute("aria-invalid", "false"));
+}
+
+/** Receipt actions */
+async function copyReceipt() {
+  if (!elements.ticketReceiptPreview) return;
+  const text = elements.ticketReceiptPreview.innerText.trim();
+  if (!text) {
+    showToast("ยังไม่มีบิลให้คัดลอก เพิ่มรายการก่อน", "warning");
+    return;
+  }
+  try {
+    await navigator.clipboard.writeText(text);
+    showToast("คัดลอกบิลแล้ว ส่งให้ลูกค้าได้เลย ✓", "success");
+  } catch (e) {
+    showToast("คัดลอกไม่สำเร็จ — กดเลือกข้อความเองได้", "warning");
+  }
+}
+function printReceipt() {
+  window.print();
+}
+
+/** Dark mode toggle with localStorage persistence */
+function initThemeToggle() {
+  let theme;
+  try {
+    theme = localStorage.getItem("lottery_theme");
+  } catch { theme = null; }
+  if (!theme) {
+    theme = matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  }
+  document.documentElement.dataset.theme = theme;
+  if (elements.themeToggleBtn) {
+    elements.themeToggleBtn.textContent = theme === "dark" ? "☀️" : "🌙";
+    elements.themeToggleBtn.setAttribute("aria-label", theme === "dark" ? "เปลี่ยนเป็นโหมดสว่าง" : "เปลี่ยนเป็นโหมดมืด");
+    elements.themeToggleBtn.addEventListener("click", () => {
+      const next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+      document.documentElement.dataset.theme = next;
+      try { localStorage.setItem("lottery_theme", next); } catch {}
+      elements.themeToggleBtn.textContent = next === "dark" ? "☀️" : "🌙";
+      elements.themeToggleBtn.setAttribute("aria-label", next === "dark" ? "เปลี่ยนเป็นโหมดสว่าง" : "เปลี่ยนเป็นโหมดมืด");
+    });
+  }
+}
+
+/** Mobile hamburger toggle */
+function initNavToggle() {
+  if (!elements.navToggleBtn || !elements.primaryNav) return;
+  elements.navToggleBtn.addEventListener("click", () => {
+    const open = elements.primaryNav.classList.toggle("is-open");
+    elements.navToggleBtn.setAttribute("aria-expanded", open ? "true" : "false");
+  });
+  // Close drawer when a nav button is clicked
+  elements.primaryNav.addEventListener("click", (e) => {
+    if (e.target.classList.contains("nav-button") && elements.primaryNav.classList.contains("is-open")) {
+      elements.primaryNav.classList.remove("is-open");
+      elements.navToggleBtn.setAttribute("aria-expanded", "false");
+    }
+  });
+}
+
+/** Keyboard shortcuts — power-user productivity */
+function initKeyboardShortcuts() {
+  document.addEventListener("keydown", (e) => {
+    const inField = e.target.matches?.("input, textarea, select, [contenteditable]");
+    // Esc: close any open dialog or blur input
+    if (e.key === "Escape") {
+      const open = document.querySelector("dialog[open]");
+      if (open) { open.close(); return; }
+      if (inField) { e.target.blur(); return; }
+    }
+    if (inField) return;
+    // Ctrl/Cmd+S — save current intake bill
+    if ((e.ctrlKey || e.metaKey) && (e.key === "s" || e.key === "S")) {
+      e.preventDefault();
+      const saveBtn = elements.saveTicketBtn;
+      if (saveBtn && !saveBtn.disabled && saveBtn.offsetParent) saveBtn.click();
+      return;
+    }
+    // "/" focus search
+    if (e.key === "/" && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      e.preventDefault();
+      elements.searchInput?.focus();
+      return;
+    }
+    // Alt+1..9 — switch views
+    if (e.altKey && /^[1-9]$/.test(e.key)) {
+      e.preventDefault();
+      const order = ["markets", "dashboard", "review", "entries", "results", "resultLinks", "reports", "manage"];
+      const target = order[Number(e.key) - 1];
+      if (target) activateView(target);
+    }
+  });
+}
+
+/** Init polish features on app load */
+function initPolish() {
+  initThemeToggle();
+  initNavToggle();
+  initKeyboardShortcuts();
+  if (elements.copyReceiptBtn) elements.copyReceiptBtn.addEventListener("click", copyReceipt);
+  if (elements.printReceiptBtn) elements.printReceiptBtn.addEventListener("click", printReceipt);
+}
+
+// Hook into the existing initialize() — call initPolish on DOMContentLoaded as a safety net
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", initPolish);
+} else {
+  setTimeout(initPolish, 0);
+}
+

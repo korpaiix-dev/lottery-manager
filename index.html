@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>บ้านหวยเรือนเลขเศรษฐี — ระบบจัดการหวย</title>
-    <link rel="stylesheet" href="styles.css?v=20260522-rename" />
+    <link rel="stylesheet" href="styles.css?v=20260522-polish10" />
   </head>
   <body>
     <section id="authShell" class="auth-shell">
@@ -340,8 +340,12 @@
 
               <aside class="intake-side-stack">
                 <section class="panel intake-side-panel receipt-preview-wrap">
-                  <div class="panel-heading compact-heading">
+                  <div class="panel-heading compact-heading receipt-actions-heading">
                     <h3>บิลพร้อมส่งลูกค้า</h3>
+                    <div class="receipt-actions">
+                      <button id="copyReceiptBtn" type="button" class="icon-button receipt-action-btn" aria-label="คัดลอกบิล" title="คัดลอกข้อความ">📋 คัดลอก</button>
+                      <button id="printReceiptBtn" type="button" class="icon-button receipt-action-btn" aria-label="พิมพ์บิล" title="พิมพ์">🖨️ พิมพ์</button>
+                    </div>
                   </div>
                   <article id="ticketReceiptPreview" class="receipt-card"></article>
                 </section>
@@ -1173,8 +1177,27 @@
       </div>
     </template>
 
-    <div id="toastStack" class="toast-stack" aria-live="polite"></div>
+    <div id="toastStack" class="toast-stack" role="status" aria-live="polite" aria-atomic="true"></div>
 
-    <script src="app.js?v=20260522-rename"></script>
+    <!-- Custom confirm/prompt modal -->
+    <dialog id="confirmDialog" class="modal-dialog" aria-labelledby="confirmDialogTitle">
+      <form method="dialog" class="modal-form">
+        <h3 id="confirmDialogTitle" class="modal-title">ยืนยัน</h3>
+        <p id="confirmDialogBody" class="modal-body"></p>
+        <textarea id="confirmDialogReason" class="modal-reason hidden" placeholder="ระบุเหตุผล (ถ้ามี)" maxlength="240" rows="3"></textarea>
+        <div class="modal-actions">
+          <button id="confirmDialogNo" value="cancel" type="submit" class="button button-secondary">ยกเลิก</button>
+          <button id="confirmDialogYes" value="confirm" type="submit" class="button button-primary">ยืนยัน</button>
+        </div>
+      </form>
+    </dialog>
+
+    <!-- Floating dark/light mode toggle -->
+    <button id="themeToggleBtn" class="theme-toggle" type="button" aria-label="สลับธีมสว่าง/มืด" title="สลับธีม (Light / Dark)">🌙</button>
+
+    <!-- Mobile nav hamburger (only visible on small screens) -->
+    <button id="navToggleBtn" class="nav-toggle" type="button" aria-label="เปิดเมนู" aria-expanded="false" aria-controls="primaryNav" title="เปิดเมนู">☰</button>
+
+    <script src="app.js?v=20260522-polish10"></script>
   </body>
 </html>

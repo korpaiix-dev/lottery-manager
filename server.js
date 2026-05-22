@@ -610,7 +610,7 @@ app.post("/api/customers", requireAuth, requireWriteAccess, (req, res) => {
   const name = cleanText(req.body.name, 80);
   const headHouseId = cleanText(req.body.headHouseId, 80);
 
-  if (!findHeadHouse(headHouseId)) {
+  if (!name || !findHeadHouse(headHouseId)) {
     return res.status(400).json({ error: "invalid_customer_payload" });
   }
 
@@ -651,7 +651,7 @@ app.put("/api/customers/:id", requireAuth, requireWriteAccess, (req, res) => {
 
   const name = cleanText(req.body.name, 80);
   const headHouseId = cleanText(req.body.headHouseId, 80);
-  if (!findHeadHouse(headHouseId)) {
+  if (!name || !findHeadHouse(headHouseId)) {
     return res.status(400).json({ error: "invalid_customer_payload" });
   }
 
