@@ -5466,110 +5466,6 @@ async function fetchUrl(url, headers = {}) {
   }
 }
 
-/* Parser 1: lao_standard
-   API: api.{site}.com/result
-   Response: { status:"success", data: { lotto_date, results: { digit3, digit2_top, digit2_bottom, digit5, ... } } }
-*/
-function parseLaoStandard(resp) {
-  const d = resp?.data;
-  if (!d || !d.results) return { ok: false, error: "no_data" };
-  const r = d.results;
-  if (!r.digit3 || r.digit3 === "xxx") return { ok: false, error: "not_drawn_yet" };
-  return {
-    ok: true,
-    result: {
-      drawDate: d.lotto_date,
-      three_top: String(r.digit3).padStart(3, "0"),
-      two_top: r.digit2_top ? String(r.digit2_top).padStart(2, "0") : null,
-      two_bottom: r.digit2_bottom ? String(r.digit2_bottom).padStart(2, "0") : null,
-      three_tod: String(r.digit3).padStart(3, "0"), /* sortDigits matches */
-      run_top: [...new Set(String(r.digit3).padStart(3, "0").split(""))],
-      raw: d,
-    },
-  };
-}
-
-/* Parser 2: dowjones_powerball
-   API: api.dowjonespowerball.com/result
-   Response: { data: { lotto_date, results: { prize_1st, prize_2nd, prize_3rd_1, ..., consolation_1, ... } } }
-*/
-function parseDowJonesPowerball(resp) {
-  const d = resp?.data;
-  if (!d || !d.results) return { ok: false, error: "no_data" };
-  const r = d.results;
-  if (!r.prize_1st || r.prize_1st === "xxxxx") return { ok: false, error: "not_drawn_yet" };
-  /* 3 ตัวบน = 3 หลักท้ายของ prize_1st */
-  const p1 = String(r.prize_1st);
-  const three_top = p1.slice(-3);
-  const two_top = p1.slice(-2);
-  /* 2 ตัวล่าง = 2 หลักท้ายของ prize_2nd หรือ consolation_1 */
-  const p2 = String(r.prize_2nd || r.consolation_1 || "");
-  const two_bottom = p2 ? p2.slice(-2) : null;
-  return {
-    ok: true,
-    result: {
-      drawDate: d.lotto_date,
-      first: p1,
-      three_top,
-      two_top,
-      two_bottom,
-      three_tod: three_top,
-      run_top: [...new Set(three_top.split(""))],
-      raw: d,
-    },
-  };
-}
-
-/* Parser 3: lottosuperrich (gcp.lottosuperrich.com/result)
-   Response: { data: { gb: { results: {...} }, de: {...}, ru: {...} } }
-   จะใช้ filterName เลือก gb/de/ru
-*/
-function parseLottoSuperrich(resp, filterName) {
-  const dataSet = resp?.data?.[filterName];
-  if (!dataSet || !dataSet.results) return { ok: false, error: "no_data" };
-  const r = dataSet.results;
-  if (!r.prize_1st || r.prize_1st === null) return { ok: false, error: "not_drawn_yet" };
-  const p1 = String(r.prize_1st);
-  const three_top = p1.slice(-3);
-  const two_top = p1.slice(-2);
-  const p2 = String(r.prize_2nd || "");
-  const two_bottom = p2 ? p2.slice(-2) : null;
-  return {
-    ok: true,
-    result: {
-      drawDate: dataSet.lotto_date,
-      first: p1,
-      three_top,
-      two_top,
-      two_bottom,
-      three_tod: three_top,
-      run_top: [...new Set(three_top.split(""))],
-      raw: dataSet,
-    },
-  };
-}
-
-/* Parser 4: stockvip_index (api.stocks-vip.com/api/{country})
-   ใช้ ราคา Close + Change → สูตรหวยหุ้น
-   filterName = "Morning-Close" หรือ "Close"
-*/
-function parseStockVipIndex(resp, filterName) {
-  const d = resp?.data;
-  if (!d) return { ok: false, error: "no_data" };
-  const prices = d.prices;
-  if (!Array.isArray(prices)) {
-    /* บางตลาด (kr, hk) ส่ง dict ตัวเดียว (Close) — ใช้ได้ทั้งหวยเช้า+บ่าย */
-    if (prices && prices.price != null) {
-      return _calcStockNumber(d.date, prices.price, prices.diff, prices);
-    }
-    return { ok: false, error: "no_prices" };
-  }
-  /* หา item ที่ note = filterName (Morning-Close/Close) */
-  const item = prices.find(p => p.note === (filterName || "Close"));
-  if (!item) return { ok: false, error: "no_close_yet" };
-  return _calcStockNumber(d.date, item.price, item.diff, item);
-}
-
 function _calcStockNumber(date, price, change, raw) {
   if (price == null) return { ok: false, error: "no_price" };
   const priceStr = String(price);
@@ -5623,79 +5519,6 @@ function parseHanoiPrize(resp) {
       three_tod: three_top,
       run_top: [...new Set(three_top.split(""))],
       raw: d,
-    },
-  };
-}
-
-/* Parser 6: dowjones_digit5 — สำหรับ dowjones Mid Night/Extra/TV
-   Response: { data: { results: { digit5 } } }
-*/
-function parseDowJonesDigit5(resp) {
-  const d = resp?.data;
-  if (!d || !d.results) return { ok: false, error: "no_data" };
-  const r = d.results;
-  const digit5 = r.digit5;
-  if (!digit5 || digit5 === "xxxxx") return { ok: false, error: "not_drawn_yet" };
-  const three_top = String(digit5).slice(-3);
-  const two_top = String(digit5).slice(-2);
-  /* 2 ตัวล่าง ใช้ 2 หลักแรกของ digit5 (top 2) เป็นตัวล่าง */
-  const two_bottom = String(digit5).slice(0, 2);
-  return {
-    ok: true,
-    result: {
-      drawDate: d.lotto_date,
-      first: String(digit5),
-      three_top, two_top, two_bottom,
-      three_tod: three_top,
-      run_top: [...new Set(three_top.split(""))],
-      raw: d,
-    },
-  };
-}
-
-/* Parser 7: direct_award — สำหรับ api ที่ส่งเลขสำเร็จรูปใน data.award
-   API: api.lsxvip.com/price
-   Response: { data: { award: { three: "615", two: "23" } } }
-*/
-function parseDirectAward(resp) {
-  const d = resp?.data;
-  if (!d || !d.award) return { ok: false, error: "no_data" };
-  const a = d.award;
-  if (!a.three) return { ok: false, error: "not_drawn_yet" };
-  const three_top = String(a.three).padStart(3, "0");
-  const two_bottom = a.two ? String(a.two).padStart(2, "0") : null;
-  return {
-    ok: true,
-    result: {
-      drawDate: d.time ? String(d.time).slice(0, 10) : null,
-      three_top, two_top: three_top.slice(-2), two_bottom,
-      three_tod: three_top,
-      run_top: [...new Set(three_top.split(""))],
-      raw: d,
-    },
-  };
-}
-
-/* Parser 8: vnindex_award — มี 3 รอบ (sec1/sec2/sec3)
-   API: api.vnindexvip.com/prices
-   Response: { data: { awards: { sec1: {three:"748",two:"25"}, sec2:..., sec3:... } } }
-   filterName: sec1/sec2/sec3 (default sec3)
-*/
-function parseVnindexAward(resp, filterName) {
-  const d = resp?.data;
-  if (!d || !d.awards) return { ok: false, error: "no_data" };
-  const sec = d.awards[filterName || "sec3"];
-  if (!sec || !sec.three) return { ok: false, error: "not_drawn_yet" };
-  const three_top = String(sec.three).padStart(3, "0");
-  const two_bottom = sec.two ? String(sec.two).padStart(2, "0") : null;
-  return {
-    ok: true,
-    result: {
-      drawDate: d.date,
-      three_top, two_top: three_top.slice(-2), two_bottom,
-      three_tod: three_top,
-      run_top: [...new Set(three_top.split(""))],
-      raw: sec,
     },
   };
 }
@@ -5809,6 +5632,7 @@ function parsePuppeteerResult(resp) {
   };
 }
 
+/* PHASE-B-DEAD-CODE-REMOVED */
 /* Main entry: pullFromScraper(lotteryId) — ทำงานเหมือน pullFromApilotto */
 async function pullFromScraper(lotteryId) {
   const src = db.prepare(`SELECT api_endpoint, url, name FROM result_sources WHERE lottery_id = ? AND provider='Scraper' AND active=1 ORDER BY priority LIMIT 1`).get(lotteryId);
