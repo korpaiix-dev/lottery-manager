@@ -23,7 +23,7 @@ body { margin: 0; font-family: 'Prompt', sans-serif; background: var(--bg); colo
 .topbar .brand-title { font-size: 16px; font-weight: 700; }
 
 .tabs { display: flex; background: var(--surface); border-bottom: 1px solid var(--border); position: sticky; top: 66px; z-index: 9; }
-.tab { flex: 1; padding: 14px 8px; text-align: center; font-weight: 600; font-size: 13px; color: var(--text-soft); cursor: pointer; border: none; background: transparent; border-bottom: 3px solid transparent; font-family: inherit; }
+.tab { flex: 1; padding: 16px 8px; text-align: center; font-weight: 600; font-size: 15px; color: var(--text-soft); cursor: pointer; border: none; background: transparent; border-bottom: 3px solid transparent; font-family: inherit; }
 .tab.active { color: var(--green); border-bottom-color: var(--gold); }
 
 .content { padding: 14px; }
@@ -51,18 +51,18 @@ body { margin: 0; font-family: 'Prompt', sans-serif; background: var(--bg); colo
 .order-card .code-chip:active { background: #e5e7eb; }
 .order-card .lottery-row { font-size: 14px; color: var(--text); margin: 4px 0; }
 .order-card .lottery-row strong { color: var(--green-dark); }
-.order-card .eta { font-size: 12px; color: var(--text-soft); margin-top: 4px; }
+.order-card .eta { font-size: 14px; color: var(--text-soft); margin-top: 4px; }
 .order-card .total-row { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--border); }
 .order-card .total-amount { font-weight: 700; color: var(--green-dark); font-variant-numeric: tabular-nums; }
 .order-card .win-amount { color: #065f46; font-weight: 700; }
 
-.order-card .cta-btn { background: var(--green); color: white; border: none; padding: 8px 16px; border-radius: 8px; font-weight: 600; font-size: 13px; min-height: 36px; cursor: pointer; font-family: inherit; }
+.order-card .cta-btn { background: var(--green); color: white; border: none; padding: 10px 18px; border-radius: 8px; font-weight: 600; font-size: 15px; min-height: 44px; cursor: pointer; font-family: inherit; }
 .order-card .cta-btn.secondary { background: white; color: var(--green); border: 1px solid var(--green); }
 
 .toast { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); background: var(--green-dark); color: white; padding: 10px 18px; border-radius: 999px; font-size: 13px; z-index: 100; opacity: 0; transition: opacity .2s; }
 .toast.show { opacity: 1; }
 
-.footer-note { text-align: center; padding: 16px; color: var(--text-soft); font-size: 12px; }
+.footer-note { text-align: center; padding: 16px 16px 90px; color: var(--text-soft); font-size: 14px; }
 </style>
 </head>
 <body>
@@ -90,17 +90,17 @@ body { margin: 0; font-family: 'Prompt', sans-serif; background: var(--bg); colo
 </div>
 <div class="toast" id="toast"></div>
 <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
-<script src="/my-orders.js?v=20260620-uxfix-v1"></script>
+<script src="/my-orders.js?v=20260620-uxfix-v2"></script>
 <!-- === UX-FIX-V1-NO-DUPLICATE-NOTIF === sticky admin contact -->
 <style>
-.admin-fab {position:fixed;bottom:20px;right:16px;z-index:50;
+.admin-fab {position:fixed;bottom:calc(20px + env(safe-area-inset-bottom));right:16px;z-index:50;
   background:linear-gradient(135deg,#06c755 0%,#04a346 100%);color:#fff;
   padding:12px 18px;border-radius:999px;font-family:'Prompt',sans-serif;
   font-size:14px;font-weight:700;box-shadow:0 6px 16px rgba(6,199,85,.4);
   border:none;cursor:pointer;display:inline-flex;align-items:center;gap:6px;
   text-decoration:none}
 .admin-fab:active{transform:scale(.96)}
-@media(max-width:480px){.admin-fab{font-size:13px;padding:10px 14px}}
+@media(max-width:480px){.admin-fab{font-size:14px;padding:12px 16px}}
 </style>
 <a class="admin-fab" href="https://line.me/R/oaMessage/@042xplcj/-" target="_blank" rel="noopener">
   💬 ถามแอดมิน
