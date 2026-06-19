@@ -33,6 +33,9 @@ const lineContext = new AsyncLocalStorage();
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+
+/* PHASE-B-WIRED: import scraper module */
+import { getParser, parserNames } from "./providers/scraper/parsers/index.mjs";
 import { DatabaseSync } from "node:sqlite";
 import express from "express";
 import bcrypt from "bcryptjs";
@@ -5827,16 +5830,9 @@ async function pullFromScraper(lotteryId) {
   } catch (e) { return { ok: false, error: e.message }; }
 
   let parsed;
-  if (parserName === "lao_standard") parsed = parseLaoStandard(resp);
-  else if (parserName === "dowjones_powerball") parsed = parseDowJonesPowerball(resp);
-  else if (parserName === "lottosuperrich") parsed = parseLottoSuperrich(resp, filterName);
-  else if (parserName === "stockvip_index") parsed = parseStockVipIndex(resp, filterName);
-  else if (parserName === "hanoi_prize") parsed = parseHanoiPrize(resp);
-  else if (parserName === "dowjones_digit5") parsed = parseDowJonesDigit5(resp);
-  else if (parserName === "direct_award") parsed = parseDirectAward(resp);
-  else if (parserName === "vnindex_award") parsed = parseVnindexAward(resp, filterName);
-  else if (parserName === "laostarsvip_fp") parsed = parseLaostarsVipFp(resp);
-  else if (parserName === "puppeteer") parsed = parsePuppeteerResult(resp);
+  /* PHASE-B-WIRED: use parser registry */
+  const parserFn = getParser(parserName);
+  if (parserFn) parsed = parserFn(resp, filterName);
   else return { ok: false, error: "unknown_parser:" + parserName };
 
   if (!parsed.ok) return { ok: false, error: parsed.error };
