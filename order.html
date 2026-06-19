@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f5132">
+<title>บ้านหวยเรือนเลขเศรษฐี — สั่งซื้อหวย</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Prompt:wght@400;500;600;700&family=Inter:wght@500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/order.css?v=20260613-flags-v2">
+</head>
+<body>
+<div class="page">
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark">฿</span>
+      <div>
+        <div class="brand-eyebrow">บ้านหวยเรือนเลขเศรษฐี</div>
+        <div class="brand-title">สั่งซื้อหวยออนไลน์</div>
+      </div>
+    </div>
+    <button type="button" class="link-btn" id="restartBtn" hidden>เริ่มใหม่</button>
+  </header>
+
+  <main class="content">
+    <!-- Step indicator -->
+    <ol class="steps" id="stepIndicator">
+      <li data-step="1" class="active">ข้อมูลผู้สั่ง</li>
+      <li data-step="2">เลือกหวย</li>
+      <li data-step="3">ใส่เลข+ยอด</li>
+      <li data-step="4">ยืนยัน</li>
+    </ol>
+
+    <!-- ===== STEP 1: Customer info ===== -->
+    <section class="card step" data-step="1" aria-labelledby="step1Title">
+      <!-- TRUST-V1: trust signals สำหรับลูกค้าใหม่ -->
+      <div class="trust-banner" style="background:linear-gradient(135deg,#d1fae5 0%,#fef3c7 100%);border-radius:12px;padding:12px 14px;margin-bottom:14px;border-left:4px solid #0f5132">
+        <div style="font-weight:700;color:#0f5132;font-size:13px;margin-bottom:4px">✨ ทำไมต้องเรา</div>
+        <div style="font-size:12px;color:#374151;line-height:1.6">
+          <div>💰 จ่ายเงินรางวัลรวดเร็วภายในไม่กี่นาที</div>
+          <div>📊 ตรวจผลย้อนหลังครบทุกหวย</div>
+          <div>🔒 ระบบรับโพยอัตโนมัติ ปลอดภัย 24 ชม.</div>
+        </div>
+      </div>
+      <h2 id="step1Title">ขั้นที่ 1 — แนะนำตัวก่อนสั่งซื้อ</h2>
+      <p class="muted">ระบบจะใช้ชื่อ LINE ของคุณบันทึก กรอกแค่เบอร์โทรเพื่อให้แอดมินติดต่อกลับได้</p>
+
+      <!-- ชื่อจาก LINE auto — ไม่ต้องกรอก แต่เก็บ input ซ่อนไว้กัน selector ที่ js อ้างอิงพัง -->
+      <input id="custName" type="hidden" value="" />
+
+      <label class="field">
+        <span>เบอร์โทร <small class="muted">(ไม่บังคับ)</small></span>
+        <input id="custPhone" type="text" inputmode="tel" autocomplete="tel" maxlength="40" placeholder="เช่น 081-234-5678">
+        <small class="field-error" data-for="custPhone"></small>
+        <small class="muted">ใส่ไว้เพื่อให้แอดมินติดต่อกลับได้ง่ายขึ้น</small>
+      </label>
+
+      <button type="button" class="primary-btn" id="step1Next">ถัดไป →</button>
+    </section>
+
+    <!-- ===== STEP 2: Pick lottery + round ===== -->
+    <section class="card step" data-step="2" hidden aria-labelledby="step2Title">
+      <h2 id="step2Title">ขั้นที่ 2 — เลือกหวยที่ต้องการเล่น</h2>
+      <p class="muted">แสดงเฉพาะหวยที่ยังเปิดรับโพยอยู่ในขณะนี้</p>
+
+      <input id="lotterySearch" type="search" class="search-input" placeholder="🔍 ค้นหาหวย…" autocomplete="off">
+
+      <div class="lottery-grid" id="lotteryGrid">
+        <div class="empty">กำลังโหลด…</div>
+      </div>
+
+      <div class="row-buttons">
+        <button type="button" class="link-btn" data-back="1">← ย้อนกลับ</button>
+      </div>
+    </section>
+
+    <!-- ===== STEP 3: Bet entry ===== -->
+    <section class="card step" data-step="3" hidden aria-labelledby="step3Title">
+      <h2 id="step3Title">ขั้นที่ 3 — ใส่เลขและยอดที่จะแทง</h2>
+      <div class="picked-round" id="pickedRound"></div>
+
+      <div class="bet-type-group">
+        <span class="bet-type-label">ประเภทการแทง:</span>
+        <div class="bet-type-buttons" id="betTypeButtons" role="tablist">
+          <!-- populated by JS -->
+        </div>
+      </div>
+
+      <div class="entry-form">
+        <label class="field">
+          <span>เลข <em id="numberHint">(2-3 หลัก)</em></span>
+          <input id="entryNumber" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="3" placeholder="00">
+          <small class="field-error" data-for="entryNumber"></small>
+        </label>
+
+        <label class="field">
+          <span>ยอด (บาท)</span>
+          <input id="entryAmount" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="7" placeholder="10">
+          <small class="field-error" data-for="entryAmount"></small>
+        </label>
+
+        <button type="button" class="secondary-btn" id="addEntryBtn">+ เพิ่มเลขนี้</button>
+      </div>
+
+      <div class="entries-list">
+        <div class="entries-list-header">
+          <span>เลขที่ใส่ไว้ (<span id="entryCount">0</span>)</span>
+          <span class="entries-total">ยอดรวม <strong id="entryTotal">0</strong> บาท</span>
+        </div>
+        <ul id="entryList" class="entry-list">
+          <li class="empty">ยังไม่มีเลข — เพิ่มเลขด้านบนได้เลย</li>
+        </ul>
+      </div>
+
+      <label class="field">
+        <span>หมายเหตุถึงแอดมิน (ไม่บังคับ)</span>
+        <textarea id="orderNote" rows="2" maxlength="200" placeholder="เช่น โพยลูกค้าประจำ, รบกวนรีบรับ"></textarea>
+      </label>
+
+      <div class="row-buttons">
+        <button type="button" class="link-btn" data-back="2">← เปลี่ยนหวย</button>
+        <button type="button" class="primary-btn" id="step3Next" disabled>ตรวจสอบโพย →</button>
+      </div>
+    </section>
+
+    <!-- ===== STEP 4: Review & submit ===== -->
+    <section class="card step" data-step="4" hidden aria-labelledby="step4Title">
+      <h2 id="step4Title">ขั้นที่ 4 — ตรวจสอบและยืนยัน</h2>
+
+      <div class="review-block" id="reviewBlock"></div>
+
+      <div class="warning">
+        <strong>⚠️ โปรดตรวจสอบให้ครบ</strong>
+        <p>เมื่อกด <em>"ยืนยันส่งโพย"</em> แล้ว ระบบจะส่งให้แอดมินตรวจ — แก้ไขได้เฉพาะตอนที่แอดมินยังไม่ approve</p>
+      </div>
+
+      <div class="row-buttons">
+        <button type="button" class="link-btn" data-back="3">← แก้ไขโพย</button>
+        <button type="button" class="primary-btn primary-btn-strong" id="submitBtn">✓ ยืนยันส่งโพย</button>
+      </div>
+    </section>
+
+    <!-- ===== STEP 5: Success ===== -->
+    <section class="card step success-card" data-step="5" hidden aria-labelledby="step5Title">
+      <div class="success-icon">✓</div>
+      <h2 id="step5Title">สั่งซื้อสำเร็จ</h2>
+      <div class="bill-code-wrap">
+        <span class="bill-code-label">เลขบิล</span>
+        <span class="bill-code" id="billCode">—</span>
+      </div>
+
+      <!-- ── ขั้นที่ 1: โอนเงิน ── -->
+      <div class="step-card step-card-1" id="bankPayCard" hidden>
+        <div class="step-card-num">1</div>
+        <div class="step-card-title">โอนเงิน</div>
+        <div class="bank-pay-head">
+          <div class="bank-logo" id="bankPayLogo"></div>
+          <div class="bank-pay-info">
+            <div class="bank-pay-bank" id="bankPayName">—</div>
+            <div class="bank-pay-holder" id="bankPayHolder">—</div>
+          </div>
+        </div>
+        <button type="button" class="bank-pay-acct-tap" id="bankPayAcctTap" title="แตะเพื่อคัดลอกเลขบัญชี">
+          <span class="bank-pay-acct-num" id="bankPayAcct">—</span>
+          <span class="bank-pay-acct-hint">📋 แตะเพื่อคัดลอก</span>
+        </button>
+        <div class="bank-pay-amount-row">
+          <span>ยอดที่ต้องโอน</span>
+          <strong id="bankPayAmount">฿0</strong>
+        </div>
+        <div class="bank-pay-note" id="bankPayNote" hidden></div>
+      </div>
+
+      <!-- ── ขั้นที่ 2: ส่งบิลให้แอดมิน ── -->
+      <div class="step-card step-card-2">
+        <div class="step-card-num">2</div>
+        <div class="step-card-title">ส่งบิลให้แอดมิน</div>
+        <button type="button" class="primary-btn primary-btn-strong primary-btn-big" id="submitBillBtn">
+          📨 ส่งบิลใน LINE
+        </button>
+        <p class="step-card-hint">หลังจากนั้นโอนแล้วส่งภาพสลิปกลับมาในแชท</p>
+      </div>
+
+      <!-- ── ขั้นที่ 3: รอผล ── -->
+      <div class="step-card step-card-3">
+        <div class="step-card-num">3</div>
+        <div class="step-card-title">รอแอดมินอนุมัติ</div>
+        <p class="step-card-hint">ภายใน 10–15 นาที — แอดมินจะแจ้งกลับมาในแชท</p>
+      </div>
+
+      <span id="successCode" hidden>—</span><span id="successTotal" hidden>0</span>
+
+      <div class="row-buttons safe-row">
+        <button type="button" class="link-btn" id="newOrderBtn">+ สั่งใบใหม่</button>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <small>© บ้านหวยเรือนเลขเศรษฐี · ระบบสั่งซื้อหวยออนไลน์</small>
+  </footer>
+</div>
+
+<div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+
+  <script defer charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <script defer src="/order-config.js"></script>
+  <script defer src="/order.js?v=20260613-flags-v2"></script>
+</body>
+</html>

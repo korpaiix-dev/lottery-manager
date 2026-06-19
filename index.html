@@ -4,8 +4,19 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>บ้านหวยเรือนเลขเศรษฐี — ระบบจัดการหวย</title>
-    <link rel="stylesheet" href="styles.css?v=20260522-pastemanual" />
-  </head>
+    <link rel="stylesheet" href="styles.css?v=20260613-redesign-v2" />
+  <style>
+  /* ANTI-FLICKER: ซ่อน admin shell จนกว่า UI v2 จะ apply (boot ใช้ ~400ms) */
+  #appShell.app-frame { opacity: 0; transition: opacity 0.18s ease-out; }
+  body[data-ui-v2="1"] #appShell.app-frame { opacity: 1 !important; }
+  /* fallback: ถ้า JS ไม่ load ภายใน 3 วินาที → show ก่อนไม่ให้ค้าง */
+  body.boot-fallback #appShell.app-frame { opacity: 1 !important; }
+</style>
+<script>
+  /* fallback timer: ถ้า 3 วิยังไม่ได้ apply UI v2 → show */
+  setTimeout(function(){ document.body.classList.add("boot-fallback"); }, 3000);
+</script>
+</head>
   <body>
     <section id="authShell" class="auth-shell">
       <div class="auth-card">
@@ -52,7 +63,7 @@
           <strong id="sidebarUsername">-</strong>
           <span>สิทธิ์</span>
           <strong id="sidebarRole">-</strong>
-          <span>ยอดรับรวม</span>
+          <span>ยอดรับ (สะสมทั้งหมด)</span>
           <strong id="sidebarBalance">฿0.00</strong>
         </section>
 
@@ -72,15 +83,14 @@
 
       <div class="workspace">
         <header class="topbar">
-          <nav class="top-nav" aria-label="หมวดงานหลัก">
-            <button class="nav-button is-active" type="button" data-view-target="markets">แทงหวย</button>
-            <button class="nav-button" type="button" data-view-target="dashboard">วันนี้</button>
-            <button class="nav-button" type="button" data-view-target="review">ตรวจโพย</button>
-            <button class="nav-button" type="button" data-view-target="entries">รายการแทง</button>
-            <button class="nav-button" type="button" data-view-target="results">ตรวจรางวัล</button>
-            <button class="nav-button" type="button" data-view-target="resultLinks">ลิงก์ผล</button>
-            <button class="nav-button" type="button" data-view-target="reports">บัญชีการเงิน</button>
-            <button class="nav-button" type="button" data-view-target="manage">ตั้งค่า</button>
+          <nav id="primaryNav" class="top-nav" aria-label="หมวดงานหลัก">
+            <button class="nav-button is-active" type="button" data-view-target="overview">🏠 หน้ารวม</button>
+            <button class="nav-button" type="button" data-view-target="markets">✍️ แทงหวย</button>
+            <button class="nav-button" type="button" data-view-target="review">🔔 ตรวจบิล</button>
+            <button class="nav-button" type="button" data-view-target="entries">📋 รายการบิล</button>
+            <button class="nav-button" type="button" data-view-target="results">🎁 ผลรางวัล</button>
+            <button class="nav-button" type="button" data-view-target="reports">💰 บัญชี</button>
+            <button class="nav-button affiliate-only hidden" type="button" data-view-target="customers">👥 ลูกค้า</button><button class="nav-button affiliate-only hidden" type="button" data-view-target="rulesAff">📜 กติกา</button><button class="nav-button" type="button" data-view-target="liveResults">📊 ผลสด</button><button class="nav-button" type="button" data-view-target="manage">⚙ ตั้งค่า</button>
           </nav>
           <div class="view-title-row">
             <div>
@@ -96,7 +106,7 @@
         </header>
 
         <main class="view-stack">
-          <section class="view is-active" data-view="dashboard">
+          <section class="view" data-view="dashboard" hidden>
             <section id="closingSoonBanner" class="closing-soon-banner hidden"></section>
 
             <section class="market-alert panel">
@@ -121,7 +131,7 @@
                 <strong id="totalCustomers">0</strong>
               </article>
               <article class="metric metric-amber">
-                <span>โพยรอตรวจ</span>
+                <span>บิลรอตรวจ</span>
                 <strong id="pendingTicketCount">0</strong>
               </article>
               <article class="metric metric-red">
@@ -154,6 +164,48 @@
             </section>
           </section>
 
+                    <section class="view is-active" data-view="overview">
+            <section class="panel overview-summary-panel">
+              <div class="overview-summary-grid">
+                <div class="overview-stat">
+                  <span class="stat-label">ยอดรับวันนี้</span>
+                  <strong class="stat-value" id="ovTodayStake">฿0</strong>
+                  <small id="ovTodayMeta" class="muted">— บิล · — ลูกค้า</small>
+                </div>
+                <div class="overview-stat">
+                  <span class="stat-label">บิลรอตรวจ</span>
+                  <strong class="stat-value" id="ovPending" style="color:var(--text-danger,#dc2626)">0</strong>
+                  <small id="ovPendingMeta" class="muted">รอจากลูกค้า</small>
+                </div>
+                <div class="overview-stat overview-stat-risk">
+                  <span class="stat-label">เสี่ยงสูงสุด</span>
+                  <strong class="stat-value" id="ovWorstRisk">฿0</strong>
+                  <small id="ovWorstRiskMeta" class="muted">—</small>
+                </div>
+                <div class="overview-stat">
+                  <span class="stat-label">งวดที่เปิดรับ</span>
+                  <strong class="stat-value" id="ovActiveCount">0</strong>
+                  <small id="ovUpdateTime" class="muted">—</small>
+                </div>
+              </div>
+            </section>
+
+            <section id="ovPendingAlert" class="panel overview-alert-panel hidden">
+              <div class="alert-row">
+                <div class="alert-icon">🔔</div>
+                <div class="alert-body">
+                  <strong id="ovPendingTitle">มีบิลรอตรวจ</strong>
+                  <small id="ovPendingDesc" class="muted"></small>
+                </div>
+                <button id="ovGotoReview" type="button" class="button button-primary">ตรวจทั้งหมด</button>
+              </div>
+            </section>
+
+            <div id="ovRoundsContainer"></div>
+
+            <div id="ovEmpty" class="empty-state hidden">ยังไม่มีงวดที่เปิดรับวันนี้ — รอลูกค้าส่งบิลเข้ามา</div>
+          </section>
+
           <section class="view" data-view="markets" hidden>
             <section class="market-alert panel">
               <div>
@@ -171,6 +223,22 @@
             <section id="lotteryBoard" class="lottery-board"></section>
           </section>
 
+          
+<section class="view" data-view="liveResults" hidden>
+  <div style="padding:16px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:8px">
+      <div>
+        <p style="color:#64748b;font-size:13px;margin-bottom:4px">ดึงจาก apilotto.com (auto refresh ทุก 30 วินาที)</p>
+      </div>
+      <div>
+        <span id="liveResultsUpdated" style="color:#64748b;font-size:13px;margin-right:8px"></span>
+        <button id="liveResultsRefresh" class="button button-primary" type="button" style="font-size:13px">🔄 รีเฟรช</button>
+      </div>
+    </div>
+    <div id="liveResultsRoot" style="color:#475569">กำลังโหลด...</div>
+  </div>
+</section>
+
           <section class="view" data-view="manage" hidden>
             <section class="panel manage-hero">
               <div>
@@ -182,7 +250,7 @@
 
               <section class="manage-grid">
                 <button class="manage-card" type="button" data-view-target="entries">
-                  <strong>รายการแทง</strong>
+                  <strong>รายการบิล</strong>
                   <span>ค้นหา แก้ไข และตรวจรายการย้อนหลัง</span>
                 </button>
               <button class="manage-card" type="button" data-view-target="customers">
@@ -209,10 +277,346 @@
                 <strong>อัตราจ่าย</strong>
                 <span>กำหนดเรทจ่ายของแต่ละหวย</span>
               </button>
+              <button class="manage-card" type="button" data-view-target="statsDashboard">
+                <div class="manage-card-icon">📊</div>
+                <div class="manage-card-title">รายงานสถิติ</div>
+                <div class="manage-card-desc">กำไรรายงวด · เลขฮิต · ลูกค้าท็อป</div>
+              </button>
+              <button class="manage-card" type="button" data-view-target="promotionsAdmin">
+                <div class="manage-card-icon">🎟️</div>
+                <div class="manage-card-title">โปรโมชั่น</div>
+                <div class="manage-card-desc">สร้าง/จัดการ code ส่วนลด</div>
+              </button>
+              <button class="manage-card" type="button" data-view-target="affiliate">
+                <strong>💰 Affiliate</strong>
+                <span>ค่าแนะนำ Tier1 + Tier2 ของหัวบ้าน</span>
+              </button>
+              <button class="manage-card" type="button" data-view-target="resultLinks">
+                <strong>🌐 ลิงก์ผลรางวัล</strong>
+                <span>แหล่งดึงผลและลิงก์สำรอง</span>
+              </button>
+              <button class="manage-card" type="button" data-view-target="bankAccounts">
+                <span class="manage-icon">🏦</span>
+                <div>
+                  <h3>บัญชีรับเงิน</h3>
+                  <p>หมุนเวียนบัญชี · จำกัดยอด/วัน · สถานะบัญชี</p>
+                </div>
+              </button>
+              <button class="manage-card" type="button" data-view-target="lineSettings">
+                <strong>📱 ตั้งค่า LINE OA</strong>
+                <span>เลขบัญชี อัตราจ่าย วิธีเขียนโพย กลุ่ม</span>
+              </button>
               <button class="manage-card" type="button" data-view-target="users">
                 <strong>ผู้ใช้</strong>
                 <span>จัดการสิทธิ์และรหัสผ่านผู้ใช้งาน</span>
               </button>
+              <button class="manage-card" type="button" data-view-target="lineContacts">
+                <strong>🔗 LINE ใน OA</strong>
+                <span>ดูคนทักเข้ามา · ผูกกับหัวบ้าน</span>
+              </button>
+              <button class="manage-card" type="button" data-view-target="auditLog">
+                <strong>📜 บันทึกกิจกรรม</strong>
+                <span>ดูประวัติการใช้งานระบบ — login, logout, แก้ข้อมูล</span>
+              </button>
+            </section>
+          </section>
+
+                    <section class="view" data-view="owner" hidden>
+            <section class="panel owner-hero">
+              <div class="owner-hero-row">
+                <div>
+                  <span class="eyebrow">👑 ภาพรวมเจ้าของ</span>
+                  <h2>สรุปยอดธุรกิจ — บ้านหวยเรือนเลขเศรษฐี</h2>
+                </div>
+                <div class="owner-realtime" id="ownerRealtime">
+                  <div class="rt-item"><span>งวดเปิดอยู่</span><strong>—</strong></div>
+                  <div class="rt-item"><span>บิลรอตรวจ</span><strong>—</strong></div>
+                  <div class="rt-item"><span>ลูกค้า 24 ชม.</span><strong>—</strong></div>
+                </div>
+              </div>
+            </section>
+
+            <section class="panel owner-summary-panel">
+              <div class="panel-heading"><h3>ยอดสรุป</h3></div>
+              <div class="owner-summary-grid" id="ownerSummaryGrid">
+                <div class="owner-summary-card today">
+                  <div class="osc-label">📅 วันนี้</div>
+                  <div class="osc-rows">
+                    <div><span>ยอดแทง</span><strong data-key="todayStake">—</strong></div>
+                    <div><span>ยอดต้องจ่าย</span><strong data-key="todayPayout">—</strong></div>
+                    <div class="osc-profit"><span>กำไรสุทธิ</span><strong data-key="todayProfit">—</strong></div>
+                    <div class="osc-foot"><span data-key="todayTickets">— โพย</span><span data-key="todayCustomers">— ลูกค้า</span></div>
+                  </div>
+                </div>
+                <div class="owner-summary-card month">
+                  <div class="osc-label">📊 เดือนนี้</div>
+                  <div class="osc-rows">
+                    <div><span>ยอดแทง</span><strong data-key="monthStake">—</strong></div>
+                    <div><span>ยอดต้องจ่าย</span><strong data-key="monthPayout">—</strong></div>
+                    <div class="osc-profit"><span>กำไรสุทธิ</span><strong data-key="monthProfit">—</strong></div>
+                    <div class="osc-foot"><span data-key="monthTickets">— โพย</span><span data-key="monthCustomers">— ลูกค้า</span></div>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <section class="panel owner-trend-panel">
+              <div class="panel-heading"><h3>กราฟกำไร 30 วันล่าสุด</h3></div>
+              <div id="ownerTrendChart" class="owner-trend-chart"></div>
+            </section>
+
+            <section class="panel owner-detailed-panel">
+              <div class="panel-heading"><h3>ส่วนรายละเอียด — ตามช่วงเวลา</h3></div>
+              <div class="owner-range-bar">
+                <label>ตั้งแต่ <input type="date" id="ownerRangeFrom"></label>
+                <label>ถึง <input type="date" id="ownerRangeTo"></label>
+                <button type="button" id="ownerRangeApply" class="button button-primary">🔍 ค้นหา</button>
+                <div class="owner-range-presets">
+                  <button type="button" class="button-mini" data-preset="7">7 วัน</button>
+                  <button type="button" class="button-mini" data-preset="30">30 วัน</button>
+                  <button type="button" class="button-mini" data-preset="90">3 เดือน</button>
+                  <button type="button" class="button-mini" data-preset="365">1 ปี</button>
+                </div>
+                <span class="owner-range-status" id="ownerRangeStatus"></span>
+              </div>
+
+              <div class="owner-range-summary" id="ownerRangeSummary"></div>
+            </section>
+
+            <section class="panel owner-tops-panel">
+              <div class="owner-tops-grid">
+                <div class="owner-tops-block">
+                  <h4>🏆 ลูกค้าที่ทำกำไรให้ร้านมากสุด</h4>
+                  <div id="ownerTopCustomersProfit" class="owner-top-list"></div>
+                </div>
+                <div class="owner-tops-block">
+                  <h4>💸 ลูกค้าที่ทำให้ร้านขาดทุนมากสุด</h4>
+                  <div id="ownerTopCustomersLoss" class="owner-top-list"></div>
+                </div>
+                <div class="owner-tops-block">
+                  <h4>🏛️ หัวบ้านยอดสูง</h4>
+                  <div id="ownerTopHeadHouses" class="owner-top-list"></div>
+                </div>
+                <div class="owner-tops-block">
+                  <h4>🎰 หวยทำกำไรเยอะสุด</h4>
+                  <div id="ownerTopLotteriesProfit" class="owner-top-list"></div>
+                </div>
+                <div class="owner-tops-block">
+                  <h4>📉 หวยขาดทุนเยอะสุด</h4>
+                  <div id="ownerTopLotteriesLoss" class="owner-top-list"></div>
+                </div>
+              </div>
+            </section>
+          </section>
+
+                    <section class="view" data-view="lineSettings" hidden>
+            <section class="panel">
+              <div class="panel-heading">
+                <h2>📱 ตั้งค่า LINE OA</h2>
+                <p class="muted">ข้อมูลนี้จะแสดงให้ลูกค้าดูในหน้าเว็บที่ลิงก์มาจาก Rich Menu ของ LINE</p>
+              </div>
+
+              <div class="line-settings-form">
+                <section class="ls-block">
+                  <h3>🏦 เลขที่บัญชี</h3>
+                  <div id="lsBanks"></div>
+                  <button type="button" class="button-mini" id="lsAddBank">+ เพิ่มบัญชี</button>
+                  <small class="muted">หน้า public: <a href="/info/account" target="_blank">/info/account</a></small>
+                </section>
+
+                <section class="ls-block">
+                  <h3>💰 อัตราจ่าย</h3>
+                  <div id="lsRates"></div>
+                  <button type="button" class="button-mini" id="lsAddRateGroup">+ เพิ่มกลุ่มอัตราจ่าย</button>
+                  <small class="muted">หน้า public: <a href="/info/rates" target="_blank">/info/rates</a></small>
+                </section>
+
+                <section class="ls-block">
+                  <h3>📝 วิธีเขียนโพย</h3>
+                  <textarea id="lsHowTo" rows="8" placeholder="พิมพ์คำอธิบายวิธีส่งโพย — ขึ้นบรรทัดใหม่ได้ตามต้องการ"></textarea>
+                  <small class="muted">หน้า public: <a href="/info/howto" target="_blank">/info/howto</a></small>
+                </section>
+
+                <section class="ls-block">
+                  <h3>👥 กลุ่มแนวทาง</h3>
+                  <div id="lsGroups"></div>
+                  <button type="button" class="button-mini" id="lsAddGroup">+ เพิ่มกลุ่ม</button>
+                  <small class="muted">หน้า public: <a href="/info/groups" target="_blank">/info/groups</a></small>
+                </section>
+
+                <section class="ls-block">
+                  <h3>🎁 ข้อความโปรโมชั่น (ไม่บังคับ)</h3>
+                  <textarea id="lsPromo" rows="3" placeholder="เช่น เปิดยอดแรก 100 บาท รับเพิ่ม 20%"></textarea>
+                </section>
+
+                <div class="ls-actions">
+                  <span id="lsStatus" class="muted"></span>
+                  <button type="button" class="button button-primary" id="lsSaveBtn">💾 บันทึก</button>
+                </div>
+
+                <details class="ls-rich-menu-help">
+                  <summary>🔗 ลิงก์ที่ใช้ตั้ง Rich Menu ใน LINE</summary>
+                  <pre id="lsRichMenuLinks">เลขบัญชี:    https://lottery.139-59-123-146.nip.io/info/account
+อัตราจ่าย:    https://lottery.139-59-123-146.nip.io/info/rates
+วิธีเขียนโพย: https://lottery.139-59-123-146.nip.io/info/howto
+กลุ่มแนวทาง:  https://lottery.139-59-123-146.nip.io/info/groups
+สั่งซื้อหวย:  https://lottery.139-59-123-146.nip.io/order
+หน้ารวม:     https://lottery.139-59-123-146.nip.io/info</pre>
+                </details>
+              </div>
+            </section>
+          </section>
+          <section class="view" data-view="bankAccounts" hidden>
+            <section class="panel">
+              <div class="panel-heading">
+                <h2>🏦 บัญชีรับเงิน</h2>
+                <p class="muted">เพิ่มบัญชีหลายบัญชี — ระบบจะหมุนเวียนใช้อัตโนมัติ ลูกค้าที่เปิด /order จะได้บัญชีที่ยังไม่เต็มลิมิตวันนี้</p>
+                <div class="bank-actions">
+                  <button type="button" class="button button-primary" id="bankAddBtn">+ เพิ่มบัญชี</button>
+                  <button type="button" class="button button-secondary" id="bankResetBtn">🔄 รีเซ็ตยอดวันนี้ทุกบัญชี</button>
+                </div>
+              </div>
+
+              <form id="bankForm" class="stack-form hidden" style="margin-bottom:16px">
+                <input type="hidden" id="bankFormId" />
+                <div class="field-grid">
+                  <label class="field"><span>ธนาคาร *</span>
+                    <input id="bankBankName" maxlength="40" placeholder="เช่น กสิกร / SCB / กรุงเทพ" required /></label>
+                  <label class="field"><span>เลขบัญชี *</span>
+                    <input id="bankAccountNumber" maxlength="30" placeholder="123-4-56789-0" required /></label>
+                  <label class="field"><span>ชื่อบัญชี *</span>
+                    <input id="bankAccountHolder" maxlength="80" placeholder="ชื่อ-นามสกุล" required /></label>
+                  <label class="field"><span>ลิมิตต่อวัน (บาท)</span>
+                    <input id="bankDailyLimit" type="number" min="0" step="1000" value="100000" /></label>
+                  <label class="field"><span>ลำดับความสำคัญ <small class="muted">(เลขน้อย = ใช้ก่อน)</small></span>
+                    <input id="bankPriority" type="number" min="1" max="999" value="100" /></label>
+                  <label class="field"><span>สถานะ</span>
+                    <select id="bankStatus">
+                      <option value="active">🟢 active (พร้อมใช้)</option>
+                      <option value="cooling">🟡 cooling (พักชั่วคราว)</option>
+                      <option value="suspended">🔴 suspended (ระงับ)</option>
+                    </select></label>
+                </div>
+                <label class="field"><span>หมายเหตุ</span>
+                  <input id="bankNote" maxlength="200" placeholder="เช่น บัญชีหลัก / บัญชีสำรอง / SCB ของน้อง" /></label>
+                <div class="form-actions">
+                  <button type="submit" class="button button-primary" id="bankSubmitBtn">บันทึก</button>
+                  <button type="button" class="button button-secondary" id="bankCancelBtn">ยกเลิก</button>
+                </div>
+              </form>
+
+              <div id="bankAccountsList" class="bank-accounts-list"></div>
+              <div id="bankAccountsEmpty" class="empty-state hidden">ยังไม่มีบัญชี — กด "เพิ่มบัญชี" ด้านบน</div>
+
+              <details class="bank-rotation-preview" open style="margin-top:18px">
+                <summary>👀 ดูว่าระบบจะหมุนเวียนยังไง</summary>
+                <div id="bankRotationPreview" class="muted">รออัพเดต…</div>
+              </details>
+            </section>
+          </section>
+
+
+                    <section class="view" data-view="affiliate" hidden>
+            <section class="panel">
+              <div class="panel-heading">
+                <h2>💰 Affiliate / ค่าแนะนำ</h2>
+                <p class="muted">รายงานยอดสะสมของแต่ละหัวบ้าน (tier 1 = ลูกค้าตัวเอง, tier 2 = downline)</p>
+              </div>
+              <div class="affiliate-toolbar">
+                <button type="button" class="button button-secondary" id="affRefresh">🔄 รีเฟรช</button>
+                <span id="affLastUpdate" class="muted"></span>
+              </div>
+
+              <div class="table-wrap">
+                <table class="affiliate-table">
+                  <thead>
+                    <tr>
+                      <th>รหัส</th>
+                      <th>หัวบ้าน</th>
+                      <th>หัวบ้านพ่อ</th>
+                      <th>Tier1 %</th>
+                      <th>Tier2 %</th>
+                      <th class="num">ยอดลูกค้าตัวเอง</th>
+                      <th class="num">Tier1 ค้าง</th>
+                      <th class="num">Tier2 ค้าง</th>
+                      <th class="num">รวมต้องจ่าย</th>
+                      <th class="num">จ่ายแล้ว</th>
+                      <th class="num">คงค้าง</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody id="affTableBody"><tr><td colspan="12">กำลังโหลด...</td></tr></tbody>
+                </table>
+              </div>
+
+              <details class="aff-payout-history">
+                <summary>📜 ประวัติการจ่ายทั้งหมด</summary>
+                <div id="affPayoutsHistory"><p class="muted" style="padding:12px">ยังไม่มีประวัติการจ่าย — รายการจะปรากฏที่นี่หลังบันทึกครั้งแรก</p></div>
+              </details>
+            </section>
+          </section>
+
+                    <section class="view" data-view="myAffiliate" hidden>
+            <section class="panel">
+              <div class="panel-heading">
+                <h2>💰 Affiliate ของฉัน</h2>
+                <p class="muted">ลิงก์ชวนของคุณ + ยอดสะสมที่จะได้รับ</p>
+              </div>
+              <div id="myAffiliateContent"><div class="empty-state">กำลังโหลด…</div></div>
+            </section>
+          </section>
+
+          <section class="view" data-view="rulesAff" hidden>
+            <section class="panel">
+              <div class="panel-heading">
+                <h2>📜 กติกา Affiliate</h2>
+                <p class="muted">ค่าคอม · วิธีแชร์ลิงก์ · ข้อตกลง</p>
+              </div>
+              <div id="rulesAffContent">
+                <article class="rules-section">
+                  <h3>💸 ค่าคอมที่คุณจะได้</h3>
+                  <ul class="rules-list">
+                    <li><strong>20-40%</strong> ของยอดแทงสุทธิจากลูกค้าที่คุณชวนเข้ามา (ดูเปอร์เซ็นต์ของคุณในหน้ารวม)</li>
+                    <li>คำนวณจาก <em>ยอดรับ − รางวัลที่จ่ายแล้ว</em> ต่องวด — ลูกค้าถูกเยอะ ค่าคอมก็ลดตาม</li>
+                    <li>จ่ายให้ผ่านการโอนเงินตามรอบที่ตกลง (ดูประวัติได้ในหน้ารวม)</li>
+                  </ul>
+                </article>
+
+                <article class="rules-section">
+                  <h3>🔗 วิธีหาลูกค้าใหม่</h3>
+                  <ol class="rules-list">
+                    <li>คัดลอกลิงก์ชวนของคุณจากหน้ารวม (ปุ่ม <strong>📋 คัดลอกลิงก์</strong>)</li>
+                    <li>ส่งให้คนที่อยาก<strong>แทงหวยกับเรา</strong> ผ่าน LINE OA ของคุณเอง</li>
+                    <li>เมื่อเขาเปิดลิงก์ + add เพื่อนกับ LINE OA หลักของเรา + คีย์เลข — ระบบจะ <strong>ผูกเขาเป็นลูกค้าของคุณอัตโนมัติ</strong></li>
+                    <li>ลูกค้าใหม่ของคุณจะปรากฏในหน้า <strong>👥 ลูกค้า</strong></li>
+                  </ol>
+                </article>
+
+                <article class="rules-section">
+                  <h3>✍️ การคีย์บิลแทนลูกค้า</h3>
+                  <ul class="rules-list">
+                    <li>คุณคีย์บิลแทนลูกค้าได้ในหน้า <strong>✍️ คีย์บิล</strong> (เช่นเขาส่งเลขมาที่ LINE ของคุณ)</li>
+                    <li>บิลที่คุณคีย์จะถูกผูกกับ <strong>หัวบ้านของคุณอัตโนมัติ</strong> — admin จะเห็นว่ามาจากใคร</li>
+                    <li>เลือกลูกค้าจาก dropdown ก่อนคีย์ (มีแต่ลูกค้าของคุณเท่านั้น)</li>
+                    <li>ถ้าลูกค้าไม่เคยมีในระบบ → ให้เขาเปิดลิงก์ของคุณก่อน เพื่อสร้างบัญชีให้เขาก่อน</li>
+                  </ul>
+                </article>
+
+                <article class="rules-section">
+                  <h3>⚠️ ข้อตกลง</h3>
+                  <ul class="rules-list">
+                    <li>คุณ <strong>คีย์บิลแทนลูกค้าของตัวเองเท่านั้น</strong> ห้ามคีย์ให้ลูกค้าคนอื่น</li>
+                    <li>ห้ามแก้ไข/ลบบิลของลูกค้าคนอื่น</li>
+                    <li>การชวนต้องเป็นไปอย่างสุจริต — ห้ามใช้บัญชีปลอม / กดซ้ำเพื่อปั่นยอด</li>
+                    <li>ถ้าตรวจพบทุจริต ระบบจะหักค่าคอมและระงับบัญชี Affiliate</li>
+                  </ul>
+                </article>
+
+                <article class="rules-section rules-contact">
+                  <h3>📞 ติดปัญหา?</h3>
+                  <p>คุยกับ admin ได้ทาง LINE OA หลักของเราเลย — หรือสอบถามผ่านช่องทางที่ admin ให้ไว้ตอน setup บัญชี</p>
+                </article>
+              </div>
             </section>
           </section>
 
@@ -244,21 +648,38 @@
                     <select id="ticketRoundInput"></select>
                   </label>
                   <label class="field">
+                    <span>ลูกค้า <small class="muted">(เลือกหรือกด + ลูกค้าใหม่)</small></span>
+                    <select id="ticketCustomerInput"></select>
+                  </label>
+                  <label class="field">
                     <span>หัวบ้านของบิล</span>
                     <select id="ticketHeadHouseInput"></select>
                   </label>
+                  <div class="field add-cust-toggle-wrap">
+                    <button type="button" id="ticketAddCustBtn" class="button button-secondary admin-only">+ ลูกค้าใหม่</button>
+                  </div>
                 </div>
-
-                <div class="ticket-mode-tabs" aria-label="โหมดการคีย์">
-                  <button class="ticket-mode-tab is-active" type="button" data-intake-mode="fast">แทงเร็ว</button>
-                  <button class="ticket-mode-tab" type="button" data-intake-mode="classic">แทงแบบคลาสสิค</button>
-                  <button class="ticket-mode-tab" type="button" data-intake-mode="paste">วางโพย</button>
-                </div>
+                <form id="ticketAddCustForm" class="inline-create-form hidden">
+                  <div class="field-grid">
+                    <label class="field">
+                      <span>ชื่อลูกค้าใหม่ <small class="muted">*</small></span>
+                      <input id="ticketAddCustName" maxlength="80" placeholder="เช่น พี่เอ" required />
+                    </label>
+                    <label class="field">
+                      <span>เบอร์โทร <small class="muted">(ไม่บังคับ)</small></span>
+                      <input id="ticketAddCustPhone" maxlength="20" placeholder="เช่น 081-234-5678" />
+                    </label>
+                  </div>
+                  <div class="form-actions">
+                    <button type="submit" class="button button-primary">✓ สร้างและเลือก</button>
+                    <button type="button" id="ticketAddCustCancel" class="button button-secondary">ยกเลิก</button>
+                  </div>
+                </form>
 
                 <section class="ticket-compose-board">
                   <div class="ticket-compose-heading">
                     <div>
-                      <h3>แทงเร็ว</h3>
+                      <h3>คีย์บิล</h3>
                       <span id="ticketComposeRoundLabel" class="compact-muted">-</span>
                     </div>
                     <span id="ticketComposeDate">-</span>
@@ -271,6 +692,7 @@
                     <div class="ticket-tool-row">
                       <button id="ticketDoubleBtn" class="button button-secondary" type="button">เลขเบิ้ล</button>
                       <button id="ticketReverseBtn" class="button button-secondary" type="button">กลับเลข</button>
+                      <button id="ticketSiblingBtn" class="button button-secondary hidden" type="button">รูดพี่น้อง</button>
                     </div>
                   </div>
 
@@ -308,7 +730,7 @@
                 <section id="ticketDraftWrap" class="ticket-draft-wrap">
                   <div class="panel-heading compact-heading">
                     <h3>รายการในบิล</h3>
-                    <button id="clearTicketBtn" class="text-button" type="button">ล้างโพย</button>
+                    <button id="clearTicketBtn" class="text-button" type="button" title="ลบเลขในบิลทั้งหมด — ใช้ตอนคีย์ผิด/เปลี่ยนใจ">🗑️ ยกเลิกโพย</button>
                   </div>
                   <div class="table-wrap">
                     <table>
@@ -372,185 +794,97 @@
                 </section>
               </aside>
             </section>
-
-            <section id="quickPanel" class="panel quick-panel hidden">
-              <div class="panel-heading">
-                <div>
-                  <h2>รับจากข้อความ LINE</h2>
-                  <p class="helper-copy">วางข้อความจาก LINE แล้วให้ระบบช่วยแยกข้อมูลก่อนบันทึกเป็นชุด</p>
-                </div>
-              </div>
-
-              <div class="quick-grid">
-                <label class="field">
-                  <span>หัวบ้านของบิล</span>
-                  <select id="quickHeadHouse"></select>
-                </label>
-                <div class="quick-customer-field hidden">
-                  <label class="field">
-                    <span>ลูกค้า</span>
-                    <select id="quickCustomer"></select>
-                  </label>
-                  <button id="toggleQuickCustomerBtn" class="text-button inline-action" type="button">เพิ่มลูกค้าใหม่</button>
-                </div>
-                <label class="field">
-                  <span>หวยสำรอง</span>
-                  <select id="quickLottery"></select>
-                </label>
-                <label class="field">
-                  <span>งวดสำรอง</span>
-                  <select id="quickRound"></select>
-                </label>
-                <label class="field">
-                  <span>ประเภทเลขสำรอง</span>
-                  <select id="quickBetType"></select>
-                </label>
-                <label class="field">
-                  <span>ยอดต่อเลขสำรอง</span>
-                  <input id="quickAmount" inputmode="decimal" placeholder="0.00" />
-                </label>
-              </div>
-
-              <form id="quickCustomerForm" class="inline-create-form hidden">
-                <label class="field">
-                  <span>ชื่อเล่น / หมายเหตุ</span>
-                  <input id="quickCustomerNameInput" maxlength="80" placeholder="เช่น ลูกค้าไลน์ A" />
-                </label>
-                <label class="field">
-                  <span>หัวบ้าน</span>
-                  <select id="quickCustomerHeadHouseInput" required></select>
-                </label>
-                <button class="button button-secondary" type="submit">บันทึกลูกค้า</button>
-              </form>
-
-              <label class="field">
-                <span>ข้อความจาก LINE</span>
-                <textarea id="quickMessage" rows="4" placeholder="เช่น 01 02 03 04 05 06 ไทย 1000บาท"></textarea>
-              </label>
-
-              <label class="field">
-                <span>หมายเหตุ / ชื่อ LINE ลูกค้า</span>
-                <input id="quickNoteInput" maxlength="240" placeholder="เช่น คุณแดง LINE: Daeng789" />
-              </label>
-
-              <div class="form-actions">
-                <button id="parseQuickBtn" class="button button-primary" type="button">แยกรายการ</button>
-                <button id="clearQuickBtn" class="button button-secondary" type="button">ล้าง</button>
-              </div>
-
-              <div id="quickParseSummary" class="parse-summary hidden"></div>
-
-              <div class="table-wrap preview-wrap">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>เลข</th>
-                      <th>หวย</th>
-                      <th>งวด</th>
-                      <th>ประเภท</th>
-                      <th>ยอด</th>
-                      <th>สถานะ</th>
-                    </tr>
-                  </thead>
-                  <tbody id="quickPreviewBody"></tbody>
-                </table>
-              </div>
-
-              <div class="form-actions">
-                <button id="saveQuickBatchBtn" class="button button-primary" type="button">บันทึกทั้งหมด</button>
-              </div>
-            </section>
-
-            <section id="entryPanel" class="panel entry-panel hidden">
-              <div class="panel-heading">
-                <h2 id="formTitle">กรอก / แก้ไขรายการเดี่ยว</h2>
-                <button id="resetBtn" class="text-button" type="button">ล้างฟอร์ม</button>
-              </div>
-
-              <form id="entryForm" class="entry-form">
-                <div class="field-grid">
-                  <label class="field hidden">
-                    <span>ลูกค้า</span>
-                    <select id="customerInput" required></select>
-                  </label>
-                  <label class="field">
-                    <span>งวด</span>
-                    <select id="roundInput" required></select>
-                  </label>
-                  <label class="field">
-                    <span>ประเภทเลข</span>
-                    <select id="betTypeInput" required></select>
-                  </label>
-                  <label class="field">
-                    <span>เลข</span>
-                    <input id="numberInput" inputmode="numeric" maxlength="3" placeholder="เช่น 45" required />
-                  </label>
-                  <label class="field">
-                    <span>ยอดเงิน</span>
-                    <input id="amountInput" inputmode="decimal" placeholder="0.00" required />
-                  </label>
-                </div>
-
-                <div id="limitPreview" class="limit-preview hidden"></div>
-
-                <label class="field">
-                  <span>บันทึกเพิ่มเติม</span>
-                  <textarea id="noteInput" rows="3" maxlength="240" placeholder="รายละเอียดเพิ่มเติมถ้ามี"></textarea>
-                </label>
-
-                <div class="form-actions">
-                  <button id="submitBtn" class="button button-primary" type="submit">บันทึกรายการ</button>
-                </div>
-              </form>
-            </section>
           </section>
 
+          
+<!-- Hidden stubs for removed panels (JS still references) -->
+<section id="quickPanel" class="panel quick-panel" style="display:none !important;">
+  <div class="panel-heading"><h2></h2></div>
+  <textarea id="quickMessage"></textarea>
+  <button id="parseQuickBtn"></button>
+  <button id="clearQuickBtn"></button>
+  <button id="saveQuickBatchBtn"></button>
+  <select id="quickLottery"></select>
+  <select id="quickRound"></select>
+  <select id="quickCustomer"></select>
+  <select id="quickHeadHouse"></select>
+  <select id="quickCustomerHeadHouseInput"></select>
+  <select id="quickBetType"></select>
+  <button id="toggleQuickCustomerBtn"></button>
+  <form id="quickCustomerForm">
+    <input id="quickCustomerNameInput">
+  </form>
+  <div id="quickPreviewBody"></div>
+</section>
+<section id="entryPanel" class="panel entry-panel" style="display:none !important;">
+  <div class="panel-heading"><h2 id="formTitle"></h2></div>
+  <form id="entryForm">
+    <select id="entryCustomer"></select>
+    <select id="entryRound"></select>
+    <select id="entryBetType"></select>
+    <input id="entryNumber">
+    <input id="entryAmount">
+    <input id="entryNote">
+  </form>
+  <button id="resetBtn"></button>
+  <button id="submitBtn"></button>
+  <div id="limitPreview"></div>
+</section>
+
           <section class="view" data-view="review" hidden>
+
+        <!-- G1: หัวบ้านส่งสลิป -->
+        <details id="hhSlipsSection" class="card-section" open>
+          <summary class="card-summary">
+            🧾 สลิปจากหัวบ้านรอตรวจ <span class="hh-slips-count muted"></span>
+          </summary>
+          <div class="hh-slips-body"></div>
+        </details>
+
             <section class="panel review-panel">
               <div class="panel-heading">
                 <div>
-                  <h2>โพยรอตรวจ</h2>
-                  <p class="helper-copy">หัวหน้างานตรวจโพยทั้งชุดก่อนนำไปคิดยอดจริง</p>
+                  <h2>บิลรอตรวจ <small id="reviewCount" class="muted"></small></h2>
+                  <p class="helper-copy">ตรวจบิลก่อนคิดยอดจริง — เลือกหลายบิลแล้วกดทีเดียวอนุมัติ</p>
+                </div>
+                <div class="review-toolbar">
+                  <button id="reviewSelectAllBtn" type="button" class="button button-secondary">☑ เลือกทั้งหมด</button>
+                  <button id="reviewBulkApproveBtn" type="button" class="button button-primary" disabled>✓ อนุมัติที่เลือก</button>
+                  <button id="reviewBulkRejectBtn" type="button" class="button button-danger" disabled>↺ ตีกลับที่เลือก</button>
                 </div>
               </div>
               <div class="table-wrap">
                 <table>
                   <thead>
                     <tr>
-                      <th>รหัสโพย</th>
+                      <th style="width:30px"><input type="checkbox" id="reviewHeaderCheck" aria-label="เลือกทั้งหมด"></th>
+                      <th style="width:36px"></th>
+                      <th>รหัสบิล</th>
                       <th>ลูกค้า</th>
                       <th>งวด</th>
                       <th>รายการ</th>
                       <th>ยอดรวม</th>
                       <th>ผู้คีย์</th>
-                      <th>เวลา</th>
+                      <th>รอ</th>
                       <th></th>
                     </tr>
                   </thead>
                   <tbody id="pendingTicketsBody"></tbody>
                 </table>
               </div>
-              <div id="pendingTicketsEmpty" class="empty-state">ไม่มีโพยรอตรวจ</div>
+              <div id="pendingTicketsEmpty" class="empty-state">ไม่มีบิลรอตรวจ</div>
             </section>
 
-            <section class="split-grid">
-              <section class="panel review-panel">
-                <div class="panel-heading">
-                  <h2>ผลรางวัลที่ยังไม่ยืนยัน</h2>
-                </div>
-                <div id="pendingResultsList" class="compact-table-list"></div>
-              </section>
 
-              <section class="panel review-panel">
-                <div class="panel-heading">
-                  <h2>บันทึกกิจกรรมล่าสุด</h2>
-                </div>
-                <div id="auditLogList" class="compact-table-list"></div>
-              </section>
-            </section>
           </section>
 
           <section class="view" data-view="entries" hidden>
+            <section class="panel records-panel pending-results-panel">
+              <div class="panel-heading">
+                <h2>📋 ผลรางวัลที่ยังไม่ยืนยัน</h2>
+              </div>
+              <div id="pendingResultsList" class="compact-table-list"></div>
+            </section>
             <section class="panel records-panel">
               <div class="panel-heading records-heading">
                 <h2>รายการทั้งหมด</h2>
@@ -569,7 +903,7 @@
                   </label>
                     <label class="compact-field">
                       <span>ค้นหา</span>
-                      <input id="searchInput" type="search" placeholder="เลข / รหัสโพย / ลูกค้า" />
+                      <input id="searchInput" type="search" placeholder="เลข / รหัสบิล / ลูกค้า" />
                     </label>
                 </div>
               </div>
@@ -581,11 +915,15 @@
 
           <section class="view" data-view="customers" hidden>
             <section class="panel customer-panel">
-              <div class="panel-heading">
+              <div class="aff-customer-hint affiliate-only hidden" style="margin-bottom:14px;padding:14px 16px;background:linear-gradient(135deg,#fef3c7,#fff);border-left:4px solid #c8990b;border-radius:8px;display:none">
+                <strong>📌 ลูกค้าของคุณ</strong>
+                <p style="margin:4px 0 0 0;font-size:0.92rem;color:#4b5563">ลูกค้าจะเข้ามาในรายการนี้อัตโนมัติเมื่อเขาเปิดลิงก์ของคุณ + add LINE OA หลัก + แทงเลขผ่านระบบ — ไม่ต้องเพิ่มเอง</p>
+              </div>
+              <div class="panel-heading admin-only">
                 <h2 id="customerFormTitle">เพิ่มลูกค้า</h2>
                 <button id="resetCustomerBtn" class="text-button hidden" type="button">ยกเลิกแก้ไข</button>
               </div>
-              <form id="customerForm" class="stack-form">
+              <form id="customerForm" class="stack-form admin-only">
                 <div class="field-grid customer-grid">
                   <label class="field">
                     <span>ชื่อเล่น / หมายเหตุ</span>
@@ -612,12 +950,15 @@
           </section>
 
           <section class="view" data-view="headHouses" hidden>
-            <section class="split-grid">
-              <section class="panel manager-panel">
-                <div class="panel-heading">
-                  <h2 id="headHouseFormTitle">เพิ่มหัวบ้าน</h2>
+            <dialog id="headHouseFormDialog" class="hh-form-dialog">
+              <header class="hh-form-dialog-header">
+                <h2 id="headHouseFormTitle">เพิ่มหัวบ้าน</h2>
+                <div class="hh-form-dialog-actions">
                   <button id="resetHeadHouseBtn" class="text-button hidden" type="button">ยกเลิกแก้ไข</button>
+                  <button type="button" class="winners-dialog-close" id="closeHeadHouseFormBtn" aria-label="ปิด">✕</button>
                 </div>
+              </header>
+              <div class="hh-form-dialog-body">
                 <form id="headHouseForm" class="stack-form">
                   <div class="field-grid customer-grid">
                     <label class="field">
@@ -625,30 +966,64 @@
                       <input id="headHouseNameInput" maxlength="80" placeholder="เช่น เจ๊แดง" required />
                     </label>
                     <label class="field">
-                      <span>เปอร์เซ็นต์ส่วนแบ่งหัวบ้าน</span>
-                      <input id="headHouseCommissionInput" type="number" min="0" max="100" step="0.01" value="0" required />
+                      <span>ประเภท</span>
+                      <select id="headHouseTypeInput">
+                        <option value="head_house">🚶 หัวบ้าน (offline / ปากต่อปาก)</option>
+                        <option value="affiliate">💻 Affiliate (online / มี LINE OA เอง)</option>
+                      </select>
+                      <small class="field-hint">หัวบ้านส่งเลขให้ admin คีย์ · Affiliate คีย์เองได้</small>
                     </label>
+                    <label class="field">
+                      <span>% Affiliate (หัวบ้านนี้ได้)</span>
+                      <input id="headHouseCommissionInput" type="number" min="0" max="100" step="0.01" value="0" required />
+                      <small class="field-hint">% ของยอดลูกค้าที่หัวบ้านคนนี้จะได้</small>
+                    </label>
+                    <label class="field">
+                      <span>ถูกใครชวนมา? (หัวบ้านพ่อ)</span>
+                      <select id="headHouseParentInput"><option value="">— ไม่มี (มาเอง) —</option></select>
+                      <small class="field-hint">ถ้าไม่มีคนชวน เลือก "ไม่มี"</small>
+                    </label>
+                    <label class="field">
+                      <span>% Affiliate Tier 2 (ส่งให้หัวบ้านพ่อ)</span>
+                      <input id="headHouseTier2Input" type="number" min="0" max="100" step="0.01" value="0" />
+                      <small class="field-hint">% เพิ่ม ที่ร้านจ่ายให้หัวบ้านพ่อ (ไม่หักจาก Affiliate)</small>
+                    </label>
+                  </div>
+                  <div class="affiliate-help-box">
+                    💡 <strong>วิธีคิด:</strong> ลูกค้าแทง 1,000 → ถ้า Affiliate = 20%, Tier 2 = 5%<br>
+                    • หัวบ้านนี้ได้ <strong>200 บาท</strong> (1,000 × 20%)<br>
+                    • หัวบ้านพ่อได้ <strong>50 บาท</strong> (1,000 × 5%)<br>
+                    • ร้านจ่ายรวม <strong>250 บาท</strong>
                   </div>
                   <label class="field">
                     <span>หมายเหตุ</span>
                     <input id="headHouseNoteInput" maxlength="160" placeholder="เช่น รับยอดจาก LINE กลุ่ม A" />
                   </label>
+                  <label class="field">
+                    <span>📱 LINE User ID <small class="muted">(สำหรับรับสลิป)</small></span>
+                    <input id="headHouseLineUserIdInput" maxlength="80" placeholder="เช่น Ub3a1c5f8e9d2b4c6a8e..." />
+                    <small class="field-hint">หา user ID จาก LINE OA Manager → กดที่ chat ของหัวบ้าน → ดู profile หรือ webhook log (ขึ้นต้นด้วยตัว U)</small>
+                  </label>
                   <p class="helper-copy">ระบบจะออกรหัสหัวบ้านให้อัตโนมัติ เช่น HB001</p>
                   <button id="headHouseSubmitBtn" class="button button-primary" type="submit">เพิ่มหัวบ้าน</button>
                 </form>
-              </section>
+              </div>
+            </dialog>
 
-              <section class="panel manager-panel">
-                <div class="panel-heading">
-                  <h2>หัวบ้านทั้งหมด</h2>
-                </div>
+            <section class="panel manager-panel hh-list-full">
+              <div class="panel-heading">
+                <h2>หัวบ้านทั้งหมด</h2>
+                <button id="openHeadHouseFormBtn" class="button button-primary" type="button">＋ เพิ่มหัวบ้าน</button>
+              </div>
                 <div id="viewerCredentialCard" class="credential-card hidden">
                   <div>
-                    <strong>ข้อมูลเข้าใช้งานหัวบ้าน</strong>
+                    <strong>🔑 ข้อมูลเข้าใช้งานสำหรับหัวบ้าน</strong>
                     <span id="viewerCredentialSummary"></span>
+                    <small class="credential-hint">รหัสผ่านจะแสดงครั้งนี้ครั้งเดียว — ส่งให้หัวบ้านก่อนปิดหน้า</small>
                   </div>
                   <div class="credential-actions">
-                    <button id="copyViewerCredentialsBtn" class="button button-secondary" type="button">คัดลอกข้อมูล</button>
+                    <button id="copyViewerCredentialsBtn" class="button button-secondary" type="button">📋 คัดลอกสั้น</button>
+                    <button id="copyViewerLineMsgBtn" class="button button-primary" type="button">💬 คัดลอกข้อความ LINE</button>
                   </div>
                 </div>
                 <div class="list-toolbar">
@@ -665,11 +1040,15 @@
           </section>
 
           <section class="view" data-view="lotteries" hidden>
-            <section class="split-grid">
-              <section class="panel manager-panel">
-                <div class="panel-heading">
-                  <h2>ประเภทหวย</h2>
+            <!-- ฟอร์ม เพิ่มหวย: wrapped ใน dialog (กดปุ่มเปิด) -->
+            <dialog id="lotteryFormDialog" class="hh-form-dialog">
+              <header class="hh-form-dialog-header">
+                <h2>＋ เพิ่มประเภทหวย</h2>
+                <div class="hh-form-dialog-actions">
+                  <button type="button" class="winners-dialog-close" id="closeLotteryFormBtn" aria-label="ปิด">✕</button>
                 </div>
+              </header>
+              <div class="hh-form-dialog-body">
                 <form id="lotteryForm" class="inline-form">
                   <label class="field grow-field">
                     <span>ชื่อหวยใหม่</span>
@@ -689,14 +1068,29 @@
                   </label>
                   <button class="button button-primary" type="submit">เพิ่มหวย</button>
                 </form>
-                <div id="lotteryChips" class="chip-list"></div>
-              </section>
+              </div>
+            </dialog>
 
-              <section class="panel schedule-panel">
-                <div class="panel-heading">
-                  <h2 id="scheduleFormTitle">ตั้งเวลารันงวดอัตโนมัติ</h2>
+            <!-- รายการหวย: ตัวหลักเต็มหน้า -->
+            <section class="panel manager-panel hh-list-full">
+              <div class="panel-heading">
+                <h2>ประเภทหวยทั้งหมด</h2>
+                <button id="openLotteryFormBtn" class="button button-primary" type="button">＋ เพิ่มหวย</button>
+              </div>
+              <p class="helper-copy">คลิกที่หวยเพื่อตั้งเวลารันงวดอัตโนมัติ</p>
+              <div id="lotteryChips" class="chip-list lottery-chip-grid"></div>
+            </section>
+
+            <!-- ตั้งเวลารันงวด: wrap dialog -->
+            <dialog id="scheduleFormDialog" class="hh-form-dialog">
+              <header class="hh-form-dialog-header">
+                <h2 id="scheduleFormTitle">⏱ ตั้งเวลารันงวดอัตโนมัติ</h2>
+                <div class="hh-form-dialog-actions">
                   <button id="resetScheduleBtn" class="text-button hidden" type="button">ยกเลิกแก้ไข</button>
+                  <button type="button" class="winners-dialog-close" id="closeScheduleFormBtn" aria-label="ปิด">✕</button>
                 </div>
+              </header>
+              <div class="hh-form-dialog-body">
                 <form id="scheduleForm" class="stack-form">
                   <div class="field-grid customer-grid">
                     <label class="field">
@@ -758,13 +1152,18 @@
                     <button id="generateRoundsBtn" class="button button-secondary" type="button">สร้างงวดล่วงหน้า 14 วัน</button>
                   </div>
                 </form>
-              </section>
+              </div>
+            </dialog>
 
-              <section class="panel round-panel">
-                <div class="panel-heading">
-                  <h2 id="roundFormTitle">สร้างงวด</h2>
+            <dialog id="roundFormDialog" class="hh-form-dialog">
+              <header class="hh-form-dialog-header">
+                <h2 id="roundFormTitle">＋ สร้างงวด</h2>
+                <div class="hh-form-dialog-actions">
                   <button id="resetRoundBtn" class="text-button hidden" type="button">ยกเลิกแก้ไข</button>
+                  <button type="button" class="winners-dialog-close" id="closeRoundFormBtn" aria-label="ปิด">✕</button>
                 </div>
+              </header>
+              <div class="hh-form-dialog-body">
                 <form id="roundForm" class="stack-form">
                   <div class="field-grid customer-grid">
                     <label class="field">
@@ -806,8 +1205,8 @@
                   </div>
                   <button id="roundSubmitBtn" class="button button-primary" type="submit">เพิ่มงวด</button>
                 </form>
-              </section>
-            </section>
+              </div>
+            </dialog>
 
             <section class="panel schedule-table-panel">
               <div class="panel-heading">
@@ -836,6 +1235,23 @@
             <section class="panel rounds-table-panel">
               <div class="panel-heading">
                 <h2>งวดทั้งหมด</h2>
+                <div class="rounds-toolbar" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                  <label style="font-size:0.85em;display:flex;gap:6px;align-items:center;">
+                    <span>หวย:</span>
+                    <select id="roundsFilterLottery" style="padding:4px 8px;border-radius:6px;">
+                      <option value="">— ทั้งหมด —</option>
+                    </select>
+                  </label>
+                  <label style="font-size:0.85em;display:flex;gap:6px;align-items:center;">
+                    <span>สถานะ:</span>
+                    <select id="roundsFilterStatus" style="padding:4px 8px;border-radius:6px;">
+                      <option value="">— ทั้งหมด —</option>
+                      <option value="open">เปิด</option>
+                      <option value="closed">ปิด</option>
+                    </select>
+                  </label>
+                  <button id="openRoundFormBtn" class="button button-primary" type="button">＋ สร้างงวด</button>
+                </div>
               </div>
               <div class="table-wrap">
                 <table>
@@ -881,7 +1297,7 @@
                     <input id="limitNumberInput" inputmode="numeric" maxlength="3" placeholder="เช่น 45" required />
                   </label>
                   <label class="field">
-                    <span>เพดานยอด</span>
+                    <span>ยอดอั้นสูงสุด</span>
                     <input id="limitAmountInput" inputmode="decimal" placeholder="0.00" required />
                   </label>
                 </div>
@@ -891,10 +1307,103 @@
               </form>
             </section>
 
+                                    <section class="panel auto-cap-panel">
+              <div class="panel-heading">
+                <h2>🤖 อั้นเลขอัตโนมัติ</h2>
+                <small class="muted">ตั้งกฎต่อหวย+ประเภท — กด "ใช้กับทุกงวด" เพื่อใส่เพดานทันที</small>
+              </div>
+              <div class="auto-cap-form">
+                <label class="field compact-field"><span>หวย</span><select id="autoCapLottery"></select></label>
+                <label class="field compact-field"><span>ประเภท</span><select id="autoCapBetType"></select></label>
+                <label class="field compact-field"><span>ยอดอั้นต่อเลข (฿)</span><input type="number" id="autoCapDefaultMax" min="0" step="50" placeholder="500"/></label>
+                <label class="field compact-field"><span>%จ่ายเมื่อเกินอั้น</span><input type="number" id="autoCapReducedPct" min="0" max="100" step="5" placeholder="50 = ครึ่ง / ว่าง = ปิดรับ"/></label>
+                <button id="autoCapAddBtn" class="button button-primary" type="button">➕ บันทึกกฎ</button>
+                <button id="autoCapApplyAllBtn" class="button button-secondary" type="button">⚡ ใช้กับทุกงวดที่เปิดอยู่</button>
+              </div>
+              <table class="auto-cap-table">
+                <thead><tr><th>หวย</th><th>ประเภท</th><th class="num">เพดาน</th><th class="num">% เกินเพดาน</th><th></th></tr></thead>
+                <tbody id="autoCapRulesBody"></tbody>
+              </table>
+            </section>
+
+            <section class="panel limit-tools-panel">
+              <div class="panel-heading">
+                <h2>🎛 เครื่องมือเสริม</h2>
+              </div>
+              <div class="limit-tools-actions">
+                <label class="field compact-field">
+                  <span>เลือกงวด</span>
+                  <select id="limitToolsRound"></select>
+                </label>
+                <button id="limitBulkBtn" class="button button-primary" type="button">📦 🎯 อั้นทีละหลายตัว</button>
+                <button id="limitTemplateBtn" class="button button-secondary" type="button">📋 เทมเพลตอั้นเลข</button>
+                <button id="limitSaveTplBtn" class="button button-secondary" type="button">💾 บันทึกเทมเพลตจากงวดนี้</button>
+                <button id="limitRefreshBtn" class="button button-secondary" type="button">🔄 รีเฟรช</button>
+              </div>
+            </section>
+
+            <section class="panel limit-hot-panel">
+              <div class="panel-heading">
+                <h2>🔥 เลขเข้าหนัก (อัพเดทอัตโนมัติ)</h2>
+                <small id="limitHotUpdate" class="muted"></small>
+              </div>
+              <div class="table-wrap dense-table">
+                <table id="limitHotTable">
+                  <thead>
+                    <tr>
+                      <th>#</th>
+                      <th>ประเภท</th>
+                      <th>เลข</th>
+                      <th class="num">บิล</th>
+                      <th class="num">ยอดแทง</th>
+                      <th class="num">เพดาน</th>
+                      <th class="num">%ใช้</th>
+                      <th>สถานะ</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody id="limitHotBody"></tbody>
+                </table>
+              </div>
+              <div id="limitHotEmpty" class="empty-state hidden">ยังไม่มีบิลในงวดนี้</div>
+            </section>
+
+            <section class="panel limit-risk-panel">
+              <div class="panel-heading">
+                <h2>💰 ขาดทุนถ้าออก (เรียงเสี่ยงสูง→ต่ำ)</h2>
+                <small id="limitRiskRevenue" class="muted"></small>
+              </div>
+              <div class="table-wrap dense-table">
+                <table id="limitRiskTable">
+                  <thead>
+                    <tr>
+                      <th>#</th>
+                      <th>ประเภท</th>
+                      <th>เลข</th>
+                      <th class="num">ยอดแทง</th>
+                      <th class="num">อัตราจ่าย</th>
+                      <th class="num">ต้องจ่ายถ้าออก</th>
+                      <th class="num">กำไร/ขาดทุน</th>
+                    </tr>
+                  </thead>
+                  <tbody id="limitRiskBody"></tbody>
+                </table>
+              </div>
+              <div id="limitRiskEmpty" class="empty-state hidden">ยังไม่มีบิลในงวดนี้</div>
+            </section>
+
             <section class="panel limits-table-panel">
               <div class="panel-heading">
-                <h2>ตารางอั้นเลข</h2>
+                <h2>รายการเลขอั้น <small id="limitsTableCount" class="muted"></small></h2>
               </div>
+              <div class="limits-filter-bar">
+                <label class="field compact-field"><span>หวย</span><select id="limitsFilterLottery"><option value="">— ทั้งหมด —</option></select></label>
+                <label class="field compact-field"><span>งวด</span><select id="limitsFilterRound"><option value="">— ทั้งหมด —</option></select></label>
+                <label class="field compact-field"><span>ประเภท</span><select id="limitsFilterBetType"><option value="">— ทั้งหมด —</option></select></label>
+                <button type="button" id="limitsBulkDeleteBtn" class="button button-danger">🗑 ลบทั้งหมดที่กรอง</button>
+                <button type="button" id="limitsClearFilterBtn" class="button button-secondary">↺ ล้างตัวกรอง</button>
+              </div>
+
               <div class="table-wrap">
                 <table>
                   <thead>
@@ -931,17 +1440,43 @@
               <div class="panel-heading">
                 <h2>บันทึกผลรางวัล</h2>
               </div>
-              <label class="field result-round-field">
-                <span>งวด</span>
-                <select id="resultRoundInput"></select>
-              </label>
+              <div class="result-toolbar">
+                <label class="field compact-field result-round-field">
+                  <span>งวด</span>
+                  <select id="resultRoundInput"></select>
+                </label>
+                <!-- BUG-C: removed dead button -->
+              </div>
               <div id="resultStatusBar" class="result-status-bar"></div>
+
+              <div id="apilottoSummaryBanner" class="apilotto-summary-banner" hidden>
+                <span class="aps-icon">📡</span>
+                <div class="aps-text">
+                  <strong id="apsCount">0</strong> รอบที่ apilotto ดึงให้แล้ววันนี้ — ระบบ finalize ให้อัตโนมัติ
+                </div>
+              </div>
+
+              <!-- PENDING REVIEW SIDEBAR (added 2026-05-22) -->
+              <div id="resultPendingPanel" class="result-pending-panel" hidden>
+                <div class="result-pending-head">
+                  <span class="result-pending-title">⏰ ถึงคิวตรวจแล้ว</span>
+                  <span class="result-pending-count" id="resultPendingCount">0</span>
+                </div>
+                <ul id="resultPendingList" class="result-pending-list"></ul>
+              </div>
+
               <div id="resultEditor" class="result-editor"></div>
             </section>
 
             <section class="panel records-panel">
               <div class="panel-heading">
-                <h2>ตรวจผลรางวัลล่าสุด</h2>
+                <h2>ตรวจผลรางวัลล่าสุด <small id="resOvCount" class="muted"></small></h2>
+              </div>
+              <div class="results-filter-bar">
+                <label class="field compact-field"><span>หวย</span><select id="resOvFilterLottery"><option value="">— ทั้งหมด —</option></select></label>
+                <label class="field compact-field"><span>สถานะ</span><select id="resOvFilterStatus"><option value="">— ทั้งหมด —</option><option value="finalized">ยืนยันแล้ว</option><option value="draft">รอปิดงาน</option></select></label>
+                <label class="field compact-field"><span>ค้นหา</span><input type="search" id="resOvSearch" placeholder="พิมพ์เลข/งวด/วันที่"/></label>
+                <button type="button" id="resOvClearBtn" class="button button-secondary">↺ ล้าง</button>
               </div>
               <div class="table-wrap dense-table">
                 <table>
@@ -999,6 +1534,16 @@
             <section class="panel settlement-panel">
               <div class="panel-heading">
                 <h2>บัญชีการเงิน</h2>
+                <div class="finance-filter">
+                  <label class="field compact-field"><span>ช่วงเวลา</span>
+                    <select id="financePeriod">
+                      <option value="today">วันนี้</option>
+                      <option value="week">สัปดาห์นี้</option>
+                      <option value="month" selected>เดือนนี้</option>
+                      <option value="all">ทั้งหมด</option>
+                    </select>
+                  </label>
+                </div>
               </div>
               <section class="summary-grid report-grid">
                 <article class="metric metric-red">
@@ -1055,7 +1600,20 @@
                   <span>ผู้ถูกรางวัล</span>
                   <strong id="reportWinnerCount">0</strong>
                 </article>
+                <article class="metric metric-amber">
+                  <span>จ่ายแล้ว</span>
+                  <strong id="reportPaidCount">0 / 0</strong>
+                  <small id="reportPaidAmount" class="muted">฿0.00</small>
+                </article>
+                <article class="metric metric-red">
+                  <span>รอจ่าย</span>
+                  <strong id="reportPendingCount">0</strong>
+                  <small id="reportPendingAmount" class="muted">฿0.00</small>
+                </article>
               </section>
+              <div class="settlement-toolbar">
+                <button id="markAllPaidBtn" type="button" class="button button-primary" disabled>✓ จ่ายหมดทุกราย</button>
+              </div>
               <div class="table-wrap">
                 <table>
                   <thead>
@@ -1066,6 +1624,7 @@
                       <th>ยอด</th>
                       <th>อัตราจ่าย</th>
                       <th>จ่ายจริง</th>
+                      <th>สถานะจ่าย</th>
                     </tr>
                   </thead>
                   <tbody id="winnersBody"></tbody>
@@ -1118,6 +1677,43 @@
                   <tbody id="headHouseReportBody"></tbody>
                 </table>
               </div>
+            </section>
+          </section>
+
+          <section class="view" data-view="lineContacts" hidden>
+            <section class="panel records-panel">
+              <div class="panel-heading">
+                <h2>🔗 LINE ที่ทักเข้ามา</h2>
+                <button class="text-button" type="button" data-view-target="manage">← กลับ</button>
+              </div>
+              <p class="helper-copy">ผู้ที่ทักเข้ามาใน LINE OA ของเรา — กด "ผูก" ที่หัวบ้านที่ตรงกัน</p>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th></th>
+                      <th>ชื่อ LINE</th>
+                      <th>LINE ID</th>
+                      <th>ทักล่าสุด</th>
+                      <th>จำนวน msg</th>
+                      <th>สถานะ</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody id="lineContactsBody"></tbody>
+                </table>
+              </div>
+              <div id="lineContactsEmpty" class="empty-state hidden">ยังไม่มีคนทักเข้ามา</div>
+            </section>
+          </section>
+
+          <section class="view" data-view="auditLog" hidden>
+            <section class="panel records-panel audit-log-view-panel">
+              <div class="panel-heading">
+                <h2>📜 บันทึกกิจกรรมล่าสุด</h2>
+                <button class="text-button" type="button" data-view-target="manage">← กลับ</button>
+              </div>
+              <div id="auditLogList" class="compact-table-list"></div>
             </section>
           </section>
 
@@ -1182,7 +1778,62 @@
               </section>
             </section>
           </section>
-        </main>
+        
+        <!-- X1: STATS DASHBOARD -->
+        <section class="view" data-view="statsDashboard" hidden>
+          <header class="view-header">
+            <button class="back-link" type="button" data-view-target="manage">‹ กลับตั้งค่า</button>
+            <h2>📊 รายงานสถิติ</h2>
+          </header>
+          <div class="stats-controls" style="margin: 12px 0;">
+            <label>ช่วงเวลา:
+              <select id="statsDays">
+                <option value="7">7 วัน</option>
+                <option value="30" selected>30 วัน</option>
+                <option value="90">90 วัน</option>
+                <option value="365">1 ปี</option>
+              </select>
+            </label>
+            <button class="button button-secondary" type="button" id="statsRefreshBtn">🔄 รีเฟรช</button>
+          </div>
+          <div id="statsSummaryCards" class="cards-row"></div>
+          <details open class="card-section">
+            <summary class="card-summary">💰 กำไรรายงวด</summary>
+            <div id="statsProfitLossBody" class="table-wrap"></div>
+          </details>
+          <details open class="card-section">
+            <summary class="card-summary">🔢 เลขฮิตสุด (รวมยอด)</summary>
+            <div id="statsTopNumbersBody" class="table-wrap"></div>
+          </details>
+          <details open class="card-section">
+            <summary class="card-summary">👥 ลูกค้าท็อป</summary>
+            <div id="statsTopCustomersBody" class="table-wrap"></div>
+          </details>
+        </section>
+
+        <!-- X1: PROMOTIONS ADMIN -->
+        <section class="view" data-view="promotionsAdmin" hidden>
+          <header class="view-header">
+            <button class="back-link" type="button" data-view-target="manage">‹ กลับตั้งค่า</button>
+            <h2>🎟️ โปรโมชั่น</h2>
+          </header>
+          <form id="promoCreateForm" class="form-inline" style="margin: 12px 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 8px; padding: 12px; background: var(--bg-card); border-radius: 8px;">
+            <input type="text" id="promoCode" placeholder="CODE (เช่น SAVE100)" required pattern="[A-Z0-9_-]{3,30}" maxlength="30" />
+            <select id="promoType" required>
+              <option value="percent">เปอร์เซ็นต์ %</option>
+              <option value="fixed">หักคงที่ (บาท)</option>
+              <option value="bonus_credit">เครดิตเพิ่ม (บาท)</option>
+            </select>
+            <input type="number" id="promoValue" placeholder="ค่า (10 หรือ 100)" required min="0" step="0.01" />
+            <input type="number" id="promoMin" placeholder="ยอดขั้นต่ำ (บาท)" min="0" step="1" />
+            <input type="number" id="promoMaxUses" placeholder="ใช้ได้สูงสุด (0=ไม่จำกัด)" min="0" />
+            <input type="text" id="promoDesc" placeholder="คำอธิบาย (ไม่บังคับ)" maxlength="200" />
+            <button type="submit" class="button button-primary">+ สร้าง code</button>
+          </form>
+          <div id="promoList" class="table-wrap"></div>
+        </section>
+
+      </main>
       </div>
     </div>
 
@@ -1221,6 +1872,7 @@
     <!-- Mobile nav hamburger (only visible on small screens) -->
     <button id="navToggleBtn" class="nav-toggle" type="button" aria-label="เปิดเมนู" aria-expanded="false" aria-controls="primaryNav" title="เปิดเมนู">☰</button>
 
-    <script src="app.js?v=20260522-pastemanual"></script>
+    <script defer src="/order-config.js"></script>
+    <script defer src="app.js?v=20260616-online-list"></script>
   </body>
 </html>

@@ -1,0 +1,1400 @@
+/* ====== บ้านหวยเรือนเลขเศรษฐี — Customer Order Page ====== */
+:root {
+  --primary: #0f5132;
+  --primary-dark: #0a3a23;
+  --primary-light: #1b6b48;
+  --gold: #c8990b;
+  --gold-light: #e8b73d;
+  --gold-gradient: linear-gradient(135deg, #c8990b 0%, #e8b73d 100%);
+  --green-gradient: linear-gradient(135deg, #0a3a23 0%, #0f5132 60%, #1b6b48 100%);
+  --bg: #f7f6f1;
+  --surface: #ffffff;
+  --surface-2: #f1ede3;
+  --text: #1a2421;
+  --text-soft: #5a6c63;
+  --border: #e3ddd0;
+  --border-strong: #c9c1ad;
+  --error: #c0392b;
+  --success: #1b8f4c;
+  --radius: 14px;
+  --radius-sm: 10px;
+  --shadow-card: 0 4px 16px rgba(15, 81, 50, 0.08);
+  --shadow-lift: 0 8px 24px rgba(15, 81, 50, 0.14);
+  --transition: 180ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0e1916;
+    --surface: #18241f;
+    --surface-2: #1f2d27;
+    --text: #f0ede3;
+    --text-soft: #a8b0a8;
+    --border: #2c3a33;
+    --border-strong: #41544a;
+  }
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Prompt', 'Inter', system-ui, -apple-system, sans-serif;
+  font-size: 16px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+}
+
+input, textarea, button, select {
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+}
+
+.page {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* === Top bar === */
+.topbar {
+  background: var(--green-gradient);
+  color: #fff;
+  padding: 14px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.15);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.brand-mark {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--gold-gradient);
+  color: #0a3a23;
+  display: grid;
+  place-items: center;
+  font-weight: 700;
+  font-size: 22px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.brand-eyebrow {
+  font-size: 11px;
+  letter-spacing: 0.5px;
+  opacity: 0.9;
+  text-transform: uppercase;
+}
+
+.brand-title {
+  font-size: 16px;
+  font-weight: 600;
+  background: var(--gold-gradient);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  margin-top: 2px;
+}
+
+.link-btn {
+  background: transparent;
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 999px;
+  padding: 6px 14px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: var(--transition);
+}
+.link-btn:hover { background: rgba(255, 255, 255, 0.1); }
+
+.content {
+  flex: 1;
+  width: 100%;
+  max-width: 560px;
+  margin: 0 auto;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* === Step indicator === */
+.steps {
+  list-style: none;
+  margin: 0 0 4px;
+  padding: 0;
+  display: flex;
+  gap: 4px;
+  background: var(--surface);
+  border-radius: 999px;
+  padding: 6px;
+  box-shadow: var(--shadow-card);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.steps::-webkit-scrollbar { display: none; }
+
+.steps li {
+  flex: 1;
+  text-align: center;
+  font-size: 12px;
+  padding: 8px 4px;
+  border-radius: 999px;
+  color: var(--text-soft);
+  white-space: nowrap;
+  position: relative;
+  transition: var(--transition);
+}
+
+.steps li.active {
+  background: var(--green-gradient);
+  color: #fff;
+  font-weight: 600;
+}
+
+.steps li.done {
+  color: var(--primary);
+}
+.steps li.done::before {
+  content: "✓ ";
+  color: var(--gold);
+}
+
+/* === Card === */
+.card {
+  background: var(--surface);
+  border-radius: var(--radius);
+  padding: 20px;
+  box-shadow: var(--shadow-card);
+  border: 1px solid var(--border);
+}
+
+.card h2 {
+  margin: 0 0 8px;
+  font-size: 18px;
+  color: var(--primary);
+}
+
+.card .muted {
+  color: var(--text-soft);
+  font-size: 14px;
+  margin: 0 0 16px;
+}
+
+/* === Form === */
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+.field > span {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+}
+.field > span em {
+  color: var(--error);
+  font-style: normal;
+}
+
+.field input, .field textarea, .search-input {
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 16px;
+  transition: var(--transition);
+}
+
+.field input:focus, .field textarea:focus, .search-input:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(15, 81, 50, 0.12);
+  background: var(--surface);
+}
+
+.field input[aria-invalid="true"] {
+  border-color: var(--error);
+}
+
+.field .muted {
+  font-size: 12px;
+  margin: 0;
+}
+
+.field-error {
+  color: var(--error);
+  font-size: 12px;
+  min-height: 14px;
+}
+
+.search-input {
+  margin-bottom: 12px;
+}
+
+/* === Buttons === */
+.primary-btn, .secondary-btn {
+  width: 100%;
+  padding: 14px 16px;
+  border-radius: var(--radius-sm);
+  font-size: 16px;
+  font-weight: 600;
+  border: none;
+  cursor: pointer;
+  transition: var(--transition);
+  -webkit-tap-highlight-color: transparent;
+  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.primary-btn {
+  background: var(--green-gradient);
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(15, 81, 50, 0.25);
+}
+.primary-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-lift);
+}
+.primary-btn:active:not(:disabled) {
+  transform: translateY(0);
+}
+.primary-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.primary-btn-strong {
+  background: var(--gold-gradient);
+  color: #0a3a23;
+  font-size: 17px;
+  padding: 16px;
+}
+
+.secondary-btn {
+  background: var(--surface-2);
+  color: var(--primary);
+  border: 1px solid var(--border-strong);
+}
+.secondary-btn:hover:not(:disabled) {
+  background: var(--surface);
+  border-color: var(--primary);
+}
+
+.row-buttons {
+  display: flex;
+  gap: 10px;
+  margin-top: 16px;
+  flex-wrap: wrap;
+}
+.row-buttons .link-btn {
+  color: var(--text-soft);
+  border-color: var(--border-strong);
+  background: transparent;
+}
+.row-buttons .link-btn:hover {
+  background: var(--surface-2);
+}
+.row-buttons .primary-btn,
+.row-buttons .secondary-btn {
+  flex: 1;
+  min-width: 140px;
+}
+
+/* === Lottery grid === */
+.lottery-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.lottery-card {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 14px 12px;
+  cursor: pointer;
+  text-align: left;
+  transition: var(--transition);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  position: relative;
+  font-family: inherit;
+}
+
+.lottery-card:hover {
+  border-color: var(--primary);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-card);
+}
+
+.lottery-card .lottery-name {
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--primary);
+  line-height: 1.3;
+}
+
+.lottery-card .lottery-round {
+  font-size: 12px;
+  color: var(--text-soft);
+}
+
+.lottery-card .lottery-closes {
+  font-size: 11px;
+  color: var(--gold);
+  font-weight: 500;
+}
+
+.lottery-card .badge-status {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  font-size: 10px;
+  background: var(--gold-gradient);
+  color: #0a3a23;
+  padding: 2px 6px;
+  border-radius: 999px;
+  font-weight: 600;
+}
+
+.empty {
+  grid-column: 1 / -1;
+  text-align: center;
+  color: var(--text-soft);
+  padding: 40px 16px;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-sm);
+}
+
+/* === Picked round bar === */
+.picked-round {
+  background: linear-gradient(135deg, rgba(15, 81, 50, 0.08) 0%, rgba(200, 153, 11, 0.08) 100%);
+  border-left: 4px solid var(--gold);
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  margin-bottom: 14px;
+  font-size: 14px;
+}
+.picked-round strong { color: var(--primary); }
+
+/* === Bet type buttons === */
+.bet-type-group { margin-bottom: 14px; }
+.bet-type-label {
+  display: block;
+  font-size: 13px;
+  font-weight: 500;
+  margin-bottom: 8px;
+  color: var(--text);
+}
+
+.bet-type-buttons {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+
+.bet-type-btn {
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  color: var(--text-soft);
+  padding: 10px 4px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  cursor: pointer;
+  transition: var(--transition);
+  font-family: inherit;
+  font-weight: 500;
+}
+.bet-type-btn:hover:not(:disabled) { border-color: var(--primary); }
+.bet-type-btn[aria-pressed="true"] {
+  background: var(--green-gradient);
+  color: #fff;
+  border-color: var(--primary);
+  font-weight: 600;
+}
+.bet-type-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* === Entry form === */
+.entry-form {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.entry-form .secondary-btn {
+  grid-column: 1 / -1;
+}
+
+@media (min-width: 480px) {
+  .entry-form {
+    grid-template-columns: 1fr 1fr auto;
+    align-items: end;
+  }
+  .entry-form .field { margin-bottom: 0; }
+  .entry-form .secondary-btn {
+    grid-column: auto;
+    width: auto;
+    padding: 12px 18px;
+  }
+}
+
+/* === Entries list === */
+.entries-list {
+  background: var(--surface-2);
+  border-radius: var(--radius-sm);
+  padding: 12px;
+  margin-bottom: 14px;
+}
+
+.entries-list-header {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--primary);
+  margin-bottom: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+.entries-total strong {
+  color: var(--gold);
+  font-size: 16px;
+}
+
+.entry-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.entry-list .empty {
+  padding: 12px;
+  text-align: center;
+  background: transparent;
+  border: none;
+  font-size: 13px;
+}
+
+.entry-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  background: var(--surface);
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+.entry-item .entry-bet-type {
+  font-size: 11px;
+  color: var(--text-soft);
+  background: var(--surface-2);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+.entry-item .entry-number {
+  font-weight: 700;
+  color: var(--primary);
+  font-size: 16px;
+  flex: 1;
+}
+.entry-item .entry-amount {
+  font-weight: 600;
+  color: var(--gold);
+}
+.entry-item .entry-remove {
+  background: transparent;
+  border: none;
+  color: var(--error);
+  cursor: pointer;
+  padding: 4px 8px;
+  font-size: 16px;
+  border-radius: 6px;
+}
+.entry-item .entry-remove:hover { background: rgba(192, 57, 43, 0.1); }
+
+/* === Review block === */
+.review-block {
+  background: var(--surface-2);
+  border-radius: var(--radius-sm);
+  padding: 14px;
+  margin-bottom: 14px;
+}
+.review-block .review-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 6px 0;
+  border-bottom: 1px dashed var(--border);
+  font-size: 14px;
+}
+.review-block .review-row:last-child { border-bottom: none; }
+.review-block .review-row.review-total {
+  font-weight: 700;
+  color: var(--primary);
+  font-size: 16px;
+  margin-top: 6px;
+  padding-top: 12px;
+  border-top: 2px solid var(--gold);
+  border-bottom: none;
+}
+.review-block h4 {
+  margin: 14px 0 8px;
+  font-size: 13px;
+  color: var(--primary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.review-entries {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.review-entries li {
+  background: var(--surface);
+  padding: 8px 10px;
+  border-radius: 6px;
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  border: 1px solid var(--border);
+}
+
+.warning {
+  background: rgba(200, 153, 11, 0.1);
+  border: 1px solid rgba(200, 153, 11, 0.3);
+  color: #7a5e08;
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  margin-bottom: 14px;
+}
+.warning strong { display: block; margin-bottom: 4px; }
+.warning p { margin: 0; }
+.warning em { font-style: normal; font-weight: 600; }
+
+/* === Success === */
+.success-card {
+  text-align: center;
+}
+.success-icon {
+  width: 72px;
+  height: 72px;
+  margin: 0 auto 14px;
+  border-radius: 50%;
+  background: var(--gold-gradient);
+  color: #0a3a23;
+  display: grid;
+  place-items: center;
+  font-size: 40px;
+  font-weight: 700;
+  box-shadow: 0 4px 16px rgba(200, 153, 11, 0.4);
+}
+.bill-code {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--primary);
+  background: var(--surface-2);
+  padding: 12px;
+  border-radius: var(--radius-sm);
+  margin: 8px 0 20px;
+  letter-spacing: 2px;
+  border: 2px dashed var(--gold);
+}
+
+.next-steps {
+  text-align: left;
+  background: var(--surface-2);
+  border-radius: var(--radius-sm);
+  padding: 14px;
+  margin-bottom: 16px;
+}
+.next-steps h3 {
+  margin: 0 0 10px;
+  font-size: 14px;
+  color: var(--primary);
+}
+.next-steps ol {
+  margin: 0;
+  padding-left: 20px;
+  font-size: 14px;
+  line-height: 1.7;
+}
+.next-steps strong { color: var(--gold); }
+
+/* === Footer === */
+.footer {
+  text-align: center;
+  padding: 16px;
+  color: var(--text-soft);
+  font-size: 12px;
+}
+
+/* === Toast === */
+.toast {
+  position: fixed;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--primary-dark);
+  color: #fff;
+  padding: 12px 18px;
+  border-radius: 999px;
+  font-size: 14px;
+  z-index: 100;
+  box-shadow: var(--shadow-lift);
+  max-width: 90%;
+  text-align: center;
+  animation: toast-in 200ms ease;
+}
+.toast.toast-error { background: var(--error); }
+.toast.toast-success { background: var(--success); }
+
+@keyframes toast-in {
+  from { opacity: 0; transform: translate(-50%, 20px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
+
+/* === Small mobile tweaks === */
+@media (max-width: 360px) {
+  .content { padding: 12px; }
+  .card { padding: 16px; }
+  .lottery-grid { grid-template-columns: 1fr; }
+  .bet-type-buttons { grid-template-columns: 1fr 1fr; }
+}
+
+/* ===== ORDER UX FEEDBACK 2026-05-22 ===== */
+/* Input focus — strong gold ring */
+#entryNumber:focus, #entryAmount:focus {
+  outline: none !important;
+  border-color: var(--gold) !important;
+  box-shadow: 0 0 0 3px rgba(200, 153, 11, 0.25), 0 2px 8px rgba(15, 81, 50, 0.1) !important;
+  background: #ffffff !important;
+}
+
+/* Add button — clearer states */
+#addEntryBtn.secondary-btn {
+  background: var(--surface-2);
+  color: var(--text-soft);
+  border: 2px dashed var(--border-strong);
+  font-weight: 500;
+  transition: all 200ms ease;
+}
+#addEntryBtn.secondary-btn::before {
+  content: "▢ ";
+  opacity: 0.4;
+  font-size: 14px;
+}
+#addEntryBtn.ready {
+  background: linear-gradient(135deg, #c8990b 0%, #e8b73d 100%) !important;
+  color: #0a3a23 !important;
+  border: 2px solid #c8990b !important;
+  font-weight: 700 !important;
+  box-shadow: 0 4px 14px rgba(200, 153, 11, 0.35) !important;
+  animation: btn-ready-pulse 1.5s ease-in-out infinite;
+}
+#addEntryBtn.ready::before {
+  content: "✓ ";
+  opacity: 1;
+  font-size: 16px;
+}
+@keyframes btn-ready-pulse {
+  0%, 100% { transform: scale(1); box-shadow: 0 4px 14px rgba(200, 153, 11, 0.35); }
+  50%      { transform: scale(1.02); box-shadow: 0 6px 18px rgba(200, 153, 11, 0.5); }
+}
+#addEntryBtn.flash {
+  animation: btn-flash 600ms ease;
+}
+@keyframes btn-flash {
+  0%   { transform: scale(1); background: linear-gradient(135deg, #16a34a 0%, #22c55e 100%); color: #fff; }
+  50%  { transform: scale(0.96); }
+  100% { transform: scale(1); }
+}
+
+/* Entries list — distinct background when items exist */
+.entries-list {
+  background: var(--surface);
+  border: 2px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px;
+  margin-bottom: 14px;
+  transition: all 200ms ease;
+}
+.entries-list.has-items {
+  background: linear-gradient(135deg, #f0f9f4 0%, #fffbeb 100%);
+  border-color: var(--gold);
+  box-shadow: 0 4px 14px rgba(200, 153, 11, 0.12);
+}
+.entries-list-header {
+  font-size: 14px;
+  font-weight: 700;
+  padding-bottom: 10px;
+  border-bottom: 2px solid var(--border);
+}
+.entries-list.has-items .entries-list-header {
+  border-bottom-color: var(--gold);
+  color: var(--primary);
+}
+.entries-list.has-items .entries-total strong {
+  color: var(--gold);
+  font-size: 18px;
+  background: rgba(200, 153, 11, 0.12);
+  padding: 2px 10px;
+  border-radius: 999px;
+}
+
+/* Entry item — stronger card look */
+.entry-item {
+  background: #fff !important;
+  border: 1px solid var(--border) !important;
+  border-left: 4px solid var(--primary) !important;
+  border-radius: 10px !important;
+  padding: 10px 12px !important;
+  transition: all 200ms ease;
+}
+.entry-item .entry-bet-type {
+  background: var(--primary) !important;
+  color: #fff !important;
+  font-weight: 600 !important;
+}
+.entry-item .entry-number {
+  font-size: 18px !important;
+  letter-spacing: 1px;
+}
+.entry-item .entry-amount {
+  font-size: 15px !important;
+  background: rgba(200, 153, 11, 0.12);
+  padding: 3px 10px;
+  border-radius: 999px;
+}
+
+/* Just-added animation — slide in + gold flash */
+.entry-item.just-added {
+  animation: entry-slide-in 500ms ease, entry-gold-flash 1100ms ease;
+  border-left-color: var(--gold) !important;
+  border-left-width: 6px !important;
+}
+@keyframes entry-slide-in {
+  from { transform: translateX(40px); opacity: 0; }
+  to   { transform: translateX(0); opacity: 1; }
+}
+@keyframes entry-gold-flash {
+  0%   { background: linear-gradient(90deg, #fef3c7 0%, #fde68a 100%) !important; box-shadow: 0 4px 16px rgba(200, 153, 11, 0.4); }
+  60%  { background: linear-gradient(90deg, #fef9e7 0%, #fffbeb 100%) !important; }
+  100% { background: #fff !important; box-shadow: 0 2px 6px rgba(0,0,0,0.04); }
+}
+
+/* Empty-state messaging */
+.entry-list .empty {
+  background: linear-gradient(135deg, #fefdf9 0%, #faf8f1 100%);
+  border: 2px dashed var(--border-strong);
+  border-radius: 10px;
+  padding: 18px;
+  text-align: center;
+  color: var(--text-soft);
+  font-size: 13px;
+  font-style: italic;
+}
+.entry-list .empty::before {
+  content: "👇 ";
+  font-style: normal;
+}
+
+/* Toast — stronger contrast for success */
+.toast.toast-success {
+  background: linear-gradient(135deg, #16a34a 0%, #22c55e 100%) !important;
+  color: #fff !important;
+  font-weight: 600;
+  font-size: 15px;
+  padding: 14px 22px;
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(22, 163, 74, 0.4);
+}
+
+/* ===== ORDER INPUT CONTRAST 2026-05-22 ===== */
+/* Number/amount input — large, bold, tabular for max readability */
+#entryNumber, #entryAmount {
+  font-size: 22px !important;
+  font-weight: 700 !important;
+  font-variant-numeric: tabular-nums !important;
+  text-align: center !important;
+  letter-spacing: 2px !important;
+  padding: 14px 12px !important;
+  background: #ffffff !important;
+  color: #0a3a23 !important;
+  border: 2px solid #c9c1ad !important;
+  border-radius: 12px !important;
+  transition: all 150ms ease !important;
+}
+#entryNumber::placeholder, #entryAmount::placeholder {
+  color: #b8b0a0 !important;
+  font-weight: 400 !important;
+  letter-spacing: 1px !important;
+  opacity: 1 !important;
+}
+#entryNumber:focus, #entryAmount:focus {
+  border-color: #c8990b !important;
+  background: #fffceb !important;
+  color: #0a3a23 !important;
+  box-shadow: 0 0 0 4px rgba(200, 153, 11, 0.3), 0 4px 12px rgba(15, 81, 50, 0.1) !important;
+}
+/* Field label above input — bigger and brighter */
+.entry-form label.field > span {
+  font-size: 14px !important;
+  font-weight: 600 !important;
+  color: var(--primary) !important;
+  margin-bottom: 6px !important;
+}
+.entry-form label.field > span em {
+  color: var(--gold) !important;
+  font-weight: 700 !important;
+}
+
+/* Dark mode — make inputs WHITE so text stays readable */
+@media (prefers-color-scheme: dark) {
+  #entryNumber, #entryAmount {
+    background: #ffffff !important;
+    color: #0a3a23 !important;
+    border-color: #c8990b !important;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.3) !important;
+  }
+  #entryNumber:focus, #entryAmount:focus {
+    background: #fffceb !important;
+    color: #0a3a23 !important;
+    box-shadow: 0 0 0 4px rgba(232, 183, 61, 0.5), 0 4px 14px rgba(0,0,0,0.4) !important;
+  }
+  #entryNumber::placeholder, #entryAmount::placeholder {
+    color: #a8a090 !important;
+  }
+  .entry-form label.field > span {
+    color: #e8b73d !important;
+  }
+  /* Customer name + phone + note — also keep inputs white */
+  #custName, #custPhone, #orderNote, #lotterySearch {
+    background: #ffffff !important;
+    color: #0a3a23 !important;
+    border-color: #c8990b !important;
+  }
+  #custName::placeholder, #custPhone::placeholder, #orderNote::placeholder, #lotterySearch::placeholder {
+    color: #a8a090 !important;
+  }
+}
+
+/* Make the entry-form a clear "input zone" */
+.entry-form {
+  background: linear-gradient(135deg, rgba(15, 81, 50, 0.04) 0%, rgba(200, 153, 11, 0.04) 100%);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px;
+  margin-bottom: 14px;
+}
+@media (prefers-color-scheme: dark) {
+  .entry-form {
+    background: linear-gradient(135deg, rgba(232, 183, 61, 0.08) 0%, rgba(232, 183, 61, 0.04) 100%);
+    border-color: rgba(232, 183, 61, 0.3);
+  }
+}
+
+
+/* ===== LIFF BADGE 2026-05-22 ===== */
+.liff-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(255,255,255,0.15);
+  padding: 4px 10px 4px 4px;
+  border-radius: 999px;
+  margin-left: 10px;
+  font-size: 12px;
+  color: #fff;
+}
+.liff-badge img {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 2px solid rgba(232,183,61,0.8);
+}
+.liff-badge strong {
+  color: #e8b73d;
+  font-weight: 600;
+}
+
+
+/* ===== SUCCESS STEP V2 2026-05-22 ===== */
+.action-warn {
+  background: linear-gradient(90deg, #fef3c7 0%, #fde68a 100%);
+  border: 2px solid #d97706;
+  color: #78350f;
+  border-radius: 12px;
+  padding: 12px 16px;
+  margin: 14px 0;
+  font-size: 14px;
+  text-align: center;
+  font-weight: 500;
+}
+.action-warn strong { color: #78350f; }
+.row-buttons.primary-row #copyBillBtn {
+  font-size: 16px;
+  padding: 16px 20px;
+}
+.row-buttons.safe-row {
+  margin-top: 12px;
+  border-top: 1px dashed var(--border);
+  padding-top: 14px;
+}
+.link-btn-danger {
+  color: #b91c1c !important;
+  border: 1px solid rgba(185, 28, 28, 0.3) !important;
+  background: transparent !important;
+  font-weight: 500;
+  font-size: 13px !important;
+  margin: 0 auto;
+  display: block;
+}
+.link-btn-danger:hover {
+  background: rgba(185, 28, 28, 0.06) !important;
+}
+#sendToChatBtn {
+  width: 100%;
+  background: #06c755;
+  color: #fff;
+  border: none;
+  margin-top: 8px;
+  padding: 14px;
+  font-size: 15px;
+  font-weight: 600;
+}
+#sendToChatBtn.hidden { display: none; }
+
+/* === BANK-FEAT: bank-pay-card หลังยืนยัน + bank-logo === */
+.bank-pay-card {
+  background: linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%);
+  border: 1px solid #86efac;
+  border-radius: 12px;
+  padding: 16px;
+  margin: 16px 0;
+  box-shadow: 0 2px 8px rgba(34, 197, 94, 0.08);
+}
+.bank-pay-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.bank-pay-bank {
+  font-weight: 600;
+  font-size: 15px;
+  color: #0f5132;
+}
+.bank-pay-holder {
+  font-size: 13px;
+  color: #4b5563;
+  margin-top: 2px;
+}
+.bank-pay-account {
+  background: #fff;
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 10px;
+}
+.bank-pay-acct-label {
+  font-size: 12px;
+  color: #6b7280;
+  margin-bottom: 4px;
+}
+.bank-pay-acct-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.bank-pay-acct-num {
+  font-family: 'SF Mono', Consolas, Monaco, monospace;
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  color: #111827;
+  user-select: all;
+}
+.bank-pay-copy {
+  background: #0f5132;
+  color: #fff;
+  border: 0;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.bank-pay-copy:active { transform: scale(0.97); }
+.bank-pay-amount-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  background: rgba(255,255,255,0.6);
+  border-radius: 6px;
+  font-size: 14px;
+  color: #4b5563;
+}
+.bank-pay-amount-row strong {
+  font-size: 22px;
+  color: #0f5132;
+  font-weight: 700;
+}
+.bank-pay-note {
+  margin-top: 8px;
+  padding: 6px 10px;
+  background: rgba(254, 240, 138, 0.5);
+  border-radius: 6px;
+  font-size: 12px;
+  color: #713f12;
+}
+/* bank-logo (omise SVG + brand color) — copy จาก info.css */
+.bank-logo {
+  display: inline-block;
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 70% 70%;
+  background-color: #e5e7eb;
+  flex-shrink: 0;
+}
+.bank-logo.bank-kbank   { background-color: #138f2d; background-image: url(/img/banks/kbank.svg); }
+.bank-logo.bank-scb     { background-color: #4e2e7f; background-image: url(/img/banks/scb.svg); }
+.bank-logo.bank-bbl     { background-color: #1e4297; background-image: url(/img/banks/bbl.svg); }
+.bank-logo.bank-ktb     { background-color: #00a4e4; background-image: url(/img/banks/ktb.svg); }
+.bank-logo.bank-bay     { background-color: #fec43b; background-image: url(/img/banks/bay.svg); }
+.bank-logo.bank-ttb     { background-color: #1b4ee8; background-image: url(/img/banks/ttb.svg); }
+.bank-logo.bank-gsb     { background-color: #ec1c8a; background-image: url(/img/banks/gsb.svg); }
+.bank-logo.bank-baac    { background-color: #5cb849; background-image: url(/img/banks/baac.svg); }
+.bank-logo.bank-kkp     { background-color: #4d2c5e; background-image: url(/img/banks/kkp.svg); }
+.bank-logo.bank-cimb    { background-color: #a02021; background-image: url(/img/banks/cimb.svg); }
+.bank-logo.bank-tisco   { background-color: #12549d; background-image: url(/img/banks/tisco.svg); }
+.bank-logo.bank-uob     { background-color: #ce0a2c; background-image: url(/img/banks/uob.svg); }
+.bank-logo.bank-lhbank  { background-color: #6d3a96; background-image: url(/img/banks/lhbank.svg); }
+.bank-logo.bank-icbc    { background-color: #b80000; background-image: url(/img/banks/icbc.svg); }
+.bank-logo.bank-ghb     { background-color: #ed8000; background-image: url(/img/banks/ghb.svg); }
+.bank-logo.bank-truewallet { background-color: #ff7a00; background-image: url(/img/banks/truewallet.svg); }
+
+/* === SIMP-FEAT: step-card layout (1 step 1 action) === */
+.bill-code-wrap {
+  background: #f0fdf4;
+  border: 1px dashed #86efac;
+  border-radius: 10px;
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  margin: 12px 0;
+}
+.bill-code-label {
+  font-size: 12px;
+  color: #6b7280;
+  letter-spacing: 0.5px;
+}
+.bill-code {
+  font-family: 'SF Mono', Consolas, monospace;
+  font-size: 26px;
+  font-weight: 700;
+  color: #0f5132;
+  letter-spacing: 2px;
+}
+.step-card {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 16px;
+  margin: 12px 0;
+  position: relative;
+}
+.step-card-num {
+  position: absolute;
+  top: -10px;
+  left: 16px;
+  width: 26px;
+  height: 26px;
+  background: #0f5132;
+  color: #fff;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 14px;
+}
+.step-card-title {
+  font-weight: 600;
+  font-size: 15px;
+  color: #111827;
+  margin: 0 0 12px 32px;
+}
+.step-card-hint {
+  font-size: 13px;
+  color: #6b7280;
+  margin: 8px 0 0 0;
+  line-height: 1.5;
+}
+.step-card-1 { background: linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%); border-color: #86efac; }
+.step-card-2 { background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%); border-color: #93c5fd; }
+.step-card-3 { background: linear-gradient(135deg, #fefce8 0%, #fef3c7 100%); border-color: #fde68a; }
+
+/* Tap-to-copy bank account row (full-width button) */
+.bank-pay-acct-tap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  background: #fff;
+  border: 2px dashed #86efac;
+  border-radius: 10px;
+  padding: 12px 16px;
+  margin: 12px 0 10px 0;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.bank-pay-acct-tap:active { transform: scale(0.98); border-color: #0f5132; }
+.bank-pay-acct-tap.copied { border-color: #0f5132; background: #f0fdf4; }
+.bank-pay-acct-num {
+  font-family: 'SF Mono', Consolas, monospace;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  color: #111827;
+}
+.bank-pay-acct-hint {
+  font-size: 12px;
+  color: #0f5132;
+  font-weight: 500;
+}
+.bank-pay-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+.bank-pay-info { flex: 1; min-width: 0; }
+.bank-pay-bank { font-weight: 600; font-size: 14px; color: #0f5132; }
+.bank-pay-holder { font-size: 13px; color: #4b5563; margin-top: 2px; }
+.bank-pay-amount-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 14px;
+  background: rgba(255,255,255,0.7);
+  border-radius: 8px;
+  font-size: 14px;
+  color: #4b5563;
+}
+.bank-pay-amount-row strong {
+  font-size: 22px;
+  color: #0f5132;
+  font-weight: 700;
+}
+.bank-pay-note {
+  margin-top: 8px;
+  padding: 6px 10px;
+  background: rgba(254, 240, 138, 0.7);
+  border-radius: 6px;
+  font-size: 12px;
+  color: #713f12;
+}
+.primary-btn-big {
+  width: 100%;
+  padding: 14px;
+  font-size: 16px;
+  font-weight: 600;
+}
+.primary-btn-big.done {
+  background: #0f5132;
+  color: #fff;
+}
+.primary-btn-big.done::before { content: ""; }
+
+
+/* HERO-BG-V1: รูปประจำหวยเป็น hero ของ card */
+.lottery-card {
+  background-image: var(--lotto-bg, none);
+  background-size: cover;
+  background-position: center;
+  background-color: var(--surface-2);
+  min-height: 130px;
+  color: #fff;
+  overflow: hidden;
+  justify-content: flex-end;
+  position: relative; /* ANCHOR สำหรับ ::before overlay */
+}
+.lottery-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(0,0,0,.20) 0%, rgba(0,0,0,.55) 55%, rgba(0,0,0,.85) 100%);
+  z-index: 1;
+  border-radius: inherit;
+  pointer-events: none;
+}
+.lottery-card > * { position: relative; z-index: 2; }
+.lottery-card .lottery-name {
+  color: #fff !important;
+  text-shadow: 0 2px 6px rgba(0,0,0,.85);
+  font-size: 15px;
+}
+.lottery-card .lottery-round { color: rgba(255,255,255,.88) !important; text-shadow: 0 1px 3px rgba(0,0,0,.7); }
+.lottery-card .lottery-closes { color: #ffd966 !important; text-shadow: 0 1px 3px rgba(0,0,0,.85); font-weight: 700; }
+.lottery-card:hover { transform: translateY(-3px); box-shadow: 0 8px 20px rgba(0,0,0,.4); }
+/* end HERO-BG-V1 */
+
+
+/* DETAIL-BG-V1: รูปประจำหวยจางๆ ใน step 3+4 (detail page) */
+section.step[data-step="3"],
+section.step[data-step="4"] {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+}
+section.step[data-step="3"]::before,
+section.step[data-step="4"]::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: var(--lotto-bg-detail, none);
+  background-size: cover;
+  background-position: center;
+  opacity: 0.14;
+  z-index: -1;
+  pointer-events: none;
+  filter: saturate(1.1);
+}
+section.step[data-step="3"]::after,
+section.step[data-step="4"]::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.55) 100%);
+  z-index: -1;
+  pointer-events: none;
+}
+/* end DETAIL-BG-V1 */
+
+
+/* STICKY-CTA-V1: bottom sticky CTA + safe-area-inset + skeleton */
+.sticky-cta-wrap {
+  position: sticky;
+  bottom: 0;
+  background: linear-gradient(180deg, rgba(255,255,255,0) 0%, var(--bg, #f7f5ef) 30%);
+  padding: 14px 16px calc(14px + env(safe-area-inset-bottom));
+  margin: 18px -18px -18px;
+  z-index: 10;
+}
+.sticky-cta-wrap .primary-btn {
+  width: 100%;
+  min-height: 52px;
+  font-size: 16px;
+  font-weight: 700;
+  box-shadow: 0 4px 12px rgba(15,81,50,0.25);
+}
+.sticky-cta-total {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 8px 14px; margin-bottom: 10px;
+  background: var(--surface, white); border-radius: 10px;
+  border: 1px solid var(--border, #e5e7eb);
+  font-size: 13px; color: var(--text-soft, #6b7280);
+}
+.sticky-cta-total strong { color: var(--green-dark, #0a3a23); font-size: 16px; }
+
+/* skeleton loader */
+.skel { background: linear-gradient(90deg, #e8e3d3 0%, #f2eedf 50%, #e8e3d3 100%); background-size: 200% 100%; animation: skel-shimmer 1.4s linear infinite; border-radius: 10px; }
+@keyframes skel-shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+
+/* tap target minimum 44pt */
+.lottery-card, .bet-type-btn, .primary-btn, button[type="button"] { min-height: 44px; }
+
+/* PromptPay QR section */
+.promptpay-section {
+  background: linear-gradient(135deg, #fafaf5 0%, #f1ede0 100%);
+  border: 2px dashed #c79a1a;
+  border-radius: 14px;
+  padding: 18px;
+  margin: 18px 0;
+  text-align: center;
+}
+.promptpay-section .qr-img {
+  max-width: 220px;
+  width: 100%;
+  margin: 12px auto;
+  display: block;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+}
+.promptpay-section .promptpay-amount {
+  font-size: 28px; font-weight: 800;
+  color: #0a3a23; font-variant-numeric: tabular-nums;
+  margin: 8px 0;
+}
+.promptpay-section .copy-btn {
+  background: #0f5132; color: white;
+  padding: 8px 18px; border-radius: 8px; border: none;
+  font-weight: 600; font-size: 14px; cursor: pointer; min-height: 36px;
+}
+.promptpay-section .copy-btn:active { transform: scale(0.96); }
+
+/* trust signal in success */
+.success-trust {
+  background: #d1fae5;
+  border-left: 4px solid #065f46;
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin: 14px 0;
+  font-size: 13px;
+  color: #065f46;
+}
+/* end STICKY-CTA-V1 */
+
+
+/* FLAG-V2-CSS: ธงประเทศ inline กับชื่อหวย */
+.lottery-card .lottery-flag-inline {
+  font-size: 18px;
+  margin-right: 4px;
+  vertical-align: middle;
+  display: inline-block;
+  line-height: 1;
+}
+/* end FLAG-V2-CSS */

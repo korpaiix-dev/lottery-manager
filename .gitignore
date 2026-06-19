@@ -1,3 +1,29 @@
+# Dependencies
 node_modules/
+package-lock.json
+
+# Data
 .data/
 .env
+
+# Backup files (Phase 2 patches)
+*.bak
+*.bak-*
+*.orig
+*.swp
+
+# Debug scripts
+scripts/dbg*.mjs
+scripts/test_puppeteer.mjs
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
