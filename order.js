@@ -578,16 +578,7 @@ function showSuccess(result) {
       document.querySelector("#bankPayHolder").textContent = acc.account_holder || "—";
       document.querySelector("#bankPayAcct").textContent = acc.account_number || "—";
       document.querySelector("#bankPayAmount").textContent = "฿" + fmt(amount);
-      /* PROMPTPAY-QR-V3: render QR ถ้ามี promptpay_id */
-      const qrWrap = document.querySelector("#promptpayQrWrap");
-      const qrImg = document.querySelector("#promptpayQrImg");
-      if (qrWrap && qrImg && acc.promptpay_id && amount > 0) {
-        generatePromptPayQR(qrImg, amount, acc.promptpay_id);
-        qrWrap.hidden = false;
-      } else if (qrWrap) {
-        qrWrap.hidden = true;
-      }
-      const note = document.querySelector("#bankPayNote");
+const note = document.querySelector("#bankPayNote");
       if (acc.note) {
         note.textContent = acc.note;
         note.hidden = false;

@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@400;500;600;700&family=Inter:wght@500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/order.css?v=20260620-uxfix-v3">
+<link rel="stylesheet" href="/order.css?v=20260620-uxfix-v4">
 </head>
 <body>
 <div class="page">
@@ -170,12 +170,6 @@
           <strong id="bankPayAmount">฿0</strong>
         </div>
         <div class="bank-pay-note" id="bankPayNote" hidden></div>
-        <!-- PROMPTPAY-QR-V3: QR สแกนจ่ายเร็ว -->
-        <div class="promptpay-qr-wrap" id="promptpayQrWrap" hidden>
-          <div class="promptpay-qr-label">📱 สแกน QR จ่ายเร็วๆ</div>
-          <img id="promptpayQrImg" class="promptpay-qr-img" alt="PromptPay QR" />
-          <div class="promptpay-qr-hint">กดค้างที่ภาพเพื่อบันทึก</div>
-        </div>
       </div>
 
       <!-- ── ขั้นที่ 2: ส่งบิลให้แอดมิน ── -->
@@ -212,7 +206,7 @@
 
   <script defer charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
   <script defer src="/order-config.js"></script>
-  <script defer src="/order.js?v=20260620-uxfix-v3"></script>
+  <script defer src="/order.js?v=20260620-uxfix-v4"></script>
 <!-- === UX-FIX-V1-NO-DUPLICATE-NOTIF === sticky admin contact -->
 <style>
 .admin-fab {position:fixed;bottom:calc(20px + env(safe-area-inset-bottom));right:16px;z-index:50;
