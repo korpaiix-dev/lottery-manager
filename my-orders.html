@@ -38,13 +38,12 @@ body { margin: 0; font-family: 'Prompt', sans-serif; background: var(--bg); colo
 .order-card { background: var(--surface); border-radius: var(--radius); padding: 14px 16px; margin-bottom: 12px; box-shadow: var(--shadow); border: 1px solid var(--border); }
 .order-card .top { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 8px; }
 .order-card .badge { display: inline-flex; align-items: center; padding: 4px 10px; border-radius: 999px; font-size: 13px; font-weight: 600; }
+/* UX-FIX-V3-A2: เหลือ 5 สี ตาม brief */
 .b-pending { background: #fef3c7; color: #92400e; }
-.b-verifying { background: #dbeafe; color: #1e40af; }
-.b-confirmed { background: #e0e7ff; color: #3730a3; }
-.b-checking { background: #ede9fe; color: #5b21b6; }
+.b-confirmed { background: #dbeafe; color: #1e3a8a; }
+.b-checking { background: #cffafe; color: #155e75; }
 .b-won { background: #d1fae5; color: #065f46; }
-.b-paid { background: #ccfbf1; color: #115e59; }
-.b-lost { background: #f3f4f6; color: #374151; }
+.b-lost { background: #f3f4f6; color: #6b7280; }
 .b-cancel { background: #fee2e2; color: #991b1b; }
 
 .order-card .code-chip { background: #f3f4f6; padding: 6px 12px; border-radius: 6px; font-family: monospace; font-size: 15px; cursor: pointer; margin-left: auto; user-select: all; }
@@ -90,7 +89,7 @@ body { margin: 0; font-family: 'Prompt', sans-serif; background: var(--bg); colo
 </div>
 <div class="toast" id="toast"></div>
 <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
-<script src="/my-orders.js?v=20260620-uxfix-v2"></script>
+<script src="/my-orders.js?v=20260620-uxfix-v3"></script>
 <!-- === UX-FIX-V1-NO-DUPLICATE-NOTIF === sticky admin contact -->
 <style>
 .admin-fab {position:fixed;bottom:calc(20px + env(safe-area-inset-bottom));right:16px;z-index:50;

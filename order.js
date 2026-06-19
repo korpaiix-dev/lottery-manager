@@ -235,7 +235,7 @@
       .filter((x) => !q || x.lot.name.toLowerCase().includes(q));
 
     if (!items.length) {
-      grid.innerHTML = `<div class="empty">${q ? "ไม่พบหวยที่ค้นหา" : "ขณะนี้ยังไม่มีหวยที่เปิดรับโพย"}</div>`;
+      grid.innerHTML = `<div class="empty">${q ? "ไม่พบหวยที่ค้นหา" : "ขณะนี้ยังไม่มีหวยที่เปิดรับบิล"}</div>`;
       return;
     }
 
@@ -504,8 +504,8 @@
       showSuccess(result);
     } catch (err) {
       console.error(err);
-      let msg = err.message || "ส่งโพยไม่สำเร็จ";
-      if (err.status === 429) msg = "ส่งโพยถี่เกินไป รออีกสักครู่แล้วลองใหม่";
+      let msg = err.message || "ส่งบิลไม่สำเร็จ";
+      if (err.status === 429) msg = "ส่งบิลถี่เกินไป รออีกสักครู่แล้วลองใหม่";
       else if (err.message === "limit_exceeded") {
         var p = err.payload || {};
         if (p.betTypeName && p.number != null) {
@@ -516,7 +516,7 @@
           msg = "เลขใดเลขหนึ่งเต็มโควต้าแล้ว — กรุณาลดยอดหรือเปลี่ยนเลข";
         }
       }
-      else if (err.message === "round_not_accepting") msg = "งวดนี้ปิดรับโพยแล้ว — กลับไปเลือกงวดอื่น";
+      else if (err.message === "round_not_accepting") msg = "งวดนี้ปิดรับบิลแล้ว — กลับไปเลือกงวดอื่น";
       else if (err.message === "invalid_entry_payload") msg = "ข้อมูลเลข/ยอดผิดรูปแบบ ลองเช็คอีกครั้ง";
       else if (err.message === "pending_bill_exists") {
         var pp = err.payload || {};
@@ -525,7 +525,7 @@
       }
       toast(msg, "error");
       btn.disabled = false;
-      btn.textContent = "✓ ยืนยันส่งโพย";
+      btn.textContent = "✓ ยืนยันส่งบิล";
     } finally {
       state.submitting = false;
     }
@@ -578,6 +578,15 @@ function showSuccess(result) {
       document.querySelector("#bankPayHolder").textContent = acc.account_holder || "—";
       document.querySelector("#bankPayAcct").textContent = acc.account_number || "—";
       document.querySelector("#bankPayAmount").textContent = "฿" + fmt(amount);
+      /* PROMPTPAY-QR-V3: render QR ถ้ามี promptpay_id */
+      const qrWrap = document.querySelector("#promptpayQrWrap");
+      const qrImg = document.querySelector("#promptpayQrImg");
+      if (qrWrap && qrImg && acc.promptpay_id && amount > 0) {
+        generatePromptPayQR(qrImg, amount, acc.promptpay_id);
+        qrWrap.hidden = false;
+      } else if (qrWrap) {
+        qrWrap.hidden = true;
+      }
       const note = document.querySelector("#bankPayNote");
       if (acc.note) {
         note.textContent = acc.note;

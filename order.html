@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@400;500;600;700&family=Inter:wght@500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/order.css?v=20260620-uxfix-v2">
+<link rel="stylesheet" href="/order.css?v=20260620-uxfix-v3">
 </head>
 <body>
 <div class="page">
@@ -40,7 +40,7 @@
         <div style="font-size:15px;color:#374151;line-height:1.7">
           <div>💰 จ่ายเงินรางวัลรวดเร็วภายในไม่กี่นาที</div>
           <div>📊 ตรวจผลย้อนหลังครบทุกหวย</div>
-          <div>🔒 ระบบรับโพยอัตโนมัติ ปลอดภัย 24 ชม.</div>
+          <div>🔒 ระบบรับบิลอัตโนมัติ ปลอดภัย 24 ชม.</div>
         </div>
       </div>
       <h2 id="step1Title">ขั้นที่ 1 — แนะนำตัวก่อนสั่งซื้อ</h2>
@@ -62,7 +62,7 @@
     <!-- ===== STEP 2: Pick lottery + round ===== -->
     <section class="card step" data-step="2" hidden aria-labelledby="step2Title">
       <h2 id="step2Title">ขั้นที่ 2 — เลือกหวยที่ต้องการเล่น</h2>
-      <p class="muted">แสดงเฉพาะหวยที่ยังเปิดรับโพยอยู่ในขณะนี้</p>
+      <p class="muted">แสดงเฉพาะหวยที่ยังเปิดรับบิลอยู่ในขณะนี้</p>
 
       <input id="lotterySearch" type="search" class="search-input" placeholder="🔍 ค้นหาหวย…" autocomplete="off">
 
@@ -115,12 +115,12 @@
 
       <label class="field">
         <span>หมายเหตุถึงแอดมิน (ไม่บังคับ)</span>
-        <textarea id="orderNote" rows="2" maxlength="200" placeholder="เช่น โพยลูกค้าประจำ, รบกวนรีบรับ"></textarea>
+        <textarea id="orderNote" rows="2" maxlength="200" placeholder="เช่น บิลลูกค้าประจำ, รบกวนรีบรับ"></textarea>
       </label>
 
       <div class="row-buttons">
         <button type="button" class="link-btn" data-back="2">← เปลี่ยนหวย</button>
-        <button type="button" class="primary-btn" id="step3Next" disabled>ตรวจสอบโพย →</button>
+        <button type="button" class="primary-btn" id="step3Next" disabled>ตรวจสอบบิล →</button>
       </div>
     </section>
 
@@ -132,12 +132,12 @@
 
       <div class="warning">
         <strong>⚠️ โปรดตรวจสอบให้ครบ</strong>
-        <p>เมื่อกด <em>"ยืนยันส่งโพย"</em> แล้ว ระบบจะส่งให้แอดมินตรวจ — แก้ไขได้เฉพาะตอนที่แอดมินยังไม่ approve</p>
+        <p>เมื่อกด <em>"ยืนยันส่งบิล"</em> แล้ว ระบบจะส่งให้แอดมินตรวจ — แก้ไขได้เฉพาะตอนที่แอดมินยังไม่ approve</p>
       </div>
 
       <div class="row-buttons">
-        <button type="button" class="link-btn" data-back="3">← แก้ไขโพย</button>
-        <button type="button" class="primary-btn primary-btn-strong" id="submitBtn">✓ ยืนยันส่งโพย</button>
+        <button type="button" class="link-btn" data-back="3">← แก้ไขบิล</button>
+        <button type="button" class="primary-btn primary-btn-strong" id="submitBtn">✓ ยืนยันส่งบิล</button>
       </div>
     </section>
 
@@ -170,6 +170,12 @@
           <strong id="bankPayAmount">฿0</strong>
         </div>
         <div class="bank-pay-note" id="bankPayNote" hidden></div>
+        <!-- PROMPTPAY-QR-V3: QR สแกนจ่ายเร็ว -->
+        <div class="promptpay-qr-wrap" id="promptpayQrWrap" hidden>
+          <div class="promptpay-qr-label">📱 สแกน QR จ่ายเร็วๆ</div>
+          <img id="promptpayQrImg" class="promptpay-qr-img" alt="PromptPay QR" />
+          <div class="promptpay-qr-hint">กดค้างที่ภาพเพื่อบันทึก</div>
+        </div>
       </div>
 
       <!-- ── ขั้นที่ 2: ส่งบิลให้แอดมิน ── -->
@@ -206,7 +212,7 @@
 
   <script defer charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
   <script defer src="/order-config.js"></script>
-  <script defer src="/order.js?v=20260620-uxfix-v2"></script>
+  <script defer src="/order.js?v=20260620-uxfix-v3"></script>
 <!-- === UX-FIX-V1-NO-DUPLICATE-NOTIF === sticky admin contact -->
 <style>
 .admin-fab {position:fixed;bottom:calc(20px + env(safe-area-inset-bottom));right:16px;z-index:50;

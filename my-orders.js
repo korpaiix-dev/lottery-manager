@@ -16,23 +16,19 @@
   }
 
   function statusInfo(item) {
-    /* 5-status flow แปลง backend → user-friendly Thai */
-    var s = item.status; /* pending / approved / cancelled */
+    /* UX-FIX-V3-A2: 5 status เท่านั้น — ตัดความสับสน */
+    var s = item.status;
     var hasResult = item.has_result;
     var hasPrize = (item.prize_amount || 0) > 0;
     if (s === "cancelled") return { label: "ยกเลิก", cls: "b-cancel", icon: "✕" };
-    if (s === "pending") {
-      if (item.slip_uploaded) return { label: "กำลังตรวจสลิป", cls: "b-verifying", icon: "🔍", eta: "ทีมงานตรวจสอบใน 5-10 นาที" };
-      return { label: "รอแนบสลิป", cls: "b-pending", icon: "⏱", eta: "อัปโหลดสลิปภายใน 30 นาที" };
-    }
+    if (s === "pending") return { label: "⏳ รอตรวจสลิป", cls: "b-pending", icon: "", eta: "ทีมงานตรวจสอบใน 5-10 นาที" };
     if (s === "approved") {
-      if (!hasResult) return { label: "รับโพยแล้ว · รอหวยออก", cls: "b-confirmed", icon: "✓", eta: "รอผลรางวัล" };
-      if (hasResult && item.checked === false) return { label: "กำลังตรวจรางวัล", cls: "b-checking", icon: "⏳", eta: "ผลตรวจภายใน 30 นาที" };
-      if (hasPrize && !item.paid_out) return { label: "ถูกรางวัล รับเงินได้", cls: "b-won", icon: "🏆", action: "claim" };
-      if (hasPrize && item.paid_out) return { label: "จ่ายรางวัลแล้ว", cls: "b-paid", icon: "💰" };
-      return { label: "ไม่ถูกรางวัล", cls: "b-lost", icon: "—" };
+      if (!hasResult) return { label: "✅ รอผลออก", cls: "b-confirmed", icon: "", eta: "รอผลรางวัล" };
+      if (item.checked === false) return { label: "🔍 กำลังตรวจรางวัล", cls: "b-checking", icon: "", eta: "ผลตรวจภายใน 30 นาที" };
+      if (hasPrize) return { label: "🎉 ถูกรางวัล", cls: "b-won", icon: "", action: (!item.paid_out ? "claim" : null) };
+      return { label: "❌ ไม่ถูก", cls: "b-lost", icon: "" };
     }
-    return { label: s || "ไม่ทราบสถานะ", cls: "b-pending", icon: "?" };
+    return { label: "⏳ รอตรวจสลิป", cls: "b-pending", icon: "" };
   }
 
   function toast(msg) {
