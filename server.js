@@ -4886,8 +4886,8 @@ app.get("/api/public/results-latest", (_req, res) => {
       return res.json({ ok: true, items: __resultsLatestCache.data, cached: true, fetched_at: nowIso() });
     }
 
-    /* V2: single JOIN — ลบ N+1 query */
-    const rows = db.prepare(`
+    /* V3: ALL lotteries — finalized round (ถ้ามี) + pending placeholder (ถ้าไม่มี) */
+    const finalizedRows = db.prepare(`
       SELECT r.lottery_id, r.id AS round_id, r.draw_date, r.label, r.result_status AS status,
              l.name AS lottery_name, l.category, l.display_order,
              res.bet_type_id, res.number
@@ -4899,22 +4899,26 @@ app.get("/api/public/results-latest", (_req, res) => {
         WHERE r2.lottery_id = r.lottery_id AND r2.result_status = 'finalized'
         ORDER BY r2.draw_date DESC, r2.draw_time DESC LIMIT 1
       )
-      ORDER BY l.display_order ASC, l.name ASC
+      ORDER BY l.display_order ASC
     `).all();
 
-    /* group in JS */
+    const pendingLotteries = db.prepare(`
+      SELECT l.id AS lottery_id, l.name AS lottery_name, l.category, l.display_order,
+             (SELECT MIN(r2.draw_date || ' ' || r2.draw_time)
+                FROM rounds r2
+                WHERE r2.lottery_id = l.id AND r2.result_status='draft') AS next_draw
+      FROM lotteries l
+      WHERE NOT EXISTS (SELECT 1 FROM rounds WHERE lottery_id=l.id AND result_status='finalized')
+      ORDER BY l.display_order ASC
+    `).all();
+
     const byRound = {};
-    for (const x of rows) {
+    for (const x of finalizedRows) {
       if (!byRound[x.round_id]) {
         byRound[x.round_id] = {
-          lottery_id: x.lottery_id,
-          lottery_name: x.lottery_name,
-          category: x.category,
-          display_order: x.display_order,
-          draw_date: x.draw_date,
-          label: x.label,
-          status: x.status,
-          grouped: {},
+          lottery_id: x.lottery_id, lottery_name: x.lottery_name, category: x.category,
+          display_order: x.display_order, draw_date: x.draw_date, label: x.label,
+          status: x.status, grouped: {},
         };
       }
       if (x.bet_type_id && x.number) {
@@ -4922,20 +4926,22 @@ app.get("/api/public/results-latest", (_req, res) => {
         byRound[x.round_id].grouped[x.bet_type_id].push(x.number);
       }
     }
-    const items = Object.values(byRound)
-      .sort((a, b) => (a.display_order || 999) - (b.display_order || 999))
-      .map(r => ({
-        lottery_id: r.lottery_id,
-        lottery_name: r.lottery_name,
-        category: r.category,
-        draw_date: r.draw_date,
-        label: r.label,
-        status: r.status,
-        three_top: r.grouped.three_top || null,
-        three_bottom: r.grouped.three_bottom || null,
-        two_top: r.grouped.two_top ? r.grouped.two_top[0] : null,
-        two_bottom: r.grouped.two_bottom ? r.grouped.two_bottom[0] : null,
-      }));
+    const finalizedItems = Object.values(byRound).map(r => ({
+      lottery_id: r.lottery_id, lottery_name: r.lottery_name, category: r.category,
+      display_order: r.display_order, draw_date: r.draw_date, label: r.label, status: r.status,
+      three_top: r.grouped.three_top || null,
+      three_bottom: r.grouped.three_bottom || null,
+      two_top: r.grouped.two_top ? r.grouped.two_top[0] : null,
+      two_bottom: r.grouped.two_bottom ? r.grouped.two_bottom[0] : null,
+    }));
+    const pendingItems = pendingLotteries.map(p => ({
+      lottery_id: p.lottery_id, lottery_name: p.lottery_name, category: p.category,
+      display_order: p.display_order,
+      draw_date: p.next_draw ? p.next_draw.split(' ')[0] : null,
+      label: null, status: 'pending', next_draw_at: p.next_draw,
+      three_top: null, three_bottom: null, two_top: null, two_bottom: null,
+    }));
+    const items = [...finalizedItems, ...pendingItems].sort((a, b) => (a.display_order || 999) - (b.display_order || 999));
     /* update cache */
     __resultsLatestCache.ts = Date.now();
     __resultsLatestCache.data = items;
