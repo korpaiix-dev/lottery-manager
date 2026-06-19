@@ -37,7 +37,7 @@ body { margin: 0; font-family: 'Prompt', sans-serif; background: var(--bg); colo
 
 .order-card { background: var(--surface); border-radius: var(--radius); padding: 14px 16px; margin-bottom: 12px; box-shadow: var(--shadow); border: 1px solid var(--border); }
 .order-card .top { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 8px; }
-.order-card .badge { display: inline-flex; align-items: center; padding: 4px 10px; border-radius: 999px; font-size: 11px; font-weight: 600; }
+.order-card .badge { display: inline-flex; align-items: center; padding: 4px 10px; border-radius: 999px; font-size: 13px; font-weight: 600; }
 .b-pending { background: #fef3c7; color: #92400e; }
 .b-verifying { background: #dbeafe; color: #1e40af; }
 .b-confirmed { background: #e0e7ff; color: #3730a3; }
@@ -47,7 +47,7 @@ body { margin: 0; font-family: 'Prompt', sans-serif; background: var(--bg); colo
 .b-lost { background: #f3f4f6; color: #374151; }
 .b-cancel { background: #fee2e2; color: #991b1b; }
 
-.order-card .code-chip { background: #f3f4f6; padding: 3px 8px; border-radius: 6px; font-family: monospace; font-size: 12px; cursor: pointer; margin-left: auto; user-select: all; }
+.order-card .code-chip { background: #f3f4f6; padding: 6px 12px; border-radius: 6px; font-family: monospace; font-size: 15px; cursor: pointer; margin-left: auto; user-select: all; }
 .order-card .code-chip:active { background: #e5e7eb; }
 .order-card .lottery-row { font-size: 14px; color: var(--text); margin: 4px 0; }
 .order-card .lottery-row strong { color: var(--green-dark); }
@@ -90,6 +90,21 @@ body { margin: 0; font-family: 'Prompt', sans-serif; background: var(--bg); colo
 </div>
 <div class="toast" id="toast"></div>
 <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
-<script src="/my-orders.js?v=1"></script>
+<script src="/my-orders.js?v=20260620-uxfix-v1"></script>
+<!-- === UX-FIX-V1-NO-DUPLICATE-NOTIF === sticky admin contact -->
+<style>
+.admin-fab {position:fixed;bottom:20px;right:16px;z-index:50;
+  background:linear-gradient(135deg,#06c755 0%,#04a346 100%);color:#fff;
+  padding:12px 18px;border-radius:999px;font-family:'Prompt',sans-serif;
+  font-size:14px;font-weight:700;box-shadow:0 6px 16px rgba(6,199,85,.4);
+  border:none;cursor:pointer;display:inline-flex;align-items:center;gap:6px;
+  text-decoration:none}
+.admin-fab:active{transform:scale(.96)}
+@media(max-width:480px){.admin-fab{font-size:13px;padding:10px 14px}}
+</style>
+<a class="admin-fab" href="https://line.me/R/oaMessage/@042xplcj/-" target="_blank" rel="noopener">
+  💬 ถามแอดมิน
+</a>
+
 </body>
 </html>
