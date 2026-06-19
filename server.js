@@ -4816,6 +4816,12 @@ async function preCloseReminderCron() {
 
 /* ----- Result announcement ----- */
 async function announceResultToBuyers(roundId) {
+  /* === UX-FIX-V1-NO-DUPLICATE-NOTIF === */
+  /* ลูกค้าที่ซื้องวดนี้จะได้ pushWinnersToCustomers หรือ pushLosersToCustomers อยู่แล้ว */
+  /* announceResultToBuyers จะส่งข้อความซ้ำกับ losers push ใน 30 วินาทีต่อมา → disable */
+  /* (เก็บ function ไว้เผื่อใช้ broadcast group ในอนาคต) */
+  return;
+  /* eslint-disable-next-line no-unreachable */
   if (process.env.FEATURES_RESULT_ANNOUNCE !== "true") return;
   try {
     const round = db.prepare(`SELECT r.*, l.name AS lottery_name FROM rounds r JOIN lotteries l ON l.id=r.lottery_id WHERE r.id=?`).get(roundId);
@@ -6860,20 +6866,13 @@ async function pushLosersToCustomers(roundId) {
           entriesByType[e.bet_type_name].push({ number: e.number, amount: Number(e.amount) });
         }
       }
-      const totalBill = tickets.reduce((s, t) => s + Number(t.total_amount), 0);
-      const billCodes = tickets.map(t => t.code).join(", ");
-      const entryLines = Object.entries(entriesByType).map(([type, items]) => {
-        const nums = items.map(i => i.number).join(", ");
-        const totalA = items.reduce((s, i) => s + i.amount, 0);
-        return `• ${type}: ${nums} (${totalA.toLocaleString("th-TH")} บ.)`;
-      }).join("\n");
-      const text = `📢 ผลออกแล้ว — ${round.lottery_name} ${round.label}\n` +
-                   `🎯 3 บน: ${t3?.number || "-"} · 2 ล่าง: ${t2?.number || "-"}\n\n` +
-                   `😔 ขออภัยค่ะ คุณ${cust.name} งวดนี้ยังไม่ถูกรางวัล\n` +
-                   `บิล ${billCodes} (${totalBill.toLocaleString("th-TH")} บาท)\n\n` +
-                   `เลขที่แทงงวดนี้:\n${entryLines}` +
-                   nextLine + `\n` +
-                   `ขอบคุณที่ใช้บริการนะคะ 🙏`;
+      /* === UX-FIX-V1-NO-DUPLICATE-NOTIF === ตัด totalBill/billCodes/entryLines ออก คนแก่อ่านแล้วเจ็บใจ */
+      void tickets; void entriesByType;
+      const text = `📢 ผลออก ${round.lottery_name} งวด ${round.label}\n` +
+                   `3 บน ${t3?.number || "-"} · 2 ล่าง ${t2?.number || "-"}\n\n` +
+                   `คุณ${cust.name} งวดนี้ยังไม่ถูกค่ะ 🙏\n` +
+                   `ขอให้โชคดีงวดหน้านะคะ 🍀` +
+                   nextLine;
       try {
         await linePush(cust.line_user_id, text);
         upsertNotif.run(crypto.randomUUID(), roundId, cust.id, nowIso());
@@ -6916,11 +6915,11 @@ async function lineReplyWithMenu(replyToken, text, extraButtons) {
   if (!token || !replyToken) return;
   const liffUrl = process.env.LIFF_URL || "https://liff.line.me/2010170072-GDDXzvaN";
   const baseUrl = process.env.BASE_URL || "https://lottery.139-59-123-146.nip.io";
+  /* === UX-FIX-V1-NO-DUPLICATE-NOTIF === ลด 4 → 3 ปุ่ม + เพิ่มบิลของฉัน (ตัดบัญชี+อัตราจ่ายออก มีใน Rich menu) */
   const items = [
     { type: "action", action: { type: "uri", label: "✍️ แทงหวย", uri: liffUrl } },
-    { type: "action", action: { type: "uri", label: "🏦 บัญชี", uri: baseUrl + "/info/account" } },
-    { type: "action", action: { type: "message", label: "📊 ผลรางวัล", text: "ผลรางวัล" } },
-    { type: "action", action: { type: "uri", label: "💵 อัตราจ่าย", uri: baseUrl + "/info/rates" } },
+    { type: "action", action: { type: "uri", label: "📋 บิลของฉัน", uri: baseUrl + "/my-orders" } },
+    { type: "action", action: { type: "uri", label: "📊 ผลรางวัล", uri: baseUrl + "/lotto" } },
   ];
   if (Array.isArray(extraButtons)) items.unshift(...extraButtons);
   const messages = [{ type: "text", text: String(text), quickReply: { items: items.slice(0, 13) } }];
@@ -7944,14 +7943,12 @@ Group ID: ${groupId}
               messages: [{
                 type: "text",
                 text: "สวัสดีค่ะ 🙏 ยินดีต้อนรับสู่บ้านหวยเรือนเลขเศรษฐี\nเลือกบริการได้จากปุ่มด้านล่างนะคะ 👇",
+                /* === UX-FIX-V1-NO-DUPLICATE-NOTIF === ลด 6 → 3 ปุ่ม */
                 quickReply: {
                   items: [
-                    { type: "action", action: { type: "uri", label: "✍️ สั่งซื้อหวย", uri: liffUrl_ } },
-                    { type: "action", action: { type: "uri", label: "📊 ผลรางวัล", uri: baseUrl_ + "/lotto" } },
-                { type: "action", action: { type: "uri", label: "📋 บิลของฉัน", uri: baseUrl_ + "/my-orders" } },
-                    { type: "action", action: { type: "uri", label: "💵 อัตราจ่าย", uri: baseUrl_ + "/info/rates" } },
-                    { type: "action", action: { type: "uri", label: "🏦 บัญชี", uri: baseUrl_ + "/info/account" } },
-                    { type: "action", action: { type: "uri", label: "❓ วิธีใช้", uri: baseUrl_ + "/info/howto" } }
+                    { type: "action", action: { type: "uri", label: "✍️ แทงหวย", uri: liffUrl_ } },
+                    { type: "action", action: { type: "uri", label: "📋 บิลของฉัน", uri: baseUrl_ + "/my-orders" } },
+                    { type: "action", action: { type: "uri", label: "📊 ผลรางวัล", uri: baseUrl_ + "/lotto" } }
                   ]
                 }
               }]

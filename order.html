@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@400;500;600;700&family=Inter:wght@500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/order.css?v=20260613-flags-v2">
+<link rel="stylesheet" href="/order.css?v=20260620-uxfix-v1">
 </head>
 <body>
 <div class="page">
@@ -36,8 +36,8 @@
     <section class="card step" data-step="1" aria-labelledby="step1Title">
       <!-- TRUST-V1: trust signals สำหรับลูกค้าใหม่ -->
       <div class="trust-banner" style="background:linear-gradient(135deg,#d1fae5 0%,#fef3c7 100%);border-radius:12px;padding:12px 14px;margin-bottom:14px;border-left:4px solid #0f5132">
-        <div style="font-weight:700;color:#0f5132;font-size:13px;margin-bottom:4px">✨ ทำไมต้องเรา</div>
-        <div style="font-size:12px;color:#374151;line-height:1.6">
+        <div style="font-weight:700;color:#0f5132;font-size:15px;margin-bottom:4px">✨ ทำไมต้องเรา</div>
+        <div style="font-size:15px;color:#374151;line-height:1.7">
           <div>💰 จ่ายเงินรางวัลรวดเร็วภายในไม่กี่นาที</div>
           <div>📊 ตรวจผลย้อนหลังครบทุกหวย</div>
           <div>🔒 ระบบรับโพยอัตโนมัติ ปลอดภัย 24 ชม.</div>
@@ -206,6 +206,21 @@
 
   <script defer charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
   <script defer src="/order-config.js"></script>
-  <script defer src="/order.js?v=20260613-flags-v2"></script>
+  <script defer src="/order.js?v=20260620-uxfix-v1"></script>
+<!-- === UX-FIX-V1-NO-DUPLICATE-NOTIF === sticky admin contact -->
+<style>
+.admin-fab {position:fixed;bottom:20px;right:16px;z-index:50;
+  background:linear-gradient(135deg,#06c755 0%,#04a346 100%);color:#fff;
+  padding:12px 18px;border-radius:999px;font-family:'Prompt',sans-serif;
+  font-size:14px;font-weight:700;box-shadow:0 6px 16px rgba(6,199,85,.4);
+  border:none;cursor:pointer;display:inline-flex;align-items:center;gap:6px;
+  text-decoration:none}
+.admin-fab:active{transform:scale(.96)}
+@media(max-width:480px){.admin-fab{font-size:13px;padding:10px 14px}}
+</style>
+<a class="admin-fab" href="https://line.me/R/oaMessage/@042xplcj/-" target="_blank" rel="noopener">
+  💬 ถามแอดมิน
+</a>
+
 </body>
 </html>

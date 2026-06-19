@@ -154,7 +154,7 @@ input, textarea, button, select {
 .steps li {
   flex: 1;
   text-align: center;
-  font-size: 12px;
+  font-size: 14px;
   padding: 8px 4px;
   border-radius: 999px;
   color: var(--text-soft);
