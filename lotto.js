@@ -1,8 +1,39 @@
-
+/* lotto.js — Customer-facing live results page (Redesign V2, 2026-06-20)
+ * Compact list + category tabs + search + countdown for pending */
 (function() {
-  var BG = {"thai":"thai","omsin":"thai","baac":"thai","lott_027":"lao","lott_032":"malay","lott_033":"hanoi","lott_035":"hanoi","lott_036":"hanoi","lott_023":"thai","lott_016":"china","lott_021":"china","lott_042":"china","lott_047":"china","lott_015":"nikkei","lott_020":"nikkei","lott_041":"nikkei","lott_046":"nikkei","lott_017":"hangseng","lott_022":"hangseng","lott_043":"hangseng","lott_048":"hangseng"};
-  function bgUrl(id) { return "/img/lotto-bg/" + (BG[id] || "thai") + ".jpg"; }
-  function esc(s) { return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;"); }
+  var state = { items: [], filter: "all", search: "", lastUpdate: 0 };
+  var CAT_FLAGS = {
+    government: "🏛️", daily: "🌏", stock: "📈",
+    stock_vip: "⭐", foreign: "🌐", other: "🎰"
+  };
+  var LOTTERY_FLAGS = {
+    thai: "🇹🇭", omsin: "🇹🇭", baac: "🇹🇭",
+    lott_027: "🇱🇦", lott_032: "🇲🇾",
+    lott_033: "🇻🇳", lott_035: "🇻🇳", lott_036: "🇻🇳",
+    lott_037: "🇬🇧", lott_038: "🇩🇪", lott_039: "🇷🇺", lott_040: "🇺🇸",
+    lott_010: "🇷🇺", lott_011: "🇬🇧", lott_012: "🇩🇪", lott_013: "🇺🇸",
+    lott_014: "🇪🇬", lott_015: "🇯🇵", lott_016: "🇨🇳", lott_017: "🇭🇰",
+    lott_018: "🇹🇼", lott_019: "🇰🇷", lott_020: "🇯🇵", lott_021: "🇨🇳",
+    lott_022: "🇭🇰", lott_023: "🇹🇭", lott_024: "🇸🇬", lott_025: "🇮🇳",
+    lott_041: "🇯🇵", lott_042: "🇨🇳", lott_043: "🇭🇰", lott_044: "🇹🇼",
+    lott_045: "🇰🇷", lott_046: "🇯🇵", lott_047: "🇨🇳", lott_048: "🇭🇰",
+    lott_049: "🇸🇬",
+    lott_081: "🇺🇸", lott_082: "🇺🇸", lott_083: "🇺🇸", lott_084: "🇺🇸",
+    lott_085: "🇻🇳", lott_086: "🇱🇦", lott_087: "🇱🇦", lott_088: "🇱🇦",
+    lott_089: "🇻🇳", lott_090: "🇻🇳"
+  };
+  /* lao + hanoi prefixes */
+  for (var i = 50; i <= 67; i++) {
+    var id = "lott_0" + i;
+    if (!LOTTERY_FLAGS[id]) LOTTERY_FLAGS[id] = (i >= 60 ? "🇻🇳" : "🇱🇦");
+  }
+
+  function esc(s) {
+    return String(s == null ? "" : s)
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  }
+
   function fmtDate(iso) {
     if (!iso) return "—";
     try {
@@ -12,112 +43,197 @@
     } catch(e) { return iso; }
   }
 
-  /* ========== TAB SWITCHING ========== */
-  var tabs = document.querySelectorAll(".tab");
-  var panels = { latest: document.getElementById("tab-latest"), history: document.getElementById("tab-history") };
-  tabs.forEach(function(t) {
-    t.addEventListener("click", function() {
-      var name = t.dataset.tab;
-      tabs.forEach(function(x) { x.classList.toggle("active", x === t); });
-      Object.keys(panels).forEach(function(k) { panels[k].hidden = (k !== name); });
-      if (name === "history" && !window._historyLoaded) loadHistory();
-    });
-  });
-
-  /* ========== LATEST ========== */
-  function numCell(label, value) {
-    if (!value || value === "" || value === "xxx" || value === "xx") {
-      return '<div class="num-cell status-pending"><div class="label">' + esc(label) + '</div><div class="value">รอผล</div></div>';
+  function countdownText(targetIso) {
+    if (!targetIso) return "รอออก";
+    var target = new Date(targetIso.replace(" ", "T") + "+07:00").getTime();
+    var diff = target - Date.now();
+    if (diff <= 0) return "กำลังประมวลผล";
+    var hrs = Math.floor(diff / 3600000);
+    var mins = Math.floor((diff % 3600000) / 60000);
+    if (hrs >= 24) {
+      var days = Math.floor(hrs / 24);
+      return "อีก " + days + " วัน";
     }
-    var v = Array.isArray(value) ? value.join("  ") : String(value);
-    var cls = (Array.isArray(value) && value.length > 1) ? "value multi" : "value";
-    return '<div class="num-cell"><div class="label">' + esc(label) + '</div><div class="' + cls + '">' + esc(v) + '</div></div>';
+    if (hrs > 0) return "อีก " + hrs + " ชม. " + mins + " นาที";
+    return "อีก " + mins + " นาที";
   }
 
-  function loadLatest() {
-    var root = document.getElementById("latest-root");
+  function flagFor(id) { return LOTTERY_FLAGS[id] || "🎲"; }
+
+  function numPill(label, value, empty) {
+    if (empty || !value || value === "—") {
+      return '<div class="num-pill empty"><span class="lbl">' + esc(label) +
+        '</span><span class="val">—</span></div>';
+    }
+    var v = Array.isArray(value) ? value.join(" ") : String(value);
+    return '<div class="num-pill"><span class="lbl">' + esc(label) +
+      '</span><span class="val">' + esc(v) + '</span></div>';
+  }
+
+  function renderRow(it) {
+    var isPending = it.status === "pending";
+    var rowCls = "row " + (isPending ? "is-pending" : "is-finalized");
+    var flag = flagFor(it.lottery_id);
+    var nums = "";
+    if (isPending) {
+      nums = '<div class="row-nums">' +
+        numPill("3 บน", null, true) + numPill("2 ล่าง", null, true) +
+      '</div>';
+    } else {
+      var t3 = Array.isArray(it.three_top) ? it.three_top.join(" ") : it.three_top;
+      nums = '<div class="row-nums">' +
+        numPill("3 บน", t3) + numPill("2 ล่าง", it.two_bottom) +
+      '</div>';
+    }
+    var statusHtml;
+    if (isPending) {
+      var time = it.next_draw_at ? it.next_draw_at.split(" ")[1].slice(0, 5) : "";
+      var cd = countdownText(it.next_draw_at);
+      statusHtml =
+        '<span class="badge pending">⏳ รอออก</span>' +
+        '<span class="row-time">' + esc(time) + ' · ' + esc(cd) + '</span>';
+    } else {
+      statusHtml =
+        '<span class="badge finalized">✓ ออกแล้ว</span>' +
+        '<span class="row-time">' + esc(fmtDate(it.draw_date)) + '</span>';
+    }
+    return '<div class="' + rowCls + '" data-cat="' + esc(it.category || "other") +
+      '" data-name="' + esc((it.lottery_name||"").toLowerCase()) + '">' +
+      '<div class="row-head">' +
+        '<span class="row-flag">' + flag + '</span>' +
+        '<span class="row-name">' + esc(it.lottery_name || "") + '</span>' +
+      '</div>' +
+      nums +
+      '<div class="row-status">' + statusHtml + '</div>' +
+    '</div>';
+  }
+
+  function applyFilters() {
+    var rows = document.querySelectorAll("#list-root .row");
+    var search = state.search.toLowerCase();
+    var visible = 0;
+    rows.forEach(function(r) {
+      var cat = r.dataset.cat;
+      var name = r.dataset.name || "";
+      var catOk = state.filter === "all" || cat === state.filter;
+      var srchOk = !search || name.indexOf(search) !== -1;
+      var show = catOk && srchOk;
+      r.style.display = show ? "" : "none";
+      if (show) visible++;
+    });
+    var root = document.getElementById("list-root");
+    var emptyEl = document.getElementById("filter-empty");
+    if (visible === 0 && rows.length > 0) {
+      if (!emptyEl) {
+        emptyEl = document.createElement("div");
+        emptyEl.id = "filter-empty";
+        emptyEl.className = "empty";
+        emptyEl.innerHTML = '<div class="empty-icon">🔍</div>ไม่พบหวยที่ค้นหา';
+        root.appendChild(emptyEl);
+      }
+    } else if (emptyEl) {
+      emptyEl.remove();
+    }
+  }
+
+  function render() {
+    var root = document.getElementById("list-root");
+    if (!state.items.length) {
+      root.innerHTML = '<div class="empty"><div class="empty-icon">🎲</div>ยังไม่มีผลรางวัล</div>';
+      return;
+    }
+    /* sort: finalized โดย display_order, ตามด้วย pending */
+    var fz = state.items.filter(function(x) { return x.status === "finalized"; });
+    var pn = state.items.filter(function(x) { return x.status === "pending"; });
+    fz.sort(function(a, b) { return (a.display_order || 999) - (b.display_order || 999); });
+    pn.sort(function(a, b) {
+      var ta = a.next_draw_at ? new Date(a.next_draw_at.replace(" ", "T")).getTime() : Infinity;
+      var tb = b.next_draw_at ? new Date(b.next_draw_at.replace(" ", "T")).getTime() : Infinity;
+      return ta - tb;
+    });
+    var ordered = fz.concat(pn);
+    root.innerHTML = ordered.map(renderRow).join("");
+
+    /* update tab counts */
+    var counts = { all: state.items.length, government: 0, daily: 0, stock: 0, stock_vip: 0, foreign: 0, other: 0 };
+    state.items.forEach(function(it) {
+      var c = it.category || "other";
+      if (counts[c] !== undefined) counts[c]++;
+    });
+    Object.keys(counts).forEach(function(c) {
+      var el = document.getElementById("cnt-" + c);
+      if (el) el.textContent = counts[c];
+    });
+
+    applyFilters();
+  }
+
+  function setUpdatedText(text) {
+    var el = document.getElementById("updated-text");
+    if (el) el.textContent = text;
+  }
+
+  function loadData() {
+    setUpdatedText("กำลังโหลด...");
     fetch("/api/public/results-latest", { cache: "no-store" })
       .then(function(r) { return r.json(); })
       .then(function(data) {
-        if (!data.ok || !data.items || !data.items.length) {
-          root.innerHTML = '<div class="empty">ยังไม่มีผลรางวัล</div>';
-          return;
-        }
-        /* populate history dropdown */
-        var sel = document.getElementById("hist-select");
-        var seen = { thai: 1 };
-        data.items.forEach(function(it) {
-          if (seen[it.lottery_id]) return;
-          seen[it.lottery_id] = 1;
-          var o = document.createElement("option");
-          o.value = it.lottery_id; o.textContent = it.lottery_name;
-          sel.appendChild(o);
-        });
-        /* render cards */
-        root.className = "lottery-grid";
-        root.innerHTML = data.items.map(function(it) {
-          var cells = [];
-          if (it.three_top) cells.push(numCell("3 ตัวบน", it.three_top));
-          if (it.three_bottom) cells.push(numCell("3 ตัวล่าง", it.three_bottom));
-          if (it.two_top) cells.push(numCell("2 ตัวบน", it.two_top));
-          if (it.two_bottom) cells.push(numCell("2 ตัวล่าง", it.two_bottom));
-          if (!cells.length) cells.push('<div class="num-cell status-pending"><div class="label">รอผลออก</div><div class="value">—</div></div>');
-          var statusBadge = it.status === "finalized"
-            ? '<span class="badge badge-finalized">✓ ยืนยันแล้ว</span>'
-            : '<span class="badge badge-pending">⏳ ยังไม่ยืนยัน</span>';
-          return '<div class="lottery-card">' +
-            '<div class="hero" style="background-image:url(\'' + bgUrl(it.lottery_id) + '\')">' +
-              '<div class="hero-text">' +
-                '<div class="hero-name">' + esc(it.lottery_name) + '</div>' +
-                '<div class="hero-date">งวด ' + esc(fmtDate(it.draw_date)) + ' · ' + statusBadge + '</div>' +
-              '</div>' +
-            '</div>' +
-            '<div class="body">' + cells.join("") + '</div>' +
-          '</div>';
-        }).join("");
-        document.getElementById("updated-at").textContent = "อัพเดท: " + new Date().toLocaleTimeString("th-TH").slice(0,5);
+        if (!data.ok) throw new Error(data.error || "load_failed");
+        state.items = data.items || [];
+        state.lastUpdate = Date.now();
+        render();
+        setUpdatedText("อัพเดท " + new Date().toLocaleTimeString("th-TH").slice(0, 5));
       })
       .catch(function(e) {
-        root.innerHTML = '<div class="empty">โหลดล้มเหลว: ' + esc(e.message || e) + '<br><br><button class="refresh-btn" onclick="location.reload()">ลองอีกครั้ง</button></div>';
+        document.getElementById("list-root").innerHTML =
+          '<div class="empty"><div class="empty-icon">⚠️</div>โหลดล้มเหลว: ' + esc(e.message || e) +
+          '<br><br><button class="refresh-btn" onclick="location.reload()">ลองอีกครั้ง</button></div>';
+        setUpdatedText("ผิดพลาด");
       });
   }
-  document.getElementById("refresh-latest").addEventListener("click", function() {
-    document.getElementById("latest-root").innerHTML = '<div class="skeleton"><div class="skeleton-card"><div class="sk-hero"></div><div class="sk-body"><div class="sk-pill"></div><div class="sk-pill"></div></div></div></div>';
-    loadLatest();
+
+  /* ── Tab clicks ── */
+  document.getElementById("tabs").addEventListener("click", function(e) {
+    var btn = e.target.closest(".tab-btn");
+    if (!btn) return;
+    document.querySelectorAll(".tab-btn").forEach(function(x) {
+      x.classList.toggle("active", x === btn);
+    });
+    state.filter = btn.dataset.cat;
+    applyFilters();
   });
 
-  /* ========== HISTORY ========== */
-  function loadHistory() {
-    var root = document.getElementById("history-root");
-    var lottery = document.getElementById("hist-select").value || "thai";
-    root.innerHTML = '<div class="empty">⏳ กำลังโหลด...</div>';
-    fetch("/api/public/results-history?lottery=" + encodeURIComponent(lottery), { cache: "no-store" })
-      .then(function(r) { return r.json(); })
-      .then(function(data) {
-        window._historyLoaded = true;
-        if (!data.ok || !data.items || !data.items.length) {
-          root.innerHTML = '<div class="empty">ยังไม่มีข้อมูลย้อนหลัง</div>';
-          return;
-        }
-        root.innerHTML = data.items.map(function(it) {
-          var pills = [];
-          if (it.no1) pills.push('<div class="pill"><div class="pl">รางวัลที่ 1</div><div class="pv" style="font-size:13px">' + esc(it.no1) + '</div></div>');
-          var tt = Array.isArray(it.three_top) ? it.three_top.join(" ") : it.three_top;
-          if (tt) pills.push('<div class="pill"><div class="pl">3 บน</div><div class="pv">' + esc(tt) + '</div></div>');
-          var tb = Array.isArray(it.three_bottom) ? it.three_bottom.join(" ") : it.three_bottom;
-          if (tb) pills.push('<div class="pill"><div class="pl">3 ล่าง</div><div class="pv">' + esc(tb) + '</div></div>');
-          if (it.two_top) pills.push('<div class="pill"><div class="pl">2 บน</div><div class="pv">' + esc(it.two_top) + '</div></div>');
-          if (it.two_bottom) pills.push('<div class="pill"><div class="pl">2 ล่าง</div><div class="pv">' + esc(it.two_bottom) + '</div></div>');
-          var dateStr = it.date_th || fmtDate(it.draw_date);
-          return '<div class="history-row"><div class="date">' + esc(dateStr) + '</div><div class="nums">' + pills.join("") + '</div></div>';
-        }).join("");
-      })
-      .catch(function(e) {
-        root.innerHTML = '<div class="empty">โหลดล้มเหลว: ' + esc(e.message || e) + '</div>';
-      });
-  }
-  document.getElementById("hist-select").addEventListener("change", function() { window._historyLoaded = false; loadHistory(); });
+  /* ── Search ── */
+  var searchTimer = null;
+  document.getElementById("search-input").addEventListener("input", function(e) {
+    if (searchTimer) clearTimeout(searchTimer);
+    searchTimer = setTimeout(function() {
+      state.search = e.target.value.trim();
+      applyFilters();
+    }, 200);
+  });
 
-  /* boot */
-  loadLatest();
+  /* ── Refresh button ── */
+  document.getElementById("refresh-btn").addEventListener("click", loadData);
+
+  /* ── Auto refresh ทุก 30 วินาที ── */
+  setInterval(loadData, 30000);
+
+  /* ── Update countdown ทุกนาที (ไม่โหลด data ใหม่) ── */
+  setInterval(function() {
+    document.querySelectorAll(".row.is-pending .row-time").forEach(function(el) {
+      var row = el.closest(".row");
+      var name = row.dataset.name;
+      var item = state.items.find(function(x) {
+        return (x.lottery_name || "").toLowerCase() === name;
+      });
+      if (item && item.next_draw_at) {
+        var time = item.next_draw_at.split(" ")[1].slice(0, 5);
+        el.textContent = time + " · " + countdownText(item.next_draw_at);
+      }
+    });
+  }, 60000);
+
+  /* ── Initial load ── */
+  loadData();
 })();

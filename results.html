@@ -3,127 +3,97 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#0f5132">
+<meta name="theme-color" content="#0a3a23">
 <title>ผลรางวัล — บ้านหวยเรือนเลขเศรษฐี</title>
-<link href="https://fonts.googleapis.com/css2?family=Prompt:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Prompt:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
-:root {
-  --green-dark: #0a3a23;
-  --green: #0f5132;
-  --green-light: #166a44;
-  --gold: #ffd966;
-  --gold-dark: #c79a1a;
-  --bg: #f7f5ef;
-  --surface: #ffffff;
-  --border: #e1ddd0;
-  --text: #1a2e22;
-  --text-soft: #4f6155;
-  --shadow: 0 4px 14px rgba(15,81,50,.12);
-  --radius: 14px;
-}
-* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-body { margin: 0; font-family: 'Prompt', sans-serif; background: var(--bg); color: var(--text); line-height: 1.5; }
-.page { max-width: 720px; margin: 0 auto; padding: 0 0 30px; }
-.topbar { background: linear-gradient(135deg, var(--green-dark) 0%, var(--green) 100%); color: #fff; padding: 14px 18px; position: sticky; top: 0; z-index: 10; box-shadow: 0 2px 8px rgba(0,0,0,.15); }
-.topbar .row { display: flex; align-items: center; gap: 12px; }
-.topbar .back { color: #fff; text-decoration: none; font-size: 22px; opacity: .8; }
-.topbar .brand-mark { display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 10px; background: var(--gold); color: var(--green-dark); font-weight: 800; font-size: 18px; }
-.topbar .brand-eyebrow { font-size: 11px; opacity: .8; letter-spacing: .04em; }
-.topbar .brand-title { font-size: 16px; font-weight: 700; }
-
-.tabs { display: flex; background: var(--surface); border-bottom: 1px solid var(--border); position: sticky; top: 66px; z-index: 9; }
-.tab { flex: 1; padding: 14px 8px; text-align: center; font-weight: 600; font-size: 14px; color: var(--text-soft); cursor: pointer; border: none; background: transparent; border-bottom: 3px solid transparent; transition: .2s; font-family: inherit; }
-.tab.active { color: var(--green); border-bottom-color: var(--gold); }
-.tab:hover { background: rgba(15,81,50,.04); }
-
-.content { padding: 14px; }
-.skeleton { display: grid; gap: 14px; }
-.skeleton-card { background: var(--surface); border-radius: var(--radius); overflow: hidden; border: 1px solid var(--border); }
-.skeleton-card .sk-hero { height: 88px; background: linear-gradient(90deg, #e8e3d3 0%, #f2eedf 50%, #e8e3d3 100%); background-size: 200% 100%; animation: shimmer 1.4s linear infinite; }
-.skeleton-card .sk-body { padding: 12px 14px; display: flex; gap: 8px; }
-.skeleton-card .sk-pill { flex: 1; height: 48px; border-radius: 10px; background: linear-gradient(90deg, #f1ede0 0%, #faf8ee 50%, #f1ede0 100%); background-size: 200% 100%; animation: shimmer 1.4s linear infinite; }
-@keyframes shimmer { 0% { background-position: 200% 0 } 100% { background-position: -200% 0 } }
-.empty { text-align: center; padding: 40px 20px; color: var(--text-soft); background: var(--surface); border-radius: var(--radius); border: 1px dashed var(--border); }
-
-.lottery-grid { display: grid; gap: 14px; }
-.lottery-card { position: relative; background: var(--surface); border-radius: var(--radius); overflow: hidden; box-shadow: var(--shadow); border: 1px solid var(--border); }
-.lottery-card .hero { position: relative; height: 96px; background-size: cover; background-position: center; background-color: var(--green); }
-.lottery-card .hero::before { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(0,0,0,.15) 0%, rgba(0,0,0,.7) 100%); }
-.lottery-card .hero-text { position: relative; z-index: 1; padding: 12px 14px; color: #fff; display: flex; flex-direction: column; height: 100%; justify-content: flex-end; }
-.lottery-card .hero-name { font-weight: 700; font-size: 17px; text-shadow: 0 2px 6px rgba(0,0,0,.7); }
-.lottery-card .hero-date { font-size: 12px; opacity: .9; margin-top: 2px; }
-.lottery-card .body { padding: 12px 14px; display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px; }
-.num-cell { background: linear-gradient(135deg, #fafaf5 0%, #f1ede0 100%); border: 1px solid var(--border); border-radius: 10px; padding: 8px 10px; text-align: center; }
-.num-cell .label { font-size: 11px; color: var(--text-soft); font-weight: 500; }
-.num-cell .value { font-size: 21px; font-weight: 700; color: var(--green-dark); font-variant-numeric: tabular-nums; margin-top: 2px; }
-.num-cell .value.multi { font-size: 17px; line-height: 1.3; }
-.num-cell.status-pending .value { color: var(--text-soft); font-size: 15px; }
-.badge { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 11px; font-weight: 600; }
-.badge-pending { background: #fff7d6; color: #a37c00; }
-.badge-finalized { background: #d8f0e1; color: var(--green-dark); }
-
-.toolbar { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; align-items: center; }
-.toolbar label { font-size: 13px; color: var(--text-soft); }
-.toolbar select { padding: 8px 12px; border-radius: 10px; border: 1px solid var(--border); font-family: inherit; background: var(--surface); flex: 1; min-width: 180px; }
-.refresh-btn { padding: 8px 14px; border-radius: 999px; border: 1px solid var(--green); background: var(--green); color: #fff; font-weight: 600; cursor: pointer; font-family: inherit; font-size: 13px; }
-.refresh-btn:hover { background: var(--green-light); }
-.updated-at { font-size: 11px; color: var(--text-soft); margin-left: auto; }
-
-.history-list { display: grid; gap: 10px; }
-.history-row { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; display: grid; grid-template-columns: 110px 1fr; gap: 12px; align-items: center; }
-.history-row .date { font-size: 13px; color: var(--text-soft); font-weight: 500; }
-.history-row .nums { display: flex; gap: 6px; flex-wrap: wrap; }
-.pill { display: inline-flex; flex-direction: column; align-items: center; background: linear-gradient(135deg, #fafaf5 0%, #f1ede0 100%); border: 1px solid var(--border); border-radius: 8px; padding: 3px 9px; min-width: 50px; }
-.pill .pl { font-size: 10px; color: var(--text-soft); }
-.pill .pv { font-size: 15px; font-weight: 700; color: var(--green-dark); font-variant-numeric: tabular-nums; }
-
-@media (max-width: 480px) {
-  .history-row { grid-template-columns: 1fr; gap: 6px; }
-}
+:root{--green-dark:#0a3a23;--green:#0f5132;--green-light:#166a44;--gold:#ffd966;--gold-dark:#c79a1a;--bg:#f4f1e8;--surface:#fff;--border:#e2ddc8;--text:#1a2e22;--text-soft:#5a6c63;--text-faint:#95a39c;--shadow:0 4px 14px rgba(15,81,50,.1);--pending:#f59e0b;--pending-bg:#fef3c7;--finalized:#16a34a;--finalized-bg:#dcfce7}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;-webkit-font-smoothing:antialiased}
+body{margin:0;font-family:'Prompt',sans-serif;background:var(--bg);color:var(--text);line-height:1.5}
+.page{max-width:720px;margin:0 auto;padding:0 0 80px}
+.topbar{background:linear-gradient(135deg,var(--green-dark) 0%,var(--green) 100%);color:#fff;padding:14px 16px;position:sticky;top:0;z-index:20;box-shadow:0 2px 8px rgba(0,0,0,.15)}
+.topbar .topr{display:flex;align-items:center;gap:12px}
+.brand-mark{display:inline-flex;align-items:center;justify-content:center;width:38px;height:38px;border-radius:10px;background:var(--gold);color:var(--green-dark);font-weight:800;font-size:18px}
+.brand-eyebrow{font-size:11px;opacity:.85;letter-spacing:.5px}
+.brand-title{font-size:17px;font-weight:700}
+.updated-chip{margin-left:auto;font-size:11px;background:rgba(255,255,255,.18);padding:4px 10px;border-radius:999px;display:flex;align-items:center;gap:6px}
+.live-dot{width:6px;height:6px;border-radius:50%;background:#22c55e;animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+.tabs{position:sticky;top:70px;background:var(--bg);z-index:19;padding:12px 14px 0;display:flex;gap:6px;overflow-x:auto;scrollbar-width:none}
+.tabs::-webkit-scrollbar{display:none}
+.tab-btn{flex:0 0 auto;padding:8px 14px;border:1px solid var(--border);background:var(--surface);border-radius:999px;font-family:inherit;font-size:13px;font-weight:600;color:var(--text-soft);cursor:pointer;transition:all .15s ease;white-space:nowrap;display:inline-flex;align-items:center;gap:6px}
+.tab-btn:hover{border-color:var(--green)}
+.tab-btn.active{background:var(--green-dark);color:#fff;border-color:var(--green-dark)}
+.tab-btn .badge-count{background:rgba(255,255,255,.25);color:inherit;padding:1px 8px;border-radius:999px;font-size:11px;font-weight:700}
+.tab-btn:not(.active) .badge-count{background:var(--bg);color:var(--text-soft)}
+.toolbar{padding:10px 14px 8px;display:flex;align-items:center;gap:8px}
+.search-input{flex:1;padding:8px 12px;border:1px solid var(--border);border-radius:999px;background:var(--surface);font-family:inherit;font-size:13px;outline:none;transition:border-color .15s ease}
+.search-input:focus{border-color:var(--green)}
+.refresh-btn{padding:7px 12px;background:var(--surface);border:1px solid var(--border);border-radius:999px;font-family:inherit;font-size:12px;font-weight:600;color:var(--text-soft);cursor:pointer;display:inline-flex;align-items:center;gap:5px}
+.refresh-btn:active{transform:scale(.97)}
+.content{padding:0 14px}
+.list{display:grid;gap:8px}
+.row{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px 14px;display:grid;grid-template-columns:1fr auto;gap:4px 12px;align-items:center;transition:all .15s ease}
+.row:hover{box-shadow:var(--shadow);border-color:var(--green-light)}
+.row.is-pending{background:linear-gradient(135deg,#fffbeb 0%,#fff 50%);border-left:3px solid var(--pending)}
+.row.is-finalized{background:linear-gradient(135deg,#f0fdf4 0%,#fff 30%)}
+.row-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.row-name{font-size:15px;font-weight:700;color:var(--text)}
+.row-flag{font-size:16px;line-height:1}
+.row-meta{font-size:11px;color:var(--text-faint);display:flex;align-items:center;gap:6px}
+.row-status{grid-column:2/3;grid-row:1/3;display:flex;flex-direction:column;align-items:flex-end;gap:4px;min-width:84px}
+.badge{padding:3px 8px;border-radius:999px;font-size:10px;font-weight:700;letter-spacing:.3px;display:inline-flex;align-items:center;gap:4px;white-space:nowrap}
+.badge.finalized{background:var(--finalized-bg);color:var(--finalized)}
+.badge.pending{background:var(--pending-bg);color:var(--gold-dark)}
+.row-time{font-size:10px;color:var(--text-faint);font-variant-numeric:tabular-nums}
+.row-nums{grid-column:1/2;display:flex;gap:8px;flex-wrap:wrap;margin-top:4px}
+.num-pill{display:inline-flex;flex-direction:column;align-items:center;background:linear-gradient(135deg,#fafaf5 0%,#f4efe3 100%);border:1px solid var(--border);border-radius:8px;padding:3px 10px;min-width:56px}
+.num-pill .lbl{font-size:9px;color:var(--text-soft);letter-spacing:.3px}
+.num-pill .val{font-size:15px;font-weight:700;color:var(--green-dark);font-variant-numeric:tabular-nums;letter-spacing:1px}
+.num-pill.empty .val{color:var(--text-faint)}
+.countdown-pill{background:var(--pending-bg);border:1px solid #fcd34d;color:var(--gold-dark);padding:4px 10px;border-radius:8px;font-size:12px;font-weight:600;font-variant-numeric:tabular-nums;display:inline-flex;align-items:center;gap:6px}
+.empty{background:var(--surface);border:1px dashed var(--border);border-radius:12px;padding:40px 20px;text-align:center;color:var(--text-soft);font-size:14px}
+.empty-icon{font-size:36px;margin-bottom:8px;opacity:.5}
+.skeleton-row{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px 14px;display:grid;grid-template-columns:1fr 80px;gap:8px}
+.sk-bar{background:linear-gradient(90deg,#f0ebd9 0%,#fdfbf2 50%,#f0ebd9 100%);background-size:200% 100%;animation:shimmer 1.2s linear infinite;border-radius:6px;height:14px}
+.sk-bar.short{width:40%}
+.sk-bar.tall{height:18px}
+@keyframes shimmer{to{background-position:-200% 0}}
+@media (max-width:480px){.row{padding:10px 12px}.row-name{font-size:14px}.num-pill{min-width:50px;padding:2px 8px}.num-pill .val{font-size:14px}}
 </style>
 </head>
 <body>
 <div class="page">
   <header class="topbar">
-    <div class="row">
+    <div class="topr">
       <span class="brand-mark">฿</span>
       <div>
         <div class="brand-eyebrow">บ้านหวยเรือนเลขเศรษฐี</div>
-        <div class="brand-title">ผลรางวัล</div>
+        <div class="brand-title">📊 ผลรางวัล</div>
       </div>
+      <div class="updated-chip" id="updated-chip"><span class="live-dot"></span><span id="updated-text">รอข้อมูล</span></div>
     </div>
   </header>
-
-  <nav class="tabs">
-    <button class="tab active" data-tab="latest" type="button">📊 ผลล่าสุด</button>
-    <button class="tab" data-tab="history" type="button">📜 ผลย้อนหลัง</button>
+  <nav class="tabs" id="tabs">
+    <button class="tab-btn active" data-cat="all" type="button">⭐ ทั้งหมด <span class="badge-count" id="cnt-all">0</span></button>
+    <button class="tab-btn" data-cat="government" type="button">🏛️ รัฐบาล <span class="badge-count" id="cnt-government">0</span></button>
+    <button class="tab-btn" data-cat="daily" type="button">🌏 รายวัน <span class="badge-count" id="cnt-daily">0</span></button>
+    <button class="tab-btn" data-cat="stock" type="button">📈 หุ้น <span class="badge-count" id="cnt-stock">0</span></button>
+    <button class="tab-btn" data-cat="stock_vip" type="button">⭐ หุ้น VIP <span class="badge-count" id="cnt-stock_vip">0</span></button>
+    <button class="tab-btn" data-cat="foreign" type="button">🌐 ต่างประเทศ <span class="badge-count" id="cnt-foreign">0</span></button>
   </nav>
-
   <main class="content">
-    <section id="tab-latest">
-      <div class="toolbar">
-        <span class="updated-at" id="updated-at"></span>
-        <button class="refresh-btn" type="button" id="refresh-latest">🔄 รีเฟรช</button>
-      </div>
-      <div id="latest-root">
-        <div class="skeleton">
-          <div class="skeleton-card"><div class="sk-hero"></div><div class="sk-body"><div class="sk-pill"></div><div class="sk-pill"></div><div class="sk-pill"></div></div></div>
-          <div class="skeleton-card"><div class="sk-hero"></div><div class="sk-body"><div class="sk-pill"></div><div class="sk-pill"></div><div class="sk-pill"></div></div></div>
-          <div class="skeleton-card"><div class="sk-hero"></div><div class="sk-body"><div class="sk-pill"></div><div class="sk-pill"></div><div class="sk-pill"></div></div></div>
-        </div>
-      </div>
-    </section>
-
-    <section id="tab-history" hidden>
-      <div class="toolbar">
-        <label for="hist-select">ดูย้อนหลัง:</label>
-        <select id="hist-select"><option value="thai">หวยรัฐบาลไทย</option></select>
-      </div>
-      <div id="history-root" class="history-list"></div>
-    </section>
+    <div class="toolbar">
+      <input class="search-input" type="search" id="search-input" placeholder="🔍 ค้นหาชื่อหวย..." autocomplete="off">
+      <button class="refresh-btn" type="button" id="refresh-btn">🔄 รีเฟรช</button>
+    </div>
+    <div id="list-root" class="list">
+      <div class="skeleton-row"><div><div class="sk-bar tall"></div><div class="sk-bar short" style="margin-top:8px"></div></div><div class="sk-bar tall"></div></div>
+      <div class="skeleton-row"><div><div class="sk-bar tall"></div><div class="sk-bar short" style="margin-top:8px"></div></div><div class="sk-bar tall"></div></div>
+      <div class="skeleton-row"><div><div class="sk-bar tall"></div><div class="sk-bar short" style="margin-top:8px"></div></div><div class="sk-bar tall"></div></div>
+    </div>
   </main>
 </div>
-
-<script src="/lotto.js?v=20260612153149"></script>
+<script src="/lotto.js?v=20260620-redesign-v2"></script>
 </body>
 </html>
