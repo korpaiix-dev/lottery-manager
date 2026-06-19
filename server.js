@@ -1,3 +1,4 @@
+/* === PHASE-C-SOURCE-TRUTH === */
 /* === MONTHLY-LOTTO-ALERT-V1 === */
 /* === SCRAPER-PUPPETEER-V1 === */
 /* === SCRAPER-FINAL-BATCH-V1 === */
@@ -8847,9 +8848,31 @@ function _payoutOverridesMap(hhFilter) {
   } catch (e) { return {}; }
 }
 
+/* PHASE-C-SOURCE-TRUTH: get categories ที่มีใช้จริงใน DB + label map */
+function getLotteryCategories() {
+  const LABELS = {
+    government: 'รัฐบาล',
+    daily: 'หวยรายวัน',
+    thai: 'หวยไทย',
+    foreign: 'หวยต่างประเทศ',
+    stock: 'หวยหุ้น',
+    stock_vip: 'หวยหุ้น VIP',
+    online: 'หวยออนไลน์',
+    other: 'หวยอื่น ๆ',
+  };
+  try {
+    const rows = db.prepare("SELECT DISTINCT category FROM lotteries ORDER BY category").all();
+    return rows.filter(r => r.category).map(r => ({
+      id: r.category,
+      label: LABELS[r.category] || r.category,
+    }));
+  } catch { return []; }
+}
+
 function getFullState(user) {
   if (user?.role === "head_house_viewer") {
     return {
+      lotteryCategories: getLotteryCategories(),
       headHouses: user.head_house_id ? [findHeadHouse(user.head_house_id)].filter(Boolean) : [],
       lotteries: [],
       customers: [],
@@ -8870,6 +8893,7 @@ function getFullState(user) {
   if (user?.role === "affiliate") {
     const hhId = user.head_house_id;
     return {
+      lotteryCategories: getLotteryCategories(),
       headHouses: hhId ? [findHeadHouse(hhId)].filter(Boolean) : [],
       lotteries: db.prepare("SELECT * FROM lotteries ORDER BY category, display_order, name").all(),
       customers: hhId ? db.prepare("SELECT * FROM customers WHERE head_house_id = ? ORDER BY code").all(hhId) : [],
@@ -8930,6 +8954,7 @@ function getFullState(user) {
       `)
       .all()
       .map(presentScheduleTemplate),
+    lotteryCategories: getLotteryCategories(),
     betTypes: getBetTypes(),
     payoutRates: db.prepare("SELECT * FROM payout_rates").all(),
     payoutOverrides: _payoutOverridesMap(null), /* PAYOUT-OVERRIDES-STATE-V1: ทั้งหมด */

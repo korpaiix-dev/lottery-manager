@@ -53,15 +53,28 @@ const INTAKE_ACTIONS = [
   { id: "three_pair", label: "3 ตัว", digits: 3, target: "three_pair" },
 ];
 
-const LOTTERY_CATEGORIES = [
+/* PHASE-C-SOURCE-TRUTH-FE: emergency fallback ถ้า state.lotteryCategories โหลดไม่ได้
+   หลัก: ใช้ state.lotteryCategories ที่ส่งมาจาก /api/state — fallback นี้เพื่อ render เริ่มต้นเท่านั้น */
+const LOTTERY_CATEGORIES_FALLBACK = [
   { id: "government", label: "รัฐบาล" },
   { id: "daily", label: "หวยรายวัน" },
   { id: "thai", label: "หวยไทย" },
   { id: "foreign", label: "หวยต่างประเทศ" },
   { id: "stock", label: "หวยหุ้น" },
   { id: "stock_vip", label: "หวยหุ้น VIP" },
+  { id: "online", label: "หวยออนไลน์" },
   { id: "other", label: "หวยอื่น ๆ" },
 ];
+/* Source of truth: ใช้จาก state ก่อน, fallback เมื่อ state ยังไม่โหลด */
+const LOTTERY_CATEGORIES = new Proxy([], {
+  get(_, prop) {
+    const src = (window.state && Array.isArray(window.state.lotteryCategories) && window.state.lotteryCategories.length > 0)
+      ? window.state.lotteryCategories
+      : LOTTERY_CATEGORIES_FALLBACK;
+    return src[prop];
+  },
+  has(_, prop) { return prop in (window.state?.lotteryCategories || LOTTERY_CATEGORIES_FALLBACK); }
+});
 
 const state = {
   user: null,
