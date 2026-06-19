@@ -5398,12 +5398,45 @@ function apilottoDateToIso(s) {
   return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 }
 
-/* ===== SCRAPER-FRAMEWORK-V1: ระบบ scraper อิสระ (ใช้ร่วมกับ apilotto) ===== */
-const __scraperCache = new Map(); /* key: url, value: {ts, data} */
+/* ===== SCRAPER-FRAMEWORK-V1 + CRITICAL-FIX-V1 ===== */
+const __scraperCache = new Map();
 const __SCRAPER_CACHE_TTL = 30 * 1000;
+const __SCRAPER_CACHE_MAX = 200;
+
+function __isPrivateHostname(h) {
+  h = String(h || '').toLowerCase();
+  if (!h || h === 'localhost' || h === '0.0.0.0') return true;
+  if (/^127\./.test(h) || /^10\./.test(h) || /^192\.168\./.test(h)) return true;
+  if (/^172\.(1[6-9]|2[0-9]|3[01])\./.test(h)) return true;
+  if (/^169\.254\./.test(h)) return true;
+  if (h === '::1' || h.startsWith('fe80:') || h.startsWith('fc') || h.startsWith('fd')) return true;
+  return false;
+}
+function __cacheKey(url) {
+  try { const u = new URL(url); u.searchParams.delete('t'); u.searchParams.delete('_'); u.searchParams.delete('ts'); return u.toString(); } catch { return url; }
+}
+function __scraperCacheEvictIfFull() {
+  if (__scraperCache.size <= __SCRAPER_CACHE_MAX) return;
+  const cutoff = __scraperCache.size - __SCRAPER_CACHE_MAX + 10;
+  let i = 0;
+  for (const k of __scraperCache.keys()) { __scraperCache.delete(k); if (++i >= cutoff) break; }
+}
+setInterval(() => {
+  const now = Date.now();
+  for (const [k, v] of __scraperCache.entries()) if (now - v.ts > __SCRAPER_CACHE_TTL) __scraperCache.delete(k);
+}, 5 * 60 * 1000).unref();
 
 async function fetchUrl(url, headers = {}) {
-  const cached = __scraperCache.get(url);
+  try {
+    const u = new URL(url);
+    if (!['http:', 'https:'].includes(u.protocol)) throw new Error('bad_protocol');
+    if (__isPrivateHostname(u.hostname)) throw new Error('private_ip_blocked');
+  } catch (e) {
+    if (e.message === 'bad_protocol' || e.message === 'private_ip_blocked') throw new Error('ssrf_' + e.message);
+    throw new Error('invalid_url');
+  }
+  const key = __cacheKey(url);
+  const cached = __scraperCache.get(key);
   if (cached && (Date.now() - cached.ts) < __SCRAPER_CACHE_TTL) return cached.data;
   const ctrl = new AbortController();
   const tmr = setTimeout(() => ctrl.abort(), 8000);
@@ -5420,7 +5453,8 @@ async function fetchUrl(url, headers = {}) {
     clearTimeout(tmr);
     if (!r.ok) throw new Error("http_" + r.status);
     const data = await r.json();
-    __scraperCache.set(url, { ts: Date.now(), data });
+    __scraperCache.set(key, { ts: Date.now(), data });
+    __scraperCacheEvictIfFull();
     return data;
   } catch (e) {
     clearTimeout(tmr);
@@ -5706,25 +5740,52 @@ function parseLaostarsVipFp(resp) {
 */
 import { spawn } from "node:child_process";
 
+const __PUPPETEER_ALLOWED = new Set([
+  'scrape-egx-investing.mjs',
+  'scrape-laostarsvip.mjs',
+  'scrape-saihuay.mjs',
+  'scrape-saihuay-baac.mjs',
+]);
 async function fetchPuppeteer(scriptName, targetUrl) {
+  if (!/^[a-z0-9._-]+\.mjs$/i.test(scriptName)) throw new Error('puppeteer_invalid_script_name');
+  if (!__PUPPETEER_ALLOWED.has(scriptName)) throw new Error('puppeteer_script_not_allowlisted');
+  if (targetUrl) {
+    try {
+      const u = new URL(targetUrl);
+      if (!['http:', 'https:'].includes(u.protocol)) throw new Error('puppeteer_ssrf_bad_protocol');
+      if (__isPrivateHostname(u.hostname)) throw new Error('puppeteer_ssrf_private_ip');
+    } catch (e) { throw new Error(e.message.startsWith('puppeteer_') ? e.message : 'puppeteer_invalid_url'); }
+  }
   return new Promise((resolve, reject) => {
-    const scriptPath = `/var/www/lottery-manager/scripts/${scriptName}`;
-    const child = spawn("node", [scriptPath, targetUrl || ""], {
-      cwd: "/var/www/lottery-manager",
-      env: { ...process.env, NODE_PATH: "/var/www/lottery-manager/node_modules", HOME: "/tmp" },
-      timeout: 30000,
+    const scriptPath = '/var/www/lottery-manager/scripts/' + scriptName;
+    let settled = false;
+    const child = spawn('node', [scriptPath, targetUrl || ''], {
+      cwd: '/var/www/lottery-manager',
+      env: { ...process.env, NODE_PATH: '/var/www/lottery-manager/node_modules', HOME: '/tmp' },
     });
-    let stdout = "", stderr = "";
-    child.stdout.on("data", d => stdout += d.toString());
-    child.stderr.on("data", d => stderr += d.toString());
-    child.on("close", (code) => {
-      if (code !== 0 && !stdout) {
-        return reject(new Error("puppeteer_exit_" + code + ": " + stderr.slice(0, 200)));
-      }
+    const killTimer = setTimeout(() => {
+      if (settled) return;
+      try { child.kill('SIGKILL'); } catch {}
+      settled = true;
+      reject(new Error('puppeteer_timeout'));
+    }, 30000);
+    let stdout = '', stderr = '';
+    child.stdout.on('data', d => stdout += d.toString());
+    child.stderr.on('data', d => stderr += d.toString());
+    child.on('close', (code) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(killTimer);
+      if (code !== 0) return reject(new Error('puppeteer_exit_' + code + ': ' + stderr.slice(0, 200)));
       try { resolve(JSON.parse(stdout.trim().split(/\n/).pop())); }
-      catch (e) { reject(new Error("puppeteer_parse_error")); }
+      catch (e) { reject(new Error('puppeteer_parse_error: ' + stdout.slice(0, 100))); }
     });
-    child.on("error", e => reject(new Error("puppeteer_spawn_" + e.message)));
+    child.on('error', e => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(killTimer);
+      reject(new Error('puppeteer_spawn_' + e.message));
+    });
   });
 }
 
@@ -5843,9 +5904,10 @@ async function applyApilottoToRound(roundId) {
 
   const now = nowIso();
   const inserted = [];
+  /* CRITICAL-FIX-V1: track race-safe finalize */
+  let finalizedNow = 0;
   withTransaction(() => {
     for (const u of updates) {
-      /* delete existing for this bet_type (mimic /api/results pattern) */
       db.prepare("DELETE FROM results WHERE round_id = ? AND bet_type_id = ?").run(roundId, u.bt);
       const stmt = db.prepare(`INSERT OR IGNORE INTO results (id, round_id, bet_type_id, number, created_at, updated_at)
         VALUES (?, ?, ?, ?, ?, ?)`);
@@ -5858,15 +5920,14 @@ async function applyApilottoToRound(roundId) {
         inserted.push({ id, round_id: roundId, bet_type_id: u.bt, number: num });
       }
     }
-    /* AUTO-FINALIZE: set result_status finalized — ไม่แตะ ticket / เงิน */
     if (shouldFinalize && inserted.length) {
-      /* AUDIT-FIX: set finalized_by = 'system:apilotto' */
-      db.prepare("UPDATE rounds SET result_status='finalized', result_finalized_by=?, result_finalized_at=?, updated_at=? WHERE id=? AND result_status='draft'")
+      const upd = db.prepare("UPDATE rounds SET result_status='finalized', result_finalized_by=?, result_finalized_at=?, updated_at=? WHERE id=? AND result_status='draft'")
         .run('system:apilotto', now, now, roundId);
+      finalizedNow = upd.changes; /* 0 = race lost (อีก process finalize ไปแล้ว) */
     }
   });
-  /* GROUP-BOT: broadcast + push winners เมื่อ finalize success */
-  if (shouldFinalize && inserted.length) {
+  /* CRITICAL-FIX-V1: เช็ค finalizedNow > 0 ป้องกัน push ซ้ำเมื่อ race */
+  if (shouldFinalize && inserted.length && finalizedNow > 0) {
     broadcastResultToGroups(roundId).catch(()=>{});
     /* push winners ก่อน แล้ว push losers ตามหลัง 30 วินาที (ให้ dedup winners บันทึกก่อน) */
     /* GROUP-BROADCAST-V1: broadcast ผลลงกลุ่ม */
@@ -5875,7 +5936,7 @@ async function applyApilottoToRound(roundId) {
       setTimeout(() => pushLosersToCustomers(roundId).catch(()=>{}), 30000);
     }).catch(()=>{});
   }
-  return { ok: true, roundId, lottery_id: round.lottery_id, drawDate: r.drawDate, inserted, finalized: shouldFinalize, sourceMeta: r.meta || null };
+  return { ok: true, roundId, lottery_id: round.lottery_id, drawDate: r.drawDate, inserted, finalized: shouldFinalize && finalizedNow > 0, sourceMeta: r.meta || null };
 }
 
 /* ===== MONTHLY-LOTTO-ALERT-V1: แจ้งบอสตอน ออมสิน/ธ.ก.ส. ออกผล ===== */
