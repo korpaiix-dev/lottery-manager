@@ -10,7 +10,9 @@
     "qa:deep": "node scripts/qa-deep.mjs",
     "payouts:defaults": "node scripts/set-default-payouts.mjs",
     "regression": "node scripts/regression-2026-05-22.mjs",
-    "regression:line": "node scripts/regression-line-parser.mjs"
+    "regression:line": "node scripts/regression-line-parser.mjs",
+    "predeploy": "npm run check && npm run smoke",
+    "commit-safe": "npm run check && git status"
   },
   "dependencies": {
     "bcryptjs": "^3.0.2",
