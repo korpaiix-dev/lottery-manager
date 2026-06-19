@@ -5246,7 +5246,7 @@ app.get("/api/customer/my-orders", (req, res) => {
 app.get("/api/public/bank-account/current", bankNextRateLimit, (req, res) => {
   refreshAllBankAccountsDaily();
   const acc = db.prepare(`
-    SELECT id, bank_name, bank_code, account_number, account_holder, note, daily_limit, total_received_today
+    SELECT id, bank_name, bank_code, account_number, account_holder, note, daily_limit, total_received_today, promptpay_id
     FROM bank_accounts
     WHERE status = 'active' AND total_received_today < daily_limit
     ORDER BY priority ASC, total_received_today ASC LIMIT 1
@@ -5257,6 +5257,7 @@ app.get("/api/public/bank-account/current", bankNextRateLimit, (req, res) => {
     bank_code: acc.bank_code || null,
     account_number: acc.account_number,
     account_holder: acc.account_holder,
+    promptpay_id: acc.promptpay_id || null,
     note: acc.note || "",
     remaining_today: Math.max(0, acc.daily_limit - acc.total_received_today),
   });
@@ -6512,7 +6513,7 @@ const SLIP_REPLY_APPROVED = (code, amount) =>
   `💰 ยอด ${Number(amount).toLocaleString("th-TH")} บาท\n` +
   `ขอบคุณที่ใช้บริการค่ะ ขอให้โชคดีนะคะ 🍀`;
 
-const SLIP_REPLY_NO_CUSTOMER = `⚠️ ยังไม่พบบัญชีของคุณในระบบค่ะ\nกรุณาสั่งซื้อบิลก่อนส่งสลิปนะคะ`;
+const SLIP_REPLY_NO_CUSTOMER = `⚠️ ยังไม่พบข้อมูลของคุณค่ะ\nกรุณาสั่งซื้อบิลก่อนส่งสลิปนะคะ`;
 const SLIP_REPLY_NO_MATCH = `⚠️ ได้รับสลิปแล้วค่ะ แต่ระบบยังไม่พบบิลที่ตรงกัน\nแอดมินจะช่วยตรวจให้ภายใน 10 นาทีนะคะ ขอบคุณที่รอค่ะ ⏳`;
 const SLIP_REPLY_TOO_OLD = "⚠️ สลิปนี้เก่าเกินไปนะคะ\nกรุณาโอนเงินใหม่และส่งสลิปล่าสุดมาด้วยค่ะ";
 const SLIP_REPLY_DUPLICATE = `⚠️ สลิปนี้ได้ถูกใช้ในระบบแล้วค่ะ\nหากเป็นการสั่งซื้อใหม่ กรุณาส่งสลิปการโอนใหม่อีกครั้งนะคะ`;
@@ -6790,7 +6791,28 @@ async function pushWinnersToCustomers(roundId) {
       }
       if (!claimed || claimed.changes === 0) continue; /* คนอื่นจองไปแล้ว */
       try {
-        await linePush(cust.line_user_id, text);
+        /* === UX-FIX-V3-WINNER-QR === */
+        const oaId = process.env.OA_BASIC_ID || "@042xplcj";
+        const winnerQuickReply = {
+          items: [
+            { type: "action", action: { type: "uri", label: "📞 ติดต่อแอดมิน",
+                uri: "https://line.me/R/oaMessage/" + oaId + "/?" + encodeURIComponent("ขอแจ้งเลขบัญชีรับรางวัล") } },
+            { type: "action", action: { type: "message", label: "📋 ส่งเลขบัญชี",
+                text: "ขอแจ้งเลขบัญชีรับรางวัล" } }
+          ]
+        };
+        const ctx = lineContext.getStore();
+        const wtoken = (ctx && ctx.token) || getUserChannelToken(cust.line_user_id);
+        if (wtoken) {
+          const r = await fetch("https://api.line.me/v2/bot/message/push", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "Authorization": "Bearer " + wtoken },
+            body: JSON.stringify({ to: cust.line_user_id, messages: [{ type: "text", text, quickReply: winnerQuickReply }] }),
+          });
+          if (!r.ok) throw new Error("LINE push status " + r.status);
+        } else {
+          await linePush(cust.line_user_id, text);
+        }
         pushed++;
       } catch (e) {
         console.warn("[winner-push]", custId, e.message);
@@ -6998,9 +7020,24 @@ const KW_MENU    = /^\s*(เมนู|menu)\s*$/i;
 const KW_REGISTER= /^\s*(สมัคร|สมัครสมาชิก)\s*$/i;
 const KW_GROUP   = /^\s*(กลุ่ม|กลุ่มแนวทาง)\s*$/i;
 /* DISABLED keywords (ทับคำสนทนาทั่วไป) */
-const KW_BUY  = { test: function(){return false;} };
-const KW_BANK = { test: function(){return false;} };
-const KW_HELP = { test: function(){return false;} };
+/* === UX-FIX-V3-FALLBACK === in-memory dedup สำหรับ fallback flex menu */
+const __fallbackSent = new Map(); // userId -> timestamp ms
+function shouldSendFallback(uid) {
+  if (!uid) return false;
+  const t = __fallbackSent.get(uid) || 0;
+  if (Date.now() - t < 86400000) return false;
+  __fallbackSent.set(uid, Date.now());
+  /* prune ถ้าเกิน 5k entry */
+  if (__fallbackSent.size > 5000) {
+    const cutoff = Date.now() - 86400000;
+    for (const [k, v] of __fallbackSent) if (v < cutoff) __fallbackSent.delete(k);
+  }
+  return true;
+}
+/* === UX-FIX-V3-KW === เปิด keyword routing สำหรับลูกค้าผู้สูงอายุ */
+const KW_BUY  = /^\s*(ซื้อ|ซื้อหวย|แทง|แทงหวย|สั่ง|order|buy)\s*$/i;
+const KW_BANK = /^\s*(บัญชี|เลขบัญชี|โอนเงิน|โอน|จ่าย|payment|bank)\s*$/i;
+const KW_HELP = /^\s*(ช่วย|ช่วยด้วย|help|ทำไง|ใช้ยังไง|วิธี|how|งง)\s*$/i;
 
 async function lineReply(replyToken, text) {
   const token = _currentLineToken();
@@ -7588,9 +7625,9 @@ Group ID: ${groupId}
             backgroundColor: "#0f5132",
             paddingAll: "20px",
             contents: [
-              { type: "text", text: "ยินดีต้อนรับ 🎉", color: "#ffffff", weight: "bold", size: "xl", align: "center" },
-              { type: "text", text: "บ้านหวยเรือนเลขเศรษฐี", color: "#d1fae5", size: "md", align: "center", margin: "sm" },
-              { type: "text", text: "ระบบหวยออนไลน์ · ปลอดภัย · จ่ายจริง", color: "#86efac", size: "xs", align: "center", margin: "xs" }
+              /* === UX-FIX-V3-WELCOME === */
+              { type: "text", text: "สวัสดีค่ะ มาเลือกหวยกันนะคะ 🙏", color: "#ffffff", weight: "bold", size: "xl", align: "center", wrap: true },
+              { type: "text", text: "บ้านหวยเรือนเลขเศรษฐี", color: "#d1fae5", size: "md", align: "center", margin: "sm" }
             ]
           },
           body: {
@@ -7627,7 +7664,9 @@ Group ID: ${groupId}
           footer: {
             type: "box", layout: "vertical", spacing: "sm", paddingAll: "12px",
             contents: [
-              { type: "text", text: "💡 ใช้เมนูด้านล่างเลือกบริการอื่นได้เลย", size: "xs", color: "#6b7280", align: "center", wrap: true }
+              { type: "text", text: "💡 ใช้เมนูด้านล่างเลือกบริการอื่นได้เลย", size: "xs", color: "#6b7280", align: "center", wrap: true },
+              /* === UX-FIX-V3-WELCOME === */
+              { type: "text", text: "ปลอดภัย · จ่ายจริง", size: "xs", color: "#9ca3af", align: "center", margin: "xs" }
             ]
           }
         }
@@ -7873,7 +7912,7 @@ Group ID: ${groupId}
     if (KW_MY_BILL.test(text)) {
       try {
         const cust = db.prepare("SELECT id FROM customers WHERE line_user_id = ?").get(userId);
-        if (!cust) { await lineReplyWithMenu(replyToken, "ยังไม่พบบัญชีลูกค้า — กรุณาสั่งบิลแรกก่อน"); return; }
+        if (!cust) { await lineReplyWithMenu(replyToken, "ยังไม่พบข้อมูลลูกค้า — กรุณาสั่งบิลแรกก่อน"); return; }
         const tickets = db.prepare(`SELECT code, status, total_amount, created_at FROM tickets WHERE customer_id = ? ORDER BY created_at DESC LIMIT 5`).all(cust.id);
         if (!tickets.length) { await lineReplyWithMenu(replyToken, "ยังไม่มีบิลในระบบ"); return; }
         const statusMap = { pending_review: "รอตรวจสลิป ⏳", approved: "อนุมัติ ✓", rejected: "ปฏิเสธ ✗", cancelled: "ยกเลิก", auto_cancelled: "ถูกยกเลิก (ลืมส่งสลิป)" };
@@ -7886,7 +7925,7 @@ Group ID: ${groupId}
     if (KW_CANCEL.test(text)) {
       try {
         const cust = db.prepare("SELECT id, name FROM customers WHERE line_user_id = ?").get(userId);
-        if (!cust) { await lineReplyWithMenu(replyToken, "ยังไม่พบบัญชีลูกค้านะคะ"); return; }
+        if (!cust) { await lineReplyWithMenu(replyToken, "ยังไม่พบข้อมูลลูกค้านะคะ"); return; }
         /* CANCEL-V2: เช็คบิลล่าสุดทุก status */
         const t = db.prepare(`SELECT id, code, status, total_amount FROM tickets WHERE customer_id = ? ORDER BY created_at DESC LIMIT 1`).get(cust.id);
         if (!t) { await lineReplyWithMenu(replyToken, "ยังไม่มีบิลในระบบค่ะ"); return; }
@@ -7958,6 +7997,44 @@ Group ID: ${groupId}
       } catch (e) { console.warn("[smart-reply]", e.message); }
       return;
     }
+    /* === UX-FIX-V3-FALLBACK === flex menu สั้นๆ ถ้าข้อความสั้น + ไม่ match keyword + dedup 24h */
+    try {
+      if (replyToken && typeof text === "string" && text.length > 0 && text.length < 20 && shouldSendFallback(userId)) {
+        const baseUrlFB = process.env.BASE_URL || "https://lottery.139-59-123-146.nip.io";
+        const liffUrlFB = process.env.LIFF_URL || "https://liff.line.me/2010170072-GDDXzvaN";
+        const tkFB = _currentLineToken();
+        if (tkFB) {
+          await fetch("https://api.line.me/v2/bot/message/reply", {
+            method: "POST",
+            headers: { Authorization: "Bearer " + tkFB, "Content-Type": "application/json" },
+            body: JSON.stringify({
+              replyToken,
+              messages: [{
+                type: "flex",
+                altText: "เลือกบริการได้จากปุ่มด้านล่างนะคะ",
+                contents: {
+                  type: "bubble", size: "kilo",
+                  body: {
+                    type: "box", layout: "vertical", spacing: "sm", paddingAll: "16px",
+                    contents: [
+                      { type: "text", text: "สวัสดีค่ะ 🙏", weight: "bold", size: "lg", color: "#0f5132" },
+                      { type: "text", text: "แตะปุ่มด้านล่างเพื่อใช้บริการนะคะ", size: "sm", color: "#374151", wrap: true, margin: "sm" },
+                      { type: "separator", margin: "md" },
+                      { type: "button", style: "primary", color: "#0f5132", height: "sm", margin: "md",
+                        action: { type: "uri", label: "✍️ แทงหวย", uri: liffUrlFB } },
+                      { type: "button", style: "secondary", height: "sm",
+                        action: { type: "uri", label: "📋 บิลของฉัน", uri: baseUrlFB + "/my-orders" } },
+                      { type: "button", style: "secondary", height: "sm",
+                        action: { type: "uri", label: "📊 ผลรางวัล", uri: baseUrlFB + "/lotto" } }
+                    ]
+                  }
+                }
+              }]
+            })
+          });
+        }
+      }
+    } catch (e) { console.warn("[fallback-flex]", e.message); }
     /* non-keyword silent */
     return;
   }
