@@ -2097,70 +2097,83 @@ function flagImg(code, size) {
 
 /* LIVE-RESULTS-TAB: render ผลสดจาก apilotto */
 let __liveResultsTimer = null;
+/* LIVE-RESULTS-V3: ใช้ /api/public/results-latest → ครบทุกหวย + placeholder pending */
 async function renderLiveResults() {
   const root = document.getElementById("liveResultsRoot");
   const updEl = document.getElementById("liveResultsUpdated");
   if (!root) return;
   if (updEl) updEl.textContent = "กำลังดึงข้อมูล...";
   try {
-    const r = await fetch("/api/admin/live-results", { credentials: "include" });
+    const r = await fetch("/api/public/results-latest", { credentials: "include" });
     if (!r.ok) { root.innerHTML = '<div style="color:#dc2626;padding:12px">โหลดไม่สำเร็จ HTTP ' + r.status + '</div>'; return; }
     const d = await r.json();
-    if (updEl) updEl.textContent = "✓ อัพเดท: " + new Date().toLocaleTimeString("th-TH");
+    const items = d.items || [];
+    if (updEl) updEl.textContent = "✓ อัพเดท: " + new Date().toLocaleTimeString("th-TH") + " · " + items.length + " หวย";
 
-    const isXx = (s) => !s || String(s).toLowerCase().includes("x");
-    const pill = (lbl, val) => `<div style="background:#f1f5f9;padding:8px 12px;border-radius:6px;flex:1;min-width:80px;text-align:center"><div style="font-size:11px;color:#64748b;margin-bottom:2px">${lbl}</div><div style="font-size:18px;font-weight:700;color:${isXx(val)?"#94a3b8":"#0f172a"};letter-spacing:1px">${val||"--"}</div></div>`;
-    const sec = (cls, title, date, body) => `<div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;margin-bottom:12px"><div style="background:${cls};color:#fff;padding:10px 14px;display:flex;justify-content:space-between;align-items:center"><h3 style="font-size:14px;font-weight:700;margin:0">${title}</h3><span style="font-size:12px;opacity:0.9">${date||""}</span></div><div style="padding:12px">${body}</div></div>`;
-    const row = (...pills) => `<div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap">${pills.join("")}</div>`;
+    /* group ตาม category */
+    const CATEGORY_LABELS = {
+      government: "🏛️ รัฐบาล",
+      daily: "🌏 รายวัน (ลาว / ฮานอย / มาเลย์)",
+      stock: "📈 หวยหุ้น",
+      stock_vip: "📈 หวยหุ้น VIP",
+      foreign: "🌐 ต่างประเทศ / ดาวโจนส์",
+      other: "🎰 อื่นๆ",
+    };
+    const CATEGORY_COLORS = {
+      government: "linear-gradient(135deg,#7c2d12,#dc2626)",
+      daily: "linear-gradient(135deg,#1e40af,#3b82f6)",
+      stock: "linear-gradient(135deg,#581c87,#a855f7)",
+      stock_vip: "linear-gradient(135deg,#92400e,#f59e0b)",
+      foreign: "linear-gradient(135deg,#0f5132,#15803d)",
+    };
+    const grouped = {};
+    for (const it of items) {
+      const cat = it.category || "other";
+      if (!grouped[cat]) grouped[cat] = [];
+      grouped[cat].push(it);
+    }
 
-    let h = '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:12px">';
+    const ORDER = ["government","daily","foreign","stock","stock_vip","other"];
+    let h = "";
+    for (const cat of ORDER) {
+      const list = grouped[cat]; if (!list || !list.length) continue;
+      const finalized = list.filter(x => x.status === "finalized");
+      const pending = list.filter(x => x.status === "pending");
+      const total = list.length;
+      const color = CATEGORY_COLORS[cat] || "linear-gradient(135deg,#475569,#64748b)";
+      const title = (CATEGORY_LABELS[cat] || cat) + " <span style=\"font-size:12px;font-weight:400;opacity:0.85\">(" + finalized.length + "/" + total + " ออกแล้ว)</span>";
 
-    if (d.thai) {
-      let b = "";
-      if (d.thai.first) {
-        b += row(pill("รางวัลที่ 1", d.thai.first));
-        b += row(pill("2 ตัวท้าย", d.thai.two_last), pill("3 ตัวท้าย", d.thai.three_last));
-        b += row(pill("3 ตัวหน้า", d.thai.three_first));
-      } else b = '<div style="color:#94a3b8;font-style:italic;text-align:center;padding:8px">ยังไม่มีผล</div>';
-      h += sec("linear-gradient(135deg,#7c2d12,#dc2626)", flagImg("th") + "หวยรัฐบาลไทย <span style=\"font-size:11px;font-weight:400;opacity:0.85\">🕒 ออก 14:00 น. (ทุกวันที่ 1 และ 16)</span>", d.thai.date, b);
-    }
-    if (d.lao) {
-      let b = "";
-      if (d.lao.three_top || d.lao.two_top) {
-        b += row(pill("4 ตัว", d.lao.four));
-        b += row(pill("3 บน", d.lao.three_top), pill("2 บน", d.lao.two_top), pill("2 ล่าง", d.lao.two_bottom));
-        if (d.lao.animal) b += row(pill("นามสัตว์", d.lao.animal));
-      } else b = '<div style="color:#94a3b8;font-style:italic;text-align:center;padding:8px">ยังไม่มีผล (xxxx)</div>';
-      h += sec("linear-gradient(135deg,#1e40af,#3b82f6)", flagImg("la") + "หวยลาวพัฒนา <span style=\"font-size:11px;font-weight:400;opacity:0.85\">🕒 ออก 20:30 น. (จันทร์-ศุกร์)</span>", d.lao.date, b);
-    }
-    if (d.hanoi && d.hanoi.length) {
-      let b = "";
-      const HANOI_TIME = { "พิเศษ": "17:30 น.", "ปกติ": "18:30 น.", "VIP": "19:30 น." };
-      for (const x of d.hanoi) {
-        const tm = HANOI_TIME[x.name] || "";
-        b += `<div style="background:#f8fafc;padding:8px;border-radius:6px;margin-bottom:6px"><div style="font-size:12px;color:#b45309;font-weight:600;margin-bottom:4px;display:flex;justify-content:space-between"><span>${x.name}</span><span style="font-weight:400;color:#64748b">🕒 ${tm}</span></div>`;
-        b += row(pill("4 ตัว", x.four), pill("3 บน", x.three_top), pill("2 บน", x.two_top), pill("2 ล่าง", x.two_bottom));
-        b += "</div>";
-      }
-      h += sec("linear-gradient(135deg,#b45309,#f59e0b)", flagImg("vn") + "หวยฮานอย", d.hanoi[0].date, b);
-    }
-    if (d.malay) {
-      let b = row(pill("4 ตัว", d.malay.four));
-      b += row(pill("3 ตัว", d.malay.three_top), pill("2 บน", d.malay.two_top), pill("2 ล่าง", d.malay.two_bottom));
-      h += sec("linear-gradient(135deg,#0f5132,#15803d)", flagImg("my") + "หวยมาเลย์ <span style=\"font-size:11px;font-weight:400;opacity:0.85\">🕒 ออก 18:00 น. (จ./พ./ส./อา.)</span>", d.malay.date, b);
-    }
-    h += "</div>";
-
-    if (d.stock && d.stock.length) {
       let rows = "";
-      for (const s of d.stock) {
-        const xx = isXx(s.three_top);
-        const badge = xx ? '<span style="background:#94a3b8;color:#fff;padding:2px 6px;border-radius:4px;font-size:10px">รอออก</span>' : '<span style="background:#22c55e;color:#fff;padding:2px 6px;border-radius:4px;font-size:10px">ออกแล้ว</span>';
-        const tm = STOCK_TIME_MAP[s.name] || ""; rows += `<tr><td style="text-align:left;padding:8px 6px;border-bottom:1px solid #e2e8f0;font-weight:600;width:240px;min-width:240px"><div style="display:flex;align-items:center"><div style="width:30px;flex:0 0 30px">${flagImg(STOCK_FLAG_MAP[s.name]||"", 22)}</div><div><div>${s.name}</div>${tm?`<div style="font-size:10px;color:#64748b;font-weight:400">🕒 ${tm}</div>`:""}</div></div></td><td style="text-align:center;padding:8px;border-bottom:1px solid #e2e8f0;font-weight:700;color:${xx?"#94a3b8":"#0f172a"};letter-spacing:1px">${s.three_top||"--"}</td><td style="text-align:center;padding:8px;border-bottom:1px solid #e2e8f0;font-weight:700;color:${xx?"#94a3b8":"#0f172a"};letter-spacing:1px">${s.two_bottom||"--"}</td><td style="text-align:center;padding:8px;border-bottom:1px solid #e2e8f0;color:#64748b;font-size:12px">${s.date||""}</td><td style="text-align:center;padding:8px;border-bottom:1px solid #e2e8f0">${badge}</td></tr>`;
+      for (const x of list) {
+        const isP = x.status === "pending";
+        const t3 = Array.isArray(x.three_top) ? x.three_top.join(" ") : (x.three_top || "—");
+        const t2b = x.two_bottom || "—";
+        const dateLbl = isP
+          ? '<span style="color:#92400e;font-weight:600">⏳ รอ ' + (x.next_draw_at ? x.next_draw_at.split(" ")[1].slice(0,5) : "—") + ' (' + (x.draw_date||"") + ')</span>'
+          : (x.draw_date || "");
+        const badge = isP
+          ? '<span style="background:#f59e0b;color:#fff;padding:2px 6px;border-radius:4px;font-size:10px">รอผล</span>'
+          : '<span style="background:#22c55e;color:#fff;padding:2px 6px;border-radius:4px;font-size:10px">ออกแล้ว</span>';
+        rows += '<tr>'
+          + '<td style="text-align:left;padding:8px 10px;border-bottom:1px solid #e2e8f0;font-weight:600;color:' + (isP?'#94a3b8':'#0f172a') + '">' + (x.lottery_name||"") + '</td>'
+          + '<td style="text-align:center;padding:8px;border-bottom:1px solid #e2e8f0;font-weight:700;color:' + (isP?'#cbd5e1':'#0f172a') + ';letter-spacing:1px">' + (isP?'—':t3) + '</td>'
+          + '<td style="text-align:center;padding:8px;border-bottom:1px solid #e2e8f0;font-weight:700;color:' + (isP?'#cbd5e1':'#0f172a') + ';letter-spacing:1px">' + (isP?'—':t2b) + '</td>'
+          + '<td style="text-align:center;padding:8px;border-bottom:1px solid #e2e8f0;color:#64748b;font-size:12px">' + dateLbl + '</td>'
+          + '<td style="text-align:center;padding:8px;border-bottom:1px solid #e2e8f0">' + badge + '</td>'
+          + '</tr>';
       }
-      h += `<div style="margin-top:12px;background:#fff;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden"><div style="background:linear-gradient(135deg,#581c87,#a855f7);color:#fff;padding:10px 14px"><h3 style="font-size:14px;font-weight:700;margin:0">📈 หวยหุ้น (${d.stock.length} ตลาด)</h3></div><div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px;table-layout:fixed"><colgroup><col style="width:240px"><col style="width:100px"><col style="width:100px"><col><col style="width:110px"></colgroup><thead><tr><th style="background:#f8fafc;padding:8px;text-align:left;font-size:11px;color:#64748b">ตลาด</th><th style="background:#f8fafc;padding:8px;text-align:center;font-size:11px;color:#64748b">3 บน</th><th style="background:#f8fafc;padding:8px;text-align:center;font-size:11px;color:#64748b">2 ล่าง</th><th style="background:#f8fafc;padding:8px;text-align:center;font-size:11px;color:#64748b">วันที่</th><th style="background:#f8fafc;padding:8px;text-align:center;font-size:11px;color:#64748b">สถานะ</th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
+      h += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;margin-bottom:12px">'
+        + '<div style="background:' + color + ';color:#fff;padding:10px 14px"><h3 style="font-size:14px;font-weight:700;margin:0">' + title + '</h3></div>'
+        + '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr>'
+        + '<th style="background:#f8fafc;padding:8px;text-align:left;font-size:11px;color:#64748b">หวย</th>'
+        + '<th style="background:#f8fafc;padding:8px;text-align:center;font-size:11px;color:#64748b">3 บน</th>'
+        + '<th style="background:#f8fafc;padding:8px;text-align:center;font-size:11px;color:#64748b">2 ล่าง</th>'
+        + '<th style="background:#f8fafc;padding:8px;text-align:center;font-size:11px;color:#64748b">วันที่ / เวลา</th>'
+        + '<th style="background:#f8fafc;padding:8px;text-align:center;font-size:11px;color:#64748b">สถานะ</th>'
+        + '</tr></thead><tbody>' + rows + '</tbody></table></div></div>';
     }
-    root.innerHTML = h;
+
+    root.innerHTML = h || '<div style="color:#94a3b8;padding:20px;text-align:center">ยังไม่มีข้อมูล</div>';
   } catch (e) {
     root.innerHTML = '<div style="color:#dc2626;padding:12px">Error: ' + e.message + '</div>';
   }
