@@ -36,7 +36,7 @@ import { fileURLToPath } from "node:url";
 
 /* PHASE-B-WIRED: import scraper module */
 import { getParser, parserNames } from "./providers/scraper/parsers/index.mjs";
-import { notifyDiscord, makeEmbed } from "./providers/discord/notify.mjs";
+import { notifyDiscord, makeEmbed, safeName } from "./providers/discord/notify.mjs";
 import { DatabaseSync } from "node:sqlite";
 import express from "express";
 import bcrypt from "bcryptjs";
@@ -4817,12 +4817,9 @@ async function preCloseReminderCron() {
 
 /* ----- Result announcement ----- */
 async function announceResultToBuyers(roundId) {
-  /* === UX-FIX-V1-NO-DUPLICATE-NOTIF === */
-  /* ลูกค้าที่ซื้องวดนี้จะได้ pushWinnersToCustomers หรือ pushLosersToCustomers อยู่แล้ว */
-  /* announceResultToBuyers จะส่งข้อความซ้ำกับ losers push ใน 30 วินาทีต่อมา → disable */
-  /* (เก็บ function ไว้เผื่อใช้ broadcast group ในอนาคต) */
-  return;
-  /* eslint-disable-next-line no-unreachable */
+  /* === UX-FIX-V1-NO-DUPLICATE-NOTIF (B3: feature flag) === */
+  /* ลูกค้าที่ซื้องวดนี้จะได้ pushWinnersToCustomers / pushLosersToCustomers อยู่แล้ว */
+  /* default: ปิด (อยู่เบื้องหลัง flag) — เปิดได้ด้วย FEATURES_RESULT_ANNOUNCE=true */
   if (process.env.FEATURES_RESULT_ANNOUNCE !== "true") return;
   try {
     const round = db.prepare(`SELECT r.*, l.name AS lottery_name FROM rounds r JOIN lotteries l ON l.id=r.lottery_id WHERE r.id=?`).get(roundId);
@@ -5790,15 +5787,15 @@ async function applyApilottoToRound(roundId) {
       const __dProv = (r.meta && (r.meta.provider || r.meta.source)) || "apilotto";
       notifyDiscord("results", {
         embeds: [makeEmbed({
-          title: "🎰 ผลออก — " + __dLotteryName,
-          description: "งวด " + __dRoundLabel,
+          title: "🎰 ผลออก — " + safeName(__dLotteryName),
+          description: "งวด " + safeName(__dRoundLabel),
           color: 0xffd700,
           fields: [
-            { name: "3 ตัวบน", value: __d3top || "—", inline: true },
-            { name: "2 ตัวล่าง", value: __d2bot || "—", inline: true },
+            { name: "3 ตัวบน", value: safeName(__d3top) || "—", inline: true },
+            { name: "2 ตัวล่าง", value: safeName(__d2bot) || "—", inline: true },
             { name: "ลูกค้า", value: __dCust + " คน · " + __dTotal.toLocaleString() + " บาท", inline: false },
           ],
-          footer: "auto-pulled by " + __dProv,
+          footer: "auto-pulled by " + safeName(__dProv),
         })],
       }).catch(() => {});
     } catch (e) { console.warn("[discord-hook-1]", e.message); }
@@ -5983,7 +5980,7 @@ async function apilottoAutoImportCron() {
             fields: [
               { name: "Source", value: "apilotto-cron", inline: true },
               { name: "Fail count", value: String(global.__apilottoFailCount), inline: true },
-              { name: "Error", value: "```" + String(e.message || "").slice(0, 500) + "```", inline: false },
+              { name: "Error", value: "```" + safeName(String(e.message || "").slice(0, 500)) + "```", inline: false },
             ],
           })],
         }).catch(() => {});
@@ -6631,7 +6628,7 @@ async function sendGroupWelcome(replyToken, groupName) {
           { type: "text", text: "⚠️ ห้ามสั่งซื้อในกลุ่ม", weight: "bold", size: "xs", color: "#991b1b", margin: "md", align: "center" },
           { type: "text", text: "กดปุ่มด้านล่างเพื่อเปิดแชทส่วนตัวกับ Bot — บิลจะไม่ขึ้นในกลุ่มค่ะ", size: "xs", color: "#6b7280", wrap: true, align: "center" },
           { type: "button", style: "primary", color: "#0f5132", height: "sm", margin: "md",
-            action: { type: "uri", label: "🛒 ซื้อหวย", uri: "https://line.me/R/oaMessage/@042xplcj/?" + encodeURIComponent("สวัสดีค่ะ") } }
+            action: { type: "uri", label: "🛒 ซื้อหวย", uri: "https://line.me/R/oaMessage/" + (process.env.OA_BASIC_ID || "@042xplcj") + "/?" + encodeURIComponent("สวัสดีค่ะ") } }
         ]
       }
     }
@@ -6896,11 +6893,11 @@ async function pushWinnersToCustomers(roundId) {
       const __dTotal = __dWinnersList.reduce((s, w) => s + (Number(w.prize) || 0), 0);
       const __dSorted = __dWinnersList.slice().sort((a, b) => (b.prize || 0) - (a.prize || 0));
       const __dDesc = __dSorted.slice(0, 10).map((w, i) =>
-        (i + 1) + ". " + (__dCustMap[w.customer_id] || w.customer_id || "-") + " — " + Number(w.prize || 0).toLocaleString() + " บาท"
+        (i + 1) + ". " + safeName(__dCustMap[w.customer_id] || w.customer_id || "-") + " — " + Number(w.prize || 0).toLocaleString() + " บาท"
       ).join("\n") + (__dSorted.length > 10 ? "\n... และอีก " + (__dSorted.length - 10) + " คน" : "");
       notifyDiscord("winners", {
         embeds: [makeEmbed({
-          title: "🏆 ผู้ถูกรางวัล — " + __dLotName + " " + __dDrawDate,
+          title: "🏆 ผู้ถูกรางวัล — " + safeName(__dLotName) + " " + safeName(__dDrawDate),
           color: 0xffd700,
           description: __dDesc,
           fields: [
@@ -7760,6 +7757,16 @@ Group ID: ${groupId}
         }
       };
       const token = _currentLineToken();
+      /* === B2: quickReply 3 ปุ่ม — แทงหวย / บิลของฉัน / ผลรางวัล === */
+      const __myOrdersUrl = process.env.LIFF_URL_MY_ORDERS || liffUrl;
+      const __resultsUrl = baseUrl + "/lotto";
+      welcomeFlex.quickReply = {
+        items: [
+          { type: "action", action: { type: "uri", label: "แทงหวย", uri: liffUrl } },
+          { type: "action", action: { type: "uri", label: "บิลของฉัน", uri: __myOrdersUrl } },
+          { type: "action", action: { type: "uri", label: "ผลรางวัล", uri: __resultsUrl } },
+        ],
+      };
       if (token) {
         await fetch("https://api.line.me/v2/bot/message/reply", {
           method: "POST",
@@ -9286,27 +9293,29 @@ function createTicket(payload, userId) {
     ticket.created_at,
     ticket.updated_at,
   );
-  /* === DISCORD-HOOK-2 NEW-TICKET === */
-  try {
-    const __dT = ticket;
-    if (__dT && __dT.id) {
-      const __dRow = db.prepare("SELECT t.id, t.code, t.customer_id, t.head_house_id, t.round_id, t.total_amount, c.name AS cust_name, c.line_display_name AS line_name, hh.name AS hh_name, l.name AS lot_name, r.draw_date FROM tickets t LEFT JOIN customers c ON c.id=t.customer_id LEFT JOIN head_houses hh ON hh.id=t.head_house_id LEFT JOIN rounds r ON r.id=t.round_id LEFT JOIN lotteries l ON l.id=r.lottery_id WHERE t.id=?").get(__dT.id);
-      if (__dRow) {
+  /* === DISCORD-HOOK-2 NEW-TICKET v2 === delay 1.5s รอ caller insert entries ก่อน query total */
+  if (ticket && ticket.id) {
+    const __dTicketId = ticket.id;
+    setTimeout(() => {
+      try {
+        const __dRow = db.prepare("SELECT t.id, t.code, t.customer_id, t.head_house_id, t.round_id, c.name AS cust_name, c.line_display_name AS line_name, hh.name AS hh_name, l.name AS lot_name, r.draw_date, COALESCE(SUM(e.amount), 0) AS total_amount, COUNT(e.id) AS entry_count FROM tickets t LEFT JOIN entries e ON e.ticket_id=t.id LEFT JOIN customers c ON c.id=t.customer_id LEFT JOIN head_houses hh ON hh.id=t.head_house_id LEFT JOIN rounds r ON r.id=t.round_id LEFT JOIN lotteries l ON l.id=r.lottery_id WHERE t.id=? GROUP BY t.id").get(__dTicketId);
+        if (!__dRow) return;
+        if (Number(__dRow.total_amount || 0) === 0) return;
         notifyDiscord("new_tickets", {
           embeds: [makeEmbed({
-            title: "📝 บิลใหม่ " + (__dRow.code || __dRow.id),
+            title: "📝 บิลใหม่ " + safeName(__dRow.code || __dRow.id),
             color: 0x06c755,
             fields: [
-              { name: "ลูกค้า", value: (__dRow.cust_name || __dRow.line_name || __dRow.customer_id || "-"), inline: true },
-              { name: "หัวบ้าน", value: (__dRow.hh_name || "ออนไลน์"), inline: true },
+              { name: "ลูกค้า", value: safeName(__dRow.cust_name || __dRow.line_name || __dRow.customer_id || "-"), inline: true },
+              { name: "หัวบ้าน", value: safeName(__dRow.hh_name || "ออนไลน์"), inline: true },
               { name: "ยอด", value: Number(__dRow.total_amount || 0).toLocaleString() + " บาท", inline: true },
-              { name: "หวย", value: (__dRow.lot_name || "-") + " · งวด " + (__dRow.draw_date || "-"), inline: false },
+              { name: "หวย", value: safeName((__dRow.lot_name || "-") + " · งวด " + (__dRow.draw_date || "-")), inline: false },
             ],
           })],
         }).catch(() => {});
-      }
-    }
-  } catch (e) { console.warn("[discord-hook-2]", e.message); }
+      } catch (e) { console.warn("[discord-hook-2]", e.message); }
+    }, 1500);
+  }
   return ticket;
 }
 
@@ -10485,8 +10494,13 @@ app.post("/api/admin/bank-accounts/:id/bank-code", requireAuth, requireAdmin, (r
 });
 
 
-/* ===== DISCORD-DAILY-SUMMARY-V1 ===== */
-let __lastDailySummary = null;
+/* ===== DISCORD-DAILY-SUMMARY-V2 — persist dedup in DB ===== */
+try {
+  db.exec(`CREATE TABLE IF NOT EXISTS discord_daily_log (
+    date_key TEXT PRIMARY KEY,
+    sent_at TEXT NOT NULL
+  )`);
+} catch (e) { /* ignore */ }
 setInterval(() => {
   try {
     const now = new Date();
@@ -10494,9 +10508,14 @@ setInterval(() => {
     const h = bkk.getUTCHours();
     const m = bkk.getUTCMinutes();
     const dateKey = bkk.toISOString().slice(0, 10);
-    if (h === 23 && m >= 30 && m < 35 && __lastDailySummary !== dateKey) {
-      __lastDailySummary = dateKey;
-      sendDailySummaryToDiscord(dateKey).catch(() => {});
+    if (h === 23 && m >= 30 && m < 35) {
+      try {
+        const exists = db.prepare("SELECT 1 FROM discord_daily_log WHERE date_key=?").get(dateKey);
+        if (exists) return;
+        const ins = db.prepare("INSERT OR IGNORE INTO discord_daily_log (date_key, sent_at) VALUES (?, ?)").run(dateKey, new Date().toISOString());
+        if (ins && ins.changes === 0) return;
+        sendDailySummaryToDiscord(dateKey).catch(() => {});
+      } catch (e) { console.warn("[daily-summary-dedup]", e.message); }
     }
   } catch (e) { console.warn("[daily-summary-tick]", e.message); }
 }, 60 * 1000).unref();

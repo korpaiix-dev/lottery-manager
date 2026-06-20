@@ -13,7 +13,7 @@ const WEBHOOKS = {
 };
 
 /**
- * ส่งข้อความเข้า Discord channel
+ * ส่งข้อความเข้า Discord channel (มี 5s timeout)
  * @param {string} channelKey
  * @param {object} payload - { content?, embeds?, username?, avatar_url? }
  * @returns {Promise<boolean>}
@@ -25,6 +25,8 @@ export async function notifyDiscord(channelKey, payload) {
     console.warn(`[discord] no webhook for ${channelKey}`);
     return false;
   }
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 5000);
   try {
     const res = await fetch(url, {
       method: "POST",
@@ -33,6 +35,7 @@ export async function notifyDiscord(channelKey, payload) {
         username: payload.username || "บ้านหวยเรือนเลขเศรษฐี",
         ...payload,
       }),
+      signal: ctrl.signal,
     });
     if (!res.ok) {
       console.warn(`[discord] ${channelKey} failed: ${res.status}`);
@@ -40,8 +43,11 @@ export async function notifyDiscord(channelKey, payload) {
     }
     return true;
   } catch (e) {
-    console.warn(`[discord] ${channelKey} error:`, e.message);
+    const reason = e.name === "AbortError" ? "timeout" : e.message;
+    console.warn(`[discord] ${channelKey} error:`, reason);
     return false;
+  } finally {
+    clearTimeout(timer);
   }
 }
 
@@ -55,4 +61,13 @@ export function makeEmbed({ title, description, color, fields, footer, timestamp
     footer: footer ? { text: footer } : undefined,
     timestamp: timestamp || new Date().toISOString(),
   };
+}
+
+/* Sanitize ป้องกัน Discord mention injection + markdown */
+export function safeName(s) {
+  if (s == null) return "";
+  return String(s)
+    .replace(/[@`*_~|\\]/g, "")
+    .replace(/everyone|here/gi, m => m + "​")
+    .slice(0, 80);
 }
