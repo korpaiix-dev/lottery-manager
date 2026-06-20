@@ -36,6 +36,7 @@ import { fileURLToPath } from "node:url";
 
 /* PHASE-B-WIRED: import scraper module */
 import { getParser, parserNames } from "./providers/scraper/parsers/index.mjs";
+import { notifyDiscord, makeEmbed } from "./providers/discord/notify.mjs";
 import { DatabaseSync } from "node:sqlite";
 import express from "express";
 import bcrypt from "bcryptjs";
@@ -5770,6 +5771,38 @@ async function applyApilottoToRound(roundId) {
       setTimeout(() => pushLosersToCustomers(roundId).catch(()=>{}), 30000);
     }).catch(()=>{});
   }
+  /* === DISCORD-HOOK-1 RESULTS === */
+  if (shouldFinalize && inserted.length && finalizedNow > 0) {
+    try {
+      const __dLot = db.prepare("SELECT name FROM lotteries WHERE id=?").get(round.lottery_id);
+      const __dLotteryName = __dLot ? __dLot.name : round.lottery_id;
+      const __dRoundLabel = round.draw_date || round.id;
+      const __dNumByBt = {};
+      for (const it of inserted) {
+        if (!__dNumByBt[it.bet_type_id]) __dNumByBt[it.bet_type_id] = [];
+        __dNumByBt[it.bet_type_id].push(it.number);
+      }
+      const __d3top = (__dNumByBt.three_top || []).join(", ") || "";
+      const __d2bot = (__dNumByBt.two_bottom || []).join(", ") || "";
+      const __dStats = db.prepare("SELECT COUNT(DISTINCT t.customer_id) AS cust, COALESCE(SUM(e.amount),0) AS total FROM entries e JOIN tickets t ON t.id=e.ticket_id WHERE t.round_id=? AND t.status IN ('approved','pending_review')").get(roundId) || { cust: 0, total: 0 };
+      const __dCust = __dStats.cust || 0;
+      const __dTotal = Number(__dStats.total || 0);
+      const __dProv = (r.meta && (r.meta.provider || r.meta.source)) || "apilotto";
+      notifyDiscord("results", {
+        embeds: [makeEmbed({
+          title: "🎰 ผลออก — " + __dLotteryName,
+          description: "งวด " + __dRoundLabel,
+          color: 0xffd700,
+          fields: [
+            { name: "3 ตัวบน", value: __d3top || "—", inline: true },
+            { name: "2 ตัวล่าง", value: __d2bot || "—", inline: true },
+            { name: "ลูกค้า", value: __dCust + " คน · " + __dTotal.toLocaleString() + " บาท", inline: false },
+          ],
+          footer: "auto-pulled by " + __dProv,
+        })],
+      }).catch(() => {});
+    } catch (e) { console.warn("[discord-hook-1]", e.message); }
+  }
   return { ok: true, roundId, lottery_id: round.lottery_id, drawDate: r.drawDate, inserted, finalized: shouldFinalize && finalizedNow > 0, sourceMeta: r.meta || null };
 }
 
@@ -5916,6 +5949,7 @@ async function apilottoAutoImportCron() {
       if (r.ok && r.inserted && r.inserted.length) {
         __apilottoLastSuccess = new Date().toISOString();
         __apilottoLastError = null;
+        try { global.__apilottoFailCount = 0; } catch {}
         console.log(`[apilotto-cron] applied ${round.id} (${round.lottery_id}) — ${r.inserted.length} numbers`);
         __apilottoTriedRounds.set(key, Date.now() + 24 * 3600 * 1000); /* 24h cooldown */
       } else if (r.error === "not_drawn_yet") {
@@ -5937,6 +5971,24 @@ async function apilottoAutoImportCron() {
   } catch (e) {
     __apilottoLastError = { ts: new Date().toISOString(), msg: e.message };
     console.error("[apilotto-cron]", e.message);
+    /* === DISCORD-HOOK-4 ALERTS-CRITICAL === */
+    try {
+      global.__apilottoFailCount = (global.__apilottoFailCount || 0) + 1;
+      if (global.__apilottoFailCount >= 3) {
+        notifyDiscord("alerts_critical", {
+          content: "🚨 @Admin Dev",
+          embeds: [makeEmbed({
+            title: "🚨 Scraper/Cron Fail",
+            color: 0xff0000,
+            fields: [
+              { name: "Source", value: "apilotto-cron", inline: true },
+              { name: "Fail count", value: String(global.__apilottoFailCount), inline: true },
+              { name: "Error", value: "```" + String(e.message || "").slice(0, 500) + "```", inline: false },
+            ],
+          })],
+        }).catch(() => {});
+      }
+    } catch {}
   }
   finally { __apilottoCronRunning = false; }
 }
@@ -6757,6 +6809,9 @@ db.exec(`CREATE TABLE IF NOT EXISTS winner_notifications (
   UNIQUE(round_id, customer_id)
 )`);
 async function pushWinnersToCustomers(roundId) {
+  /* === DISCORD-HOOK-3 WINNERS collector === */
+  const __dWinnersList = [];
+
   /* FEATURE FLAG: FEATURES_PUSH_WINNERS */
   if (process.env.FEATURES_PUSH_WINNERS !== "true") return;
   try {
@@ -6790,6 +6845,7 @@ async function pushWinnersToCustomers(roundId) {
         continue;
       }
       if (!claimed || claimed.changes === 0) continue; /* คนอื่นจองไปแล้ว */
+      try { __dWinnersList.push({ customer_id: custId, prize: Number(info.total) || 0 }); } catch {}
       try {
         /* === UX-FIX-V3-WINNER-QR === */
         const oaId = process.env.OA_BASIC_ID || "@042xplcj";
@@ -6823,6 +6879,38 @@ async function pushWinnersToCustomers(roundId) {
     }
     console.log(`[push-winners] round=${roundId} winners=${settlement.winners.length} pushed=${pushed}`);
   } catch (e) { console.error("[push-winners]", e.message); }
+
+  /* === DISCORD-HOOK-3 WINNERS summary === */
+  try {
+    if (__dWinnersList.length > 0) {
+      const __dRoundRow = db.prepare("SELECT r.id, r.draw_date, l.name AS lot_name FROM rounds r LEFT JOIN lotteries l ON l.id=r.lottery_id WHERE r.id=?").get(roundId);
+      const __dLotName = __dRoundRow ? (__dRoundRow.lot_name || "") : "";
+      const __dDrawDate = __dRoundRow ? (__dRoundRow.draw_date || "") : "";
+      const __dCustIds = __dWinnersList.map(w => w.customer_id).filter(Boolean);
+      const __dCustMap = {};
+      if (__dCustIds.length) {
+        const __dPh = __dCustIds.map(() => "?").join(",");
+        const __dRows = db.prepare("SELECT id, name, line_display_name FROM customers WHERE id IN (" + __dPh + ")").all(...__dCustIds);
+        for (const r2 of __dRows) __dCustMap[r2.id] = r2.name || r2.line_display_name || r2.id;
+      }
+      const __dTotal = __dWinnersList.reduce((s, w) => s + (Number(w.prize) || 0), 0);
+      const __dSorted = __dWinnersList.slice().sort((a, b) => (b.prize || 0) - (a.prize || 0));
+      const __dDesc = __dSorted.slice(0, 10).map((w, i) =>
+        (i + 1) + ". " + (__dCustMap[w.customer_id] || w.customer_id || "-") + " — " + Number(w.prize || 0).toLocaleString() + " บาท"
+      ).join("\n") + (__dSorted.length > 10 ? "\n... และอีก " + (__dSorted.length - 10) + " คน" : "");
+      notifyDiscord("winners", {
+        embeds: [makeEmbed({
+          title: "🏆 ผู้ถูกรางวัล — " + __dLotName + " " + __dDrawDate,
+          color: 0xffd700,
+          description: __dDesc,
+          fields: [
+            { name: "รวมจ่าย", value: __dTotal.toLocaleString() + " บาท", inline: true },
+            { name: "จำนวน", value: __dWinnersList.length + " คน", inline: true },
+          ],
+        })],
+      }).catch(() => {});
+    }
+  } catch (e) { console.warn("[discord-hook-3]", e.message); }
 }
 
 
@@ -9198,6 +9286,27 @@ function createTicket(payload, userId) {
     ticket.created_at,
     ticket.updated_at,
   );
+  /* === DISCORD-HOOK-2 NEW-TICKET === */
+  try {
+    const __dT = ticket;
+    if (__dT && __dT.id) {
+      const __dRow = db.prepare("SELECT t.id, t.code, t.customer_id, t.head_house_id, t.round_id, t.total_amount, c.name AS cust_name, c.line_display_name AS line_name, hh.name AS hh_name, l.name AS lot_name, r.draw_date FROM tickets t LEFT JOIN customers c ON c.id=t.customer_id LEFT JOIN head_houses hh ON hh.id=t.head_house_id LEFT JOIN rounds r ON r.id=t.round_id LEFT JOIN lotteries l ON l.id=r.lottery_id WHERE t.id=?").get(__dT.id);
+      if (__dRow) {
+        notifyDiscord("new_tickets", {
+          embeds: [makeEmbed({
+            title: "📝 บิลใหม่ " + (__dRow.code || __dRow.id),
+            color: 0x06c755,
+            fields: [
+              { name: "ลูกค้า", value: (__dRow.cust_name || __dRow.line_name || __dRow.customer_id || "-"), inline: true },
+              { name: "หัวบ้าน", value: (__dRow.hh_name || "ออนไลน์"), inline: true },
+              { name: "ยอด", value: Number(__dRow.total_amount || 0).toLocaleString() + " บาท", inline: true },
+              { name: "หวย", value: (__dRow.lot_name || "-") + " · งวด " + (__dRow.draw_date || "-"), inline: false },
+            ],
+          })],
+        }).catch(() => {});
+      }
+    }
+  } catch (e) { console.warn("[discord-hook-2]", e.message); }
   return ticket;
 }
 
@@ -10374,3 +10483,79 @@ app.post("/api/admin/bank-accounts/:id/bank-code", requireAuth, requireAdmin, (r
   db.prepare("UPDATE bank_accounts SET bank_code = ?, updated_at = ? WHERE id = ?").run(code, nowIso(), id);
   res.json({ ok: true });
 });
+
+
+/* ===== DISCORD-DAILY-SUMMARY-V1 ===== */
+let __lastDailySummary = null;
+setInterval(() => {
+  try {
+    const now = new Date();
+    const bkk = new Date(now.getTime() + 7 * 3600000);
+    const h = bkk.getUTCHours();
+    const m = bkk.getUTCMinutes();
+    const dateKey = bkk.toISOString().slice(0, 10);
+    if (h === 23 && m >= 30 && m < 35 && __lastDailySummary !== dateKey) {
+      __lastDailySummary = dateKey;
+      sendDailySummaryToDiscord(dateKey).catch(() => {});
+    }
+  } catch (e) { console.warn("[daily-summary-tick]", e.message); }
+}, 60 * 1000).unref();
+
+async function sendDailySummaryToDiscord(dateStr) {
+  try {
+    const todayStartIso = dateStr + "T00:00:00+07:00";
+    const tomorrowStartIso = new Date(new Date(todayStartIso).getTime() + 86400000).toISOString();
+
+    const totalRev = db.prepare(
+      "SELECT COALESCE(SUM(entries.amount), 0) AS sum FROM entries JOIN tickets ON tickets.id = entries.ticket_id WHERE tickets.created_at >= ? AND tickets.created_at < ? AND tickets.status='approved'"
+    ).get(todayStartIso, tomorrowStartIso).sum;
+
+    const billCount = db.prepare(
+      "SELECT COUNT(*) AS cnt FROM tickets WHERE created_at >= ? AND created_at < ? AND status IN ('approved','pending_review')"
+    ).get(todayStartIso, tomorrowStartIso).cnt;
+
+    const onlineRev = db.prepare(
+      "SELECT COALESCE(SUM(entries.amount), 0) AS sum FROM entries JOIN tickets ON tickets.id = entries.ticket_id WHERE tickets.created_at >= ? AND tickets.created_at < ? AND tickets.status='approved' AND (tickets.head_house_id IN ('direct','line_self') OR tickets.head_house_id IS NULL)"
+    ).get(todayStartIso, tomorrowStartIso).sum;
+
+    const newCustomers = db.prepare(
+      "SELECT COUNT(*) AS cnt FROM customers WHERE created_at >= ? AND created_at < ?"
+    ).get(todayStartIso, tomorrowStartIso).cnt;
+
+    await notifyDiscord("daily_summary", {
+      embeds: [makeEmbed({
+        title: "📊 สรุป " + dateStr,
+        color: 0x9933cc,
+        fields: [
+          { name: "💰 ยอดรับรวม", value: Number(totalRev || 0).toLocaleString() + " บาท", inline: false },
+          { name: "└ ออนไลน์", value: Number(onlineRev || 0).toLocaleString() + " บาท", inline: true },
+          { name: "└ หัวบ้าน", value: Number((totalRev || 0) - (onlineRev || 0)).toLocaleString() + " บาท", inline: true },
+          { name: "📝 บิล", value: (billCount || 0) + " บิล", inline: true },
+          { name: "👥 ลูกค้าใหม่", value: (newCustomers || 0) + " คน", inline: true },
+        ],
+        footer: "auto-summary @ 23:30",
+      })],
+    });
+  } catch (e) {
+    console.warn("[discord-daily-summary]", e.message);
+  }
+}
+/* ===== END DISCORD-DAILY-SUMMARY-V1 ===== */
+
+/* ===== DISCORD-ADMIN-TEST-V1 ===== */
+app.post("/api/admin/discord/test", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const channel = String((req.body && req.body.channel) || "results");
+    const ok = await notifyDiscord(channel, {
+      embeds: [makeEmbed({
+        title: "🧪 Test message",
+        description: "Discord integration ทำงานแล้ว",
+        color: 0x06c755,
+      })],
+    });
+    res.json({ ok, channel, flag_enabled: process.env.DISCORD_NOTIFICATIONS_ENABLED === "true" });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+/* ===== END DISCORD-ADMIN-TEST-V1 ===== */
