@@ -6,6 +6,18 @@
 
 set -euo pipefail
 
+# --- Discord alert on failure ---
+DISCORD_WEBHOOK="${DISCORD_BACKUP_WEBHOOK:-https://discord.com/api/webhooks/1517788520062648461/Z6pWDs1WTJr7j9BkldvWAfpcw6K3ONMOToHZlhtB__x9JQD5Mr58a5uoSaLwq4oc5nGv}"
+notify_fail() {
+  local ec=$?
+  local stage="${LAST_STAGE:-unknown}"
+  curl -s -X POST "$DISCORD_WEBHOOK" -H "Content-Type: application/json" \
+    -d "{\"content\":\"🚨 **Lottery Backup FAIL** stage=\\\"${stage}\\\" exit=${ec} ts=$(date -u +%FT%TZ)\"}" >/dev/null 2>&1 || true
+  exit $ec
+}
+trap notify_fail ERR
+LAST_STAGE="init"
+
 DB_PATH="${DB_PATH:-/var/lib/lottery-manager/lottery-manager.sqlite}"
 BACKUP_DIR="${BACKUP_DIR:-/var/backups/lottery-manager}"
 LOG_FILE="${LOG_FILE:-/var/log/lottery-backup.log}"
@@ -19,19 +31,22 @@ mkdir -p "$BACKUP_DIR"
 
 log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" | tee -a "$LOG_FILE"; }
 
-log "🗄️  เริ่ม backup: ${TIMESTAMP}"
+LAST_STAGE="start"; log "🗄️  เริ่ม backup: ${TIMESTAMP}"
 
 # 1. SQLite .backup (safe — works while DB is being written)
+LAST_STAGE="sqlite-backup"
 sqlite3 "$DB_PATH" ".backup '${LOCAL_BAK}'"
 BAK_SIZE=$(du -h "$LOCAL_BAK" | cut -f1)
 log "✅ Backup local: ${BAK_SIZE}"
 
 # 2. Compress
+LAST_STAGE="gzip"
 gzip -f "$LOCAL_BAK"
 GZ_SIZE=$(du -h "$LOCAL_GZ" | cut -f1)
 log "✅ Gzipped: ${GZ_SIZE}"
 
 # 3. Upload to Spaces
+LAST_STAGE="upload"
 log "☁️  Upload → s3://charoenpon-backup/db/lottery/${GZ_FILE}"
 python3 - "$LOCAL_GZ" "lottery/${GZ_FILE}" <<'PYEOF'
 import sys, os, boto3
@@ -65,6 +80,7 @@ log "✅ Upload OK"
 
 # 4. Local cleanup (keep 14 days)
 find "$BACKUP_DIR" -type f -name 'lottery-manager-*.sqlite*' -mtime +14 -delete
+LAST_STAGE="local-cleanup"
 log "🧹 ลบ local backup เก่ากว่า 14 วัน"
 
 # 5. Spaces cleanup (keep 30 days)
@@ -100,4 +116,5 @@ for obj in resp.get('Contents', []):
 print(f"🗑️  Spaces: ลบ {deleted} ไฟล์เก่ากว่า {retain_days} วัน")
 PYEOF
 
+LAST_STAGE="done"
 log "🎉 Backup เสร็จ: ${GZ_FILE} (${GZ_SIZE})"
