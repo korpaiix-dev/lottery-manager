@@ -27,6 +27,7 @@ setInterval(() => {
   for (const [k, v] of _ownerDashCache.entries()) if (v.expireAt < now) _ownerDashCache.delete(k);
 }, 5 * 60 * 1000).unref();
 
+// PHASE-0-MARKER-V1: 10 quick wins applied 2026-06-21
 import crypto from "node:crypto";
 import { AsyncLocalStorage } from 'node:async_hooks';
 const lineContext = new AsyncLocalStorage();
@@ -39,6 +40,7 @@ import { getParser, parserNames } from "./providers/scraper/parsers/index.mjs";
 import { notifyDiscord, makeEmbed, safeName } from "./providers/discord/notify.mjs";
 import { DatabaseSync } from "node:sqlite";
 import express from "express";
+import helmet from "helmet";
 import bcrypt from "bcryptjs";
 
 /* F4: PROMPTPAY QR — generate QR per ticket + match ด้วย ref */
@@ -470,6 +472,23 @@ const __deferredStartupTasks = () => {
 
 const app = express();
 app.disable("x-powered-by");
+// PHASE-0 SECURITY-V1 — helmet + CSP + HSTS
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["self"],
+      scriptSrc: ["self", "unsafe-inline", "https://static.line-scdn.net", "https://cdn.jsdelivr.net"],
+      styleSrc: ["self", "unsafe-inline", "https://fonts.googleapis.com"],
+      fontSrc: ["self", "https://fonts.gstatic.com", "data:"],
+      imgSrc: ["self", "data:", "https:", "blob:"],
+      connectSrc: ["self", "https://api.line.me", "https://liff.line.me"],
+      frameAncestors: ["self", "https://liff.line.me"],
+    },
+  },
+  hsts: { maxAge: 31536000, includeSubDomains: true, preload: false },
+  crossOriginEmbedderPolicy: false,
+  crossOriginResourcePolicy: { policy: "cross-origin" },
+}));
 app.set("trust proxy", 1); // behind nginx
 app.use(express.json({ limit: "2mb", verify: (req, res, buf) => { req.rawBody = buf.toString("utf8"); } }));
 
@@ -1559,12 +1578,26 @@ ensureColumn("entries", "paid_note", "TEXT");
 app.post("/api/entries/:id/mark-paid", requireAuth, requireAdmin, (req, res) => {
   const id = req.params.id;
   const note = cleanText(req.body && req.body.note, 500) || "";
-  const existing = db.prepare("SELECT id, paid_at FROM entries WHERE id = ?").get(id);
+  // PHASE-0 IDEMPOTENCY-V1 — require client-supplied key (e.g. UUID per UI action) to prevent double-pay
+  const idemKey = cleanText(req.body && req.body.idempotency_key, 80) || "";
+  if (!idemKey || idemKey.length < 8) return res.status(400).json({ error: "missing_idempotency_key" });
+  const existing = db.prepare("SELECT id, paid_at, paid_idempotency_key FROM entries WHERE id = ?").get(id);
   if (!existing) return res.status(404).json({ error: "entry_not_found" });
+  // Replay-safe: same key + already paid → return success without rewriting
+  if (existing.paid_idempotency_key === idemKey && existing.paid_at) {
+    return res.json({ ok: true, paid_at: existing.paid_at, replayed: true });
+  }
   const now = nowIso();
-  db.prepare("UPDATE entries SET paid_at = ?, paid_by = ?, paid_note = ?, updated_at = ? WHERE id = ?")
-    .run(now, req.user.id, note, now, id);
-  logAudit(req.user.id, "mark_paid", "entry", id, { note });
+  try {
+    db.prepare("UPDATE entries SET paid_at = ?, paid_by = ?, paid_note = ?, paid_idempotency_key = ?, updated_at = ? WHERE id = ?")
+      .run(now, req.user.id, note, idemKey, now, id);
+  } catch (e) {
+    if (String(e && e.message || "").includes("UNIQUE")) {
+      return res.status(409).json({ error: "duplicate_idempotency_key" });
+    }
+    throw e;
+  }
+  logAudit(req.user.id, "mark_paid", "entry", id, { note, idemKey });
   res.json({ ok: true, paid_at: now });
 });
 
@@ -1573,7 +1606,7 @@ app.post("/api/entries/:id/mark-unpaid", requireAuth, requireAdmin, (req, res) =
   const existing = db.prepare("SELECT id FROM entries WHERE id = ?").get(id);
   if (!existing) return res.status(404).json({ error: "entry_not_found" });
   const now = nowIso();
-  db.prepare("UPDATE entries SET paid_at = NULL, paid_by = NULL, paid_note = NULL, updated_at = ? WHERE id = ?")
+  db.prepare("UPDATE entries SET paid_at = NULL, paid_by = NULL, paid_note = NULL, paid_idempotency_key = NULL, updated_at = ? WHERE id = ?")
     .run(now, id);
   logAudit(req.user.id, "mark_unpaid", "entry", id);
   res.json({ ok: true });
@@ -5944,14 +5977,18 @@ app.post("/api/admin/cleanup-overdue-rounds", requireAuth, requireAdmin, (req, r
 /* === WATCHDOG-AUTO-RECOVER-V1 === ทุก 3 นาที */
 setInterval(async () => {
   try {
+    // PHASE-0 WATCHDOG-VALIDATE-V1 — require >=3 distinct bet_types before auto-finalize
     const stuck = db.prepare(`
-      SELECT DISTINCT r.id, r.lottery_id, l.name AS lottery_name, r.draw_date, r.draw_time
+      SELECT r.id, r.lottery_id, l.name AS lottery_name, r.draw_date, r.draw_time,
+             COUNT(DISTINCT rs.bet_type_id) AS bet_type_count,
+             COUNT(rs.id) AS result_count
       FROM rounds r
       JOIN lotteries l ON l.id = r.lottery_id
       JOIN results rs ON rs.round_id = r.id
       WHERE r.result_status = 'draft'
         AND r.draw_date >= date('now', '-2 days')
       GROUP BY r.id
+      HAVING bet_type_count >= 3
       LIMIT 50
     `).all();
     if (stuck.length === 0) return;
@@ -10123,16 +10160,18 @@ function purgeExpiredSessions() {
 }
 
 function setSessionCookie(res, token, expiresAt) {
+  // PHASE-0 SECURITY-V1 — sameSite=Strict + Secure in prod
   const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
   res.setHeader(
     "Set-Cookie",
-    `${SESSION_COOKIE}=${token}; HttpOnly${secure}; Path=/; SameSite=Lax; Expires=${new Date(expiresAt).toUTCString()}`,
+    `${SESSION_COOKIE}=${token}; HttpOnly${secure}; Path=/; SameSite=Strict; Expires=${new Date(expiresAt).toUTCString()}`,
   );
 }
 
 function clearSessionCookie(res) {
+  // PHASE-0 SECURITY-V1 — sameSite=Strict
   const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
-  res.setHeader("Set-Cookie", `${SESSION_COOKIE}=; HttpOnly${secure}; Path=/; SameSite=Lax; Max-Age=0`);
+  res.setHeader("Set-Cookie", `${SESSION_COOKIE}=; HttpOnly${secure}; Path=/; SameSite=Strict; Max-Age=0`);
 }
 
 function parseCookies(header = "") {
