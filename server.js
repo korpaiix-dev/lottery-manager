@@ -5724,13 +5724,14 @@ async function notifyResultFinalized(roundId, source) {
       WHERE t.round_id = ? AND t.status IN ('approved','pending_review')
     `).get(roundId) || { customers: 0, total_stake: 0 };
 
-    /* count winners — ถ้ามี (รายการที่ entries มี win_amount > 0) */
-    const winners = db.prepare(`
-      SELECT COUNT(DISTINCT t.customer_id) AS count
-      FROM tickets t
-      WHERE t.round_id = ? AND t.status = 'approved'
-        AND EXISTS (SELECT 1 FROM entries e WHERE e.ticket_id = t.id AND e.win_amount > 0)
-    `).get(roundId) || { count: 0 };
+    /* count winners — ดูจาก winner_notifications ที่ pushWinnersToCustomers บันทึก
+     * (helper อาจถูกเรียกก่อน push เสร็จ — return 0 ถ้ายังไม่มี) */
+    let winners = { count: 0 };
+    try {
+      winners = db.prepare(
+        "SELECT COUNT(*) AS count FROM winner_notifications WHERE round_id = ?"
+      ).get(roundId) || { count: 0 };
+    } catch (_) { /* table อาจไม่มีตอน early boot */ }
 
     return notifyDiscord("results", {
       embeds: [makeEmbed({
