@@ -3823,6 +3823,10 @@ app.post("/api/results/:roundId/finalize", requireAuth, requireAdmin, (req, res)
 
   const updated = findRound(round.id);
   logAudit(req.user.id, "finalize", "result", round.id, updated);
+
+  /* === DISCORD-HOOK-1 MANUAL === */
+  notifyResultFinalized(round.id, "manual").catch(() => {});
+
   res.json(presentRound(updated));
 });
 
@@ -5684,6 +5688,69 @@ app.get("/api/admin/scraper/test", requireAuth, requireAdmin, async (req, res) =
 
 /* ===== END SCRAPER-FRAMEWORK-V1 ===== */
 
+/* === DISCORD-RESULT-NOTIFIER-V2 === centralized — works for all finalize paths
+ * Aggregates ผลจาก `results` table (no round_results), join lotteries
+ * source: "apilotto" | "scraper" | "stock-scraper" | "manual" | "import"
+ */
+async function notifyResultFinalized(roundId, source) {
+  try {
+    const row = db.prepare(`
+      SELECT r.id, r.label, r.draw_date, r.lottery_id,
+             l.name AS lottery_name
+      FROM rounds r
+      JOIN lotteries l ON l.id = r.lottery_id
+      WHERE r.id = ?
+    `).get(roundId);
+    if (!row) return;
+
+    /* aggregate ผลตาม bet_type จาก results table */
+    const resultRows = db.prepare(
+      "SELECT bet_type_id, number FROM results WHERE round_id = ? ORDER BY bet_type_id, number"
+    ).all(roundId);
+    const numByBt = {};
+    for (const rr of resultRows) {
+      if (!numByBt[rr.bet_type_id]) numByBt[rr.bet_type_id] = [];
+      numByBt[rr.bet_type_id].push(rr.number);
+    }
+    const three_top   = (numByBt.three_top   || []).join(", ");
+    const two_bottom  = (numByBt.two_bottom  || []).join(", ");
+
+    /* count buyers + stake สำหรับ context */
+    const stats = db.prepare(`
+      SELECT COUNT(DISTINCT t.customer_id) AS customers,
+             COALESCE(SUM(e.amount), 0) AS total_stake
+      FROM entries e
+      JOIN tickets t ON t.id = e.ticket_id
+      WHERE t.round_id = ? AND t.status IN ('approved','pending_review')
+    `).get(roundId) || { customers: 0, total_stake: 0 };
+
+    /* count winners — ถ้ามี (รายการที่ entries มี win_amount > 0) */
+    const winners = db.prepare(`
+      SELECT COUNT(DISTINCT t.customer_id) AS count
+      FROM tickets t
+      WHERE t.round_id = ? AND t.status = 'approved'
+        AND EXISTS (SELECT 1 FROM entries e WHERE e.ticket_id = t.id AND e.win_amount > 0)
+    `).get(roundId) || { count: 0 };
+
+    return notifyDiscord("results", {
+      embeds: [makeEmbed({
+        title: "🎰 ผลออก — " + safeName(row.lottery_name || row.lottery_id),
+        description: "งวด " + safeName(row.label || row.draw_date || row.id),
+        color: 0xffd700,
+        fields: [
+          { name: "3 ตัวบน", value: safeName(three_top) || "—", inline: true },
+          { name: "2 ตัวล่าง", value: safeName(two_bottom) || "—", inline: true },
+          { name: "ลูกค้า", value: (stats.customers || 0) + " คน · " + Number(stats.total_stake || 0).toLocaleString() + " บาท", inline: false },
+          ...(winners.count > 0 ? [{ name: "🏆 ผู้ถูก", value: winners.count + " คน", inline: true }] : []),
+        ],
+        footer: "auto-pulled by " + safeName(source || "system"),
+      })],
+    }).catch(() => {});
+  } catch (e) {
+    console.warn("[discord-result-notify]", e.message);
+  }
+}
+
 /* APILOTTO Phase A: apply pulled data → upsert results into a round */
 async function applyApilottoToRound(roundId) {
   const round = db.prepare("SELECT * FROM rounds WHERE id = ?").get(roundId);
@@ -5768,37 +5835,10 @@ async function applyApilottoToRound(roundId) {
       setTimeout(() => pushLosersToCustomers(roundId).catch(()=>{}), 30000);
     }).catch(()=>{});
   }
-  /* === DISCORD-HOOK-1 RESULTS === */
+  /* === DISCORD-HOOK-1 v2 === ใช้ centralized helper (รองรับทุก finalize path) */
   if (shouldFinalize && inserted.length && finalizedNow > 0) {
-    try {
-      const __dLot = db.prepare("SELECT name FROM lotteries WHERE id=?").get(round.lottery_id);
-      const __dLotteryName = __dLot ? __dLot.name : round.lottery_id;
-      const __dRoundLabel = round.draw_date || round.id;
-      const __dNumByBt = {};
-      for (const it of inserted) {
-        if (!__dNumByBt[it.bet_type_id]) __dNumByBt[it.bet_type_id] = [];
-        __dNumByBt[it.bet_type_id].push(it.number);
-      }
-      const __d3top = (__dNumByBt.three_top || []).join(", ") || "";
-      const __d2bot = (__dNumByBt.two_bottom || []).join(", ") || "";
-      const __dStats = db.prepare("SELECT COUNT(DISTINCT t.customer_id) AS cust, COALESCE(SUM(e.amount),0) AS total FROM entries e JOIN tickets t ON t.id=e.ticket_id WHERE t.round_id=? AND t.status IN ('approved','pending_review')").get(roundId) || { cust: 0, total: 0 };
-      const __dCust = __dStats.cust || 0;
-      const __dTotal = Number(__dStats.total || 0);
-      const __dProv = (r.meta && (r.meta.provider || r.meta.source)) || "apilotto";
-      notifyDiscord("results", {
-        embeds: [makeEmbed({
-          title: "🎰 ผลออก — " + safeName(__dLotteryName),
-          description: "งวด " + safeName(__dRoundLabel),
-          color: 0xffd700,
-          fields: [
-            { name: "3 ตัวบน", value: safeName(__d3top) || "—", inline: true },
-            { name: "2 ตัวล่าง", value: safeName(__d2bot) || "—", inline: true },
-            { name: "ลูกค้า", value: __dCust + " คน · " + __dTotal.toLocaleString() + " บาท", inline: false },
-          ],
-          footer: "auto-pulled by " + safeName(__dProv),
-        })],
-      }).catch(() => {});
-    } catch (e) { console.warn("[discord-hook-1]", e.message); }
+    const __dProv = (r.meta && (r.meta.provider || r.meta.source)) || "apilotto";
+    notifyResultFinalized(roundId, __dProv).catch(() => {});
   }
   return { ok: true, roundId, lottery_id: round.lottery_id, drawDate: r.drawDate, inserted, finalized: shouldFinalize && finalizedNow > 0, sourceMeta: r.meta || null };
 }
@@ -8482,6 +8522,9 @@ async function stockScraperCron() {
       /* GROUP-BROADCAST-V1: broadcast ผลลงกลุ่ม */
       /* QUOTA-SAVE */
 
+      /* === DISCORD-HOOK-1 SCRAPER === */
+      notifyResultFinalized(round.id, "stock-scraper").catch(() => {});
+
       /* ping บอส ให้คีย์ VIP รอบเดียวกัน */
       const vipId = STOCK_VIP_PAIRS[round.lottery_id];
       if (vipId) {
@@ -9647,6 +9690,9 @@ function finalizeImportedRound(roundId, userId) {
       setTimeout(() => pushLosersToCustomers(roundId).catch(()=>{}), 30000);
     }).catch(()=>{});
   } catch (e) {}
+
+  /* === DISCORD-HOOK-1 IMPORT === */
+  notifyResultFinalized(roundId, "import").catch(() => {});
 }
 
 function resultAlreadyImported(roundId, sourceId) {
