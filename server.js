@@ -5799,7 +5799,7 @@ async function applyApilottoToRound(roundId) {
   if (!updates.length) return { ok: false, error: "no_data_to_apply", raw: r };
 
   /* AUTO-FINALIZE: ดู source ของหวยนี้ว่า auto_confirm=1 ไหม */
-  const srcRow = db.prepare("SELECT auto_confirm FROM result_sources WHERE lottery_id = ? AND provider = 'API Lotto' AND active=1 LIMIT 1").get(round.lottery_id);
+  const srcRow = db.prepare("SELECT auto_confirm FROM result_sources WHERE lottery_id = ? AND active=1 ORDER BY priority ASC LIMIT 1").get(round.lottery_id);
   const shouldFinalize = !!(srcRow && srcRow.auto_confirm);
 
   const now = nowIso();
