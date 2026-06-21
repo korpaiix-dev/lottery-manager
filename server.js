@@ -5939,6 +5939,144 @@ app.post("/api/admin/cleanup-overdue-rounds", requireAuth, requireAdmin, (req, r
 });
 /* ===== END NIGHTLY-CLEANUP-V1 ===== */
 
+/* ===== SELF-HEALING WATCHDOG V1 — 3 cron + Discord alerts ===== */
+
+/* === WATCHDOG-AUTO-RECOVER-V1 === ทุก 3 นาที */
+setInterval(async () => {
+  try {
+    const stuck = db.prepare(`
+      SELECT DISTINCT r.id, r.lottery_id, l.name AS lottery_name, r.draw_date, r.draw_time
+      FROM rounds r
+      JOIN lotteries l ON l.id = r.lottery_id
+      JOIN results rs ON rs.round_id = r.id
+      WHERE r.result_status = 'draft'
+        AND r.draw_date >= date('now', '-2 days')
+      GROUP BY r.id
+      LIMIT 50
+    `).all();
+    if (stuck.length === 0) return;
+
+    const now = new Date().toISOString();
+    let recovered = 0;
+    for (const row of stuck) {
+      try {
+        const upd = db.prepare(`UPDATE rounds SET result_status='finalized',
+          result_finalized_by='system-watchdog-recover', result_finalized_at=?, updated_at=?
+          WHERE id=? AND result_status='draft'`).run(now, now, row.id);
+        if (upd.changes > 0) {
+          recovered++;
+          notifyResultFinalized(row.id, "watchdog-recover").catch(() => {});
+          try { pushWinnersToCustomers(row.id); } catch {}
+          setTimeout(() => { try { pushLosersToCustomers(row.id); } catch {} }, 30000);
+        }
+      } catch (e) { console.warn("[watchdog-recover]", e.message); }
+    }
+    if (recovered > 0) {
+      console.log(`[watchdog-recover] auto-finalized ${recovered} stuck rounds`);
+      notifyDiscord("alerts_warnings", {
+        embeds: [makeEmbed({
+          title: "🛡️ Auto-Recovered Stuck Rounds",
+          description: `Self-heal: finalize ${recovered} rounds ที่ค้าง draft (มี results แล้ว)`,
+          color: 0xf59e0b,
+          fields: stuck.slice(0, 5).map(r => ({
+            name: r.lottery_name,
+            value: `${r.draw_date} ${r.draw_time}`,
+            inline: true
+          })),
+          footer: "Watchdog ทำงาน ไม่ต้องแก้มือ"
+        })],
+      }).catch(()=>{});
+    }
+  } catch (e) { console.warn("[watchdog-recover]", e.message); }
+}, 3 * 60 * 1000).unref();
+
+/* === WATCHDOG-OVERDUE-V1 === ทุก 15 นาที */
+const __alertedOverdue = new Map();
+setInterval(async () => {
+  try {
+    const now = new Date();
+    const overdueMin = 30;
+    const overdueTime = new Date(now.getTime() - overdueMin * 60000);
+    const overdue = db.prepare(`
+      SELECT r.id, r.lottery_id, l.name AS lottery_name, r.draw_date, r.draw_time,
+             (SELECT COUNT(*) FROM results WHERE round_id = r.id) AS result_count
+      FROM rounds r
+      JOIN lotteries l ON l.id = r.lottery_id
+      WHERE r.result_status = 'draft'
+        AND r.draw_date = date('now', '+7 hours')
+        AND datetime(r.draw_date || ' ' || r.draw_time, '+7 hours') < datetime('now')
+        AND datetime(r.draw_date || ' ' || r.draw_time, '+7 hours', '+30 minutes') < datetime('now')
+      ORDER BY r.draw_time
+      LIMIT 20
+    `).all();
+
+    const stale = overdue.filter(r => r.result_count === 0);
+    if (stale.length === 0) return;
+
+    const dedupCutoff = Date.now() - 3600000;
+    const toAlert = stale.filter(r => {
+      const last = __alertedOverdue.get(r.id) || 0;
+      return last < dedupCutoff;
+    });
+    if (toAlert.length === 0) return;
+
+    toAlert.forEach(r => __alertedOverdue.set(r.id, Date.now()));
+    if (__alertedOverdue.size > 1000) {
+      const cutoff2 = Date.now() - 86400000;
+      for (const [k, v] of __alertedOverdue) {
+        if (v < cutoff2) __alertedOverdue.delete(k);
+      }
+    }
+
+    notifyDiscord("alerts_critical", {
+      content: "🚨 หวยค้าง — scraper อาจมีปัญหา",
+      embeds: [makeEmbed({
+        title: `🚨 Overdue ${toAlert.length} หวยยังไม่ออก`,
+        description: "หวยที่ draw_time ผ่านไป 30+ นาที + ไม่มี results เลย\nอาจเป็น scraper ติด / API down / source เปลี่ยน format",
+        color: 0xef4444,
+        fields: toAlert.slice(0, 10).map(r => ({
+          name: r.lottery_name,
+          value: `${r.draw_date} ${r.draw_time}`,
+          inline: true
+        })),
+        footer: "ตรวจ scraper + manual import ถ้าจำเป็น"
+      })],
+    }).catch(()=>{});
+    console.warn(`[watchdog-overdue] alerted ${toAlert.length} stale rounds`);
+  } catch (e) { console.warn("[watchdog-overdue]", e.message); }
+}, 15 * 60 * 1000).unref();
+
+/* === WATCHDOG-HEARTBEAT-V1 === ทุก 60 นาที */
+let __lastHeartbeatAlert = 0;
+setInterval(async () => {
+  try {
+    const bkkHour = new Date(Date.now() + 7 * 3600000).getUTCHours();
+    if (bkkHour >= 2 && bkkHour < 6) return;
+
+    const recentFinalized = db.prepare(`
+      SELECT COUNT(*) AS count FROM rounds
+      WHERE result_finalized_at >= datetime('now', '-90 minutes')
+    `).get().count;
+
+    if (recentFinalized > 0) return;
+
+    if (Date.now() - __lastHeartbeatAlert < 3 * 3600000) return;
+    __lastHeartbeatAlert = Date.now();
+
+    notifyDiscord("alerts_critical", {
+      content: "💀 ไม่มีหวยใหม่ออกใน 90 นาที — ระบบอาจตาย",
+      embeds: [makeEmbed({
+        title: "💀 No Finalize Activity > 90min",
+        description: `ปกติช่วง ${bkkHour}:00 ควรมีหวยออก แต่ไม่มี finalize เลย\n\nควรตรวจ:\n• Scraper running\n• API endpoints\n• Network\n• Source websites`,
+        color: 0xef4444,
+        footer: "Watchdog heartbeat alert"
+      })],
+    }).catch(()=>{});
+  } catch (e) { console.warn("[watchdog-heartbeat]", e.message); }
+}, 60 * 60 * 1000).unref();
+
+/* ===== END SELF-HEALING WATCHDOG V1 ===== */
+
 /* APILOTTO Phase B: admin endpoint */
 app.post("/api/admin/rounds/:roundId/apply-apilotto", requireAuth, requireAdmin, async (req, res) => {
   const r = await applyApilottoToRound(req.params.roundId);
