@@ -476,13 +476,13 @@ app.disable("x-powered-by");
 app.use(helmet({
   contentSecurityPolicy: {
     directives: {
-      defaultSrc: ["self"],
-      scriptSrc: ["self", "unsafe-inline", "https://static.line-scdn.net", "https://cdn.jsdelivr.net"],
-      styleSrc: ["self", "unsafe-inline", "https://fonts.googleapis.com"],
-      fontSrc: ["self", "https://fonts.gstatic.com", "data:"],
-      imgSrc: ["self", "data:", "https:", "blob:"],
-      connectSrc: ["self", "https://api.line.me", "https://liff.line.me"],
-      frameAncestors: ["self", "https://liff.line.me"],
+      defaultSrc: ["\u0027self\u0027"],
+      scriptSrc: ["\u0027self\u0027", "\u0027unsafe-inline\u0027", "https://static.line-scdn.net", "https://cdn.jsdelivr.net"],
+      styleSrc: ["\u0027self\u0027", "\u0027unsafe-inline\u0027", "https://fonts.googleapis.com"],
+      fontSrc: ["\u0027self\u0027", "https://fonts.gstatic.com", "data:"],
+      imgSrc: ["\u0027self\u0027", "data:", "https:", "blob:"],
+      connectSrc: ["\u0027self\u0027", "https://api.line.me", "https://liff.line.me"],
+      frameAncestors: ["\u0027self\u0027", "https://liff.line.me"],
     },
   },
   hsts: { maxAge: 31536000, includeSubDomains: true, preload: false },
