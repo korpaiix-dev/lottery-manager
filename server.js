@@ -4929,7 +4929,7 @@ app.get("/api/public/results-latest", (_req, res) => {
 
     /* V3: ALL lotteries — finalized round (ถ้ามี) + pending placeholder (ถ้าไม่มี) */
     const finalizedRows = db.prepare(`
-      SELECT r.lottery_id, r.id AS round_id, r.draw_date, r.label, r.result_status AS status,
+      SELECT r.lottery_id, r.id AS round_id, r.draw_date, r.draw_time, r.result_time, r.result_finalized_at, r.label, r.result_status AS status,
              l.name AS lottery_name, l.category, l.display_order,
              res.bet_type_id, res.number
       FROM rounds r
@@ -4958,8 +4958,9 @@ app.get("/api/public/results-latest", (_req, res) => {
       if (!byRound[x.round_id]) {
         byRound[x.round_id] = {
           lottery_id: x.lottery_id, lottery_name: x.lottery_name, category: x.category,
-          display_order: x.display_order, draw_date: x.draw_date, label: x.label,
-          status: x.status, grouped: {},
+          display_order: x.display_order, draw_date: x.draw_date, draw_time: x.draw_time,
+          result_time: x.result_time, result_finalized_at: x.result_finalized_at,
+          label: x.label, status: x.status, grouped: {},
         };
       }
       if (x.bet_type_id && x.number) {
@@ -4969,7 +4970,9 @@ app.get("/api/public/results-latest", (_req, res) => {
     }
     const finalizedItems = Object.values(byRound).map(r => ({
       lottery_id: r.lottery_id, lottery_name: r.lottery_name, category: r.category,
-      display_order: r.display_order, draw_date: r.draw_date, label: r.label, status: r.status,
+      display_order: r.display_order, draw_date: r.draw_date, draw_time: r.draw_time,
+      result_time: r.result_time, result_finalized_at: r.result_finalized_at,
+      label: r.label, status: r.status,
       three_top: r.grouped.three_top || null,
       three_bottom: r.grouped.three_bottom || null,
       two_top: r.grouped.two_top ? r.grouped.two_top[0] : null,

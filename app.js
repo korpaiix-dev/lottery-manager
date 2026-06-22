@@ -2150,7 +2150,9 @@ async function renderLiveResults() {
         const t2b = x.two_bottom || "—";
         const dateLbl = isP
           ? '<span style="color:#92400e;font-weight:600">⏳ รอ ' + (x.next_draw_at ? x.next_draw_at.split(" ")[1].slice(0,5) : "—") + ' (' + (x.draw_date||"") + ')</span>'
-          : (x.draw_date || "");
+          : '<div style="line-height:1.3"><div>' + (x.draw_date || "") + '</div>' 
+            + (x.result_time ? '<div style="font-size:11px;color:#94a3b8">🕐 ' + x.result_time + '</div>' : '')
+            + '</div>';
         const badge = isP
           ? '<span style="background:#f59e0b;color:#fff;padding:2px 6px;border-radius:4px;font-size:10px">รอผล</span>'
           : '<span style="background:#22c55e;color:#fff;padding:2px 6px;border-radius:4px;font-size:10px">ออกแล้ว</span>';
