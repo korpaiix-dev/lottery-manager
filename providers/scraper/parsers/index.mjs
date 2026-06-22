@@ -102,6 +102,38 @@ export const parsers = {
     };
   },
 
+/** Dow Jones Market Close — เหมือน powerball แต่ shift drawDate +1 day
+   *  (vendor บันทึก lotto_date = market close date, ระบบเรา round = วันถัดมา 01:30 ICT) */
+  dowjones_market_close(resp) {
+    const d = resp?.data;
+    if (!d || !d.results) return { ok: false, error: "no_data" };
+    const r = d.results;
+    if (!r.prize_1st || r.prize_1st === "xxxxx" || !String(r.prize_1st).trim()) {
+      return { ok: false, error: "not_drawn_yet" };
+    }
+    const p1 = String(r.prize_1st);
+    const three_top = p1.slice(-3);
+    const cons = String(r.consolation_1 || "");
+    /* shift drawDate +1 day */
+    let drawDate = d.lotto_date;
+    if (drawDate && /^\d{4}-\d{2}-\d{2}$/.test(drawDate)) {
+      const dt = new Date(drawDate + "T00:00:00Z");
+      dt.setUTCDate(dt.getUTCDate() + 1);
+      drawDate = dt.toISOString().slice(0, 10);
+    }
+    return {
+      ok: true,
+      result: {
+        drawDate, first: p1, three_top,
+        two_top: p1.slice(-2),
+        two_bottom: cons ? cons.padStart(2, "0").slice(-2) : null,
+        three_tod: three_top,
+        run_top: [...new Set(three_top.split(""))],
+        raw: d,
+      },
+    };
+  },
+
   /** Dow Jones Powerball */
   dowjones_powerball(resp) {
     const d = resp?.data;
