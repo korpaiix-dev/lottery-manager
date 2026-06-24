@@ -7017,6 +7017,19 @@ function detectSchemaChange(source_id, raw) {
       for (const k of newKeys) if (!oldKeys.has(k)) added.push(k);
       for (const k of oldKeys) if (!newKeys.has(k)) removed.push(k);
     } catch {}
+    /* FIX-NOISE-V1: filter out transient/timestamp fields ที่เปลี่ยนทุก response */
+    const TRANSIENT = ["update","updated","updated_at","now","timestamp","fetched_at","_meta","ts"];
+    const isTransient = (k) => TRANSIENT.some(t => k === t || k.endsWith("." + t));
+    const realAdded = added.filter(k => !isTransient(k));
+    const realRemoved = removed.filter(k => !isTransient(k));
+    /* FIX-NOISE-V2: skip alert ถ้า diff ว่าง (hash เปลี่ยน แต่ keys เดียวกัน — array order/shape) */
+    if (realAdded.length === 0 && realRemoved.length === 0) {
+      /* update hash + json ให้ next call ไม่ alert ซ้ำ — แต่ไม่ส่ง Discord */
+      db.prepare("UPDATE vendor_schema_snapshots SET schema_hash=?, schema_json=?, sample_size=?, detected_at=? WHERE source_id=?")
+        .run(hash, shapeStr, shapeStr.length, now, source_id);
+      return;
+    }
+    added = realAdded; removed = realRemoved;
     /* throttle: 1 alert / hour per source */
     const lastAlert = prev.last_alerted_at ? Date.parse(prev.last_alerted_at) : 0;
     const oneHourAgo = Date.now() - 60 * 60 * 1000;
