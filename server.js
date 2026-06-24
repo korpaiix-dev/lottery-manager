@@ -6099,15 +6099,38 @@ setInterval(async () => {
   } catch (e) { console.warn("[watchdog-recover]", e.message); }
 }, 3 * 60 * 1000).unref();
 
+/* === B.5.3 CRON-DEDUP-V1 === persistent dedup (replaces in-mem Map) */
+function cronDedupClaim(key, windowMs) {
+  try {
+    const now = Date.now();
+    const cutoff = new Date(now - (windowMs || 86400000)).toISOString();
+    const existing = db.prepare("SELECT sent_at FROM cron_dedup_log WHERE key = ?").get(key);
+    if (existing && existing.sent_at > cutoff) return false; /* still within dedup window */
+    db.prepare(`
+      INSERT INTO cron_dedup_log(key, sent_at) VALUES(?, ?)
+      ON CONFLICT(key) DO UPDATE SET sent_at = excluded.sent_at
+    `).run(key, new Date(now).toISOString());
+    return true;
+  } catch (e) { console.warn("[cron-dedup]", e.message); return true; }
+}
+function cronDedupCleanup() {
+  try {
+    const cutoff = new Date(Date.now() - 7 * 86400000).toISOString();
+    db.prepare("DELETE FROM cron_dedup_log WHERE sent_at < ?").run(cutoff);
+  } catch (e) { console.warn("[cron-dedup-cleanup]", e.message); }
+}
+setInterval(cronDedupCleanup, 24 * 3600 * 1000).unref();
+
 /* === WATCHDOG-OVERDUE-V1 === ทุก 15 นาที */
-const __alertedOverdue = new Map();
+/* B.5.3 deprecated by cron_dedup_log */ const __alertedOverdue = new Map();
 setInterval(async () => {
   try {
     const now = new Date();
     const overdueMin = 30;
     const overdueTime = new Date(now.getTime() - overdueMin * 60000);
     const overdue = db.prepare(`
-      SELECT r.id, r.lottery_id, l.name AS lottery_name, r.draw_date, r.draw_time,
+      SELECT r.id, r.lottery_id, l.name AS lottery_name, l.category AS lottery_category,
+             r.draw_date, r.draw_time,
              (SELECT COUNT(*) FROM results WHERE round_id = r.id) AS result_count
       FROM rounds r
       JOIN lotteries l ON l.id = r.lottery_id
@@ -6115,8 +6138,8 @@ setInterval(async () => {
         AND r.draw_date = date('now', '+7 hours')
         AND datetime(r.draw_date || ' ' || r.draw_time, '+7 hours') < datetime('now')
         AND datetime(r.draw_date || ' ' || r.draw_time, '+7 hours', '+30 minutes') < datetime('now')
-      ORDER BY r.draw_time
-      LIMIT 20
+      ORDER BY l.category, r.draw_time
+      LIMIT 40
     `).all();
 
     /* B.2.3 HOLIDAY-CALENDAR-V1: skip if today is holiday for this lottery */
@@ -6127,21 +6150,9 @@ setInterval(async () => {
     });
     if (stale.length === 0) return;
 
-    /* dedup 24 ชม. ต่อ round — กัน alert spam + margin 5s กัน off-by-microseconds */
-    const dedupCutoff = Date.now() - 86400000;
-    const toAlert = stale.filter(r => {
-      const last = __alertedOverdue.get(r.id) || 0;
-      return last + 5000 < dedupCutoff;
-    });
+    /* B.5.3 CRON-DEDUP-V1: persistent dedup (replaces in-mem Map) — 24h window per round */
+    const toAlert = stale.filter(r => cronDedupClaim('watchdog-overdue:' + r.id, 86400000));
     if (toAlert.length === 0) return;
-
-    toAlert.forEach(r => __alertedOverdue.set(r.id, Date.now()));
-    if (__alertedOverdue.size > 1000) {
-      const cutoff2 = Date.now() - 86400000;
-      for (const [k, v] of __alertedOverdue) {
-        if (v < cutoff2) __alertedOverdue.delete(k);
-      }
-    }
 
     /* B.1.3 VENDOR-HEALTH-V1: enrich alert with health info */
     const lotteryIds = toAlert.map(r => r.lottery_id);
@@ -6174,18 +6185,36 @@ setInterval(async () => {
       return lines.join("\n");
     };
 
+    /* B.5.2 WATCHDOG-PER-CATEGORY V1: group fields by lottery category */
+    const __byCategory = {};
+    for (const r of toAlert) {
+      const cat = r.lottery_category || "other";
+      if (!__byCategory[cat]) __byCategory[cat] = [];
+      __byCategory[cat].push(r);
+    }
+    const catLabels = { government: "🇹🇭 รัฐบาล", stock: "📈 หุ้น", stock_vip: "📈 หุ้น VIP", daily: "📅 รายวัน", foreign: "🌏 ต่างประเทศ", other: "อื่นๆ" };
+    const groupedFields = [];
+    for (const cat of Object.keys(__byCategory)) {
+      const list = __byCategory[cat];
+      const header = `${catLabels[cat] || cat} · ${list.length} ตัว`;
+      const body = list.slice(0, 8).map(r => `• ${r.lottery_name} ${r.draw_time}`).join("\n");
+      groupedFields.push({ name: header, value: body || "—", inline: false });
+    }
+    /* still include detailed health for top 5 critical */
+    const detailedFields = toAlert.slice(0, 5).map(r => ({
+      name: r.lottery_name,
+      value: buildFieldValue(r),
+      inline: false
+    }));
+
     notifyDiscord("alerts_critical", {
       content: "🚨 หวยค้าง — scraper อาจมีปัญหา",
       embeds: [makeEmbed({
         title: `🚨 Overdue ${toAlert.length} หวยยังไม่ออก`,
         description: "หวยที่ draw_time ผ่านไป 30+ นาที + ไม่มี results เลย\nอาจเป็น scraper ติด / API down / source เปลี่ยน format\n⚠️ = consecutive fails ≥ 3 (urgent)",
         color: 0xef4444,
-        fields: toAlert.slice(0, 10).map(r => ({
-          name: r.lottery_name,
-          value: buildFieldValue(r),
-          inline: false
-        })),
-        footer: "ตรวจ scraper + manual import ถ้าจำเป็น"
+        fields: [...groupedFields, ...detailedFields],
+        footer: "ตรวจ scraper + manual import ถ้าจำเป็น · grouped by category"
       })],
     }).catch(()=>{});
     console.warn(`[watchdog-overdue] alerted ${toAlert.length} stale rounds`);
