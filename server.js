@@ -6115,16 +6115,47 @@ setInterval(async () => {
       }
     }
 
+    /* B.1.3 VENDOR-HEALTH-V1: enrich alert with health info */
+    const lotteryIds = toAlert.map(r => r.lottery_id);
+    const healthMap = new Map();
+    if (lotteryIds.length > 0) {
+      const placeholders = lotteryIds.map(() => "?").join(",");
+      const healthRows = db.prepare(`
+        SELECT rs.lottery_id, rs.provider, h.consecutive_fails, h.last_error, h.last_success_at, h.last_fail_at
+        FROM result_sources rs
+        LEFT JOIN vendor_health_tracker h ON h.source_id = rs.id
+        WHERE rs.lottery_id IN (${placeholders}) AND rs.active = 1
+        ORDER BY rs.lottery_id, rs.priority
+      `).all(...lotteryIds);
+      for (const row of healthRows) {
+        if (!healthMap.has(row.lottery_id)) healthMap.set(row.lottery_id, []);
+        healthMap.get(row.lottery_id).push(row);
+      }
+    }
+    const buildFieldValue = (r) => {
+      const lines = [`${r.draw_date} ${r.draw_time}`];
+      const hRows = healthMap.get(r.lottery_id) || [];
+      for (const h of hRows) {
+        const fails = h.consecutive_fails || 0;
+        if (fails >= 3) {
+          lines.push(`⚠️ ${h.provider}: ${fails} fails — ${(h.last_error || "?").slice(0, 50)}`);
+        } else if (fails > 0) {
+          lines.push(`${h.provider}: ${fails} fails`);
+        }
+      }
+      return lines.join("\n");
+    };
+
     notifyDiscord("alerts_critical", {
       content: "🚨 หวยค้าง — scraper อาจมีปัญหา",
       embeds: [makeEmbed({
         title: `🚨 Overdue ${toAlert.length} หวยยังไม่ออก`,
-        description: "หวยที่ draw_time ผ่านไป 30+ นาที + ไม่มี results เลย\nอาจเป็น scraper ติด / API down / source เปลี่ยน format",
+        description: "หวยที่ draw_time ผ่านไป 30+ นาที + ไม่มี results เลย\nอาจเป็น scraper ติด / API down / source เปลี่ยน format\n⚠️ = consecutive fails ≥ 3 (urgent)",
         color: 0xef4444,
         fields: toAlert.slice(0, 10).map(r => ({
           name: r.lottery_name,
-          value: `${r.draw_date} ${r.draw_time}`,
-          inline: true
+          value: buildFieldValue(r),
+          inline: false
         })),
         footer: "ตรวจ scraper + manual import ถ้าจำเป็น"
       })],
