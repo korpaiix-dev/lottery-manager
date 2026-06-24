@@ -1,0 +1,89 @@
+{
+  "captured_at": "2026-06-24T07:02:10.375Z",
+  "fixtures": [
+    {
+      "name": "lao_standard_laotv",
+      "parser": "lao_standard",
+      "status": 200,
+      "ok": true,
+      "bytes": 253
+    },
+    {
+      "name": "lao_standard_laostars",
+      "parser": "lao_standard",
+      "status": 200,
+      "ok": true,
+      "bytes": 289
+    },
+    {
+      "name": "lao_standard_laounion",
+      "parser": "lao_standard",
+      "status": 200,
+      "ok": true,
+      "bytes": 319
+    },
+    {
+      "name": "hanoi_prize_xosohd",
+      "parser": "hanoi_prize",
+      "status": 200,
+      "ok": true,
+      "bytes": 773
+    },
+    {
+      "name": "hanoi_prize_minhngocstar",
+      "parser": "hanoi_prize",
+      "status": 200,
+      "ok": true,
+      "bytes": 773
+    },
+    {
+      "name": "hanoi_prize_minhngoctv",
+      "parser": "hanoi_prize",
+      "status": 200,
+      "ok": true,
+      "bytes": 720
+    },
+    {
+      "name": "stockvip_cn",
+      "parser": "stockvip_index",
+      "status": 200,
+      "ok": true,
+      "bytes": 52889
+    },
+    {
+      "name": "stockvip_hk",
+      "parser": "stockvip_index",
+      "status": 200,
+      "ok": true,
+      "bytes": 3291
+    },
+    {
+      "name": "lottosuperrich",
+      "parser": "lottosuperrich",
+      "status": 200,
+      "ok": true,
+      "bytes": 1475
+    },
+    {
+      "name": "dowjones_market_close",
+      "parser": "dowjones_market_close",
+      "status": 200,
+      "ok": true,
+      "bytes": 615
+    },
+    {
+      "name": "dowjones_digit5",
+      "parser": "dowjones_digit5",
+      "status": 200,
+      "ok": true,
+      "bytes": 183
+    },
+    {
+      "name": "dowjones_digit5_extra",
+      "parser": "dowjones_digit5",
+      "status": 200,
+      "ok": true,
+      "bytes": 183
+    }
+  ]
+}

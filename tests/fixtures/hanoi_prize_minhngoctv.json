@@ -1,0 +1,39 @@
+{
+  "status": "success",
+  "data": {
+    "lotto_date": "2026-06-24",
+    "start_spin": "2026-06-24 14:05",
+    "show_1st": "2026-06-24 14:30",
+    "show_2nd": "2026-06-24 14:15",
+    "results": {
+      "prize_1st": null,
+      "prize_2nd": null,
+      "prize_3rd_1": null,
+      "prize_3rd_2": null,
+      "prize_4th_1": null,
+      "prize_4th_2": null,
+      "prize_4th_3": null,
+      "prize_4th_4": null,
+      "prize_4th_5": null,
+      "prize_4th_6": null,
+      "prize_5th_1": null,
+      "prize_5th_2": null,
+      "prize_5th_3": null,
+      "prize_5th_4": null,
+      "prize_6th_1": null,
+      "prize_6th_2": null,
+      "prize_6th_3": null,
+      "prize_6th_4": null,
+      "prize_6th_5": null,
+      "prize_6th_6": null,
+      "prize_7th_1": null,
+      "prize_7th_2": null,
+      "prize_7th_3": null,
+      "prize_2digits_1": null,
+      "prize_2digits_2": null,
+      "prize_2digits_3": null,
+      "prize_2digits_4": null
+    }
+  },
+  "update": "2026-06-24T07:02:00.481Z"
+}
