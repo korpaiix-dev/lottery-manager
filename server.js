@@ -5827,6 +5827,19 @@ function updateVendorHealth(lotteryId, provider, success, errorMsg) {
     console.warn("[vendor-health]", e.message);
   }
 }
+/* === B.4.2 RESULT-CACHE-V1 === insert cache row on successful pull */
+function cacheResultPayload(lotteryId, provider, roundId, payload) {
+  try {
+    const src = db.prepare(
+      "SELECT id FROM result_sources WHERE lottery_id = ? AND provider = ? AND active = 1 ORDER BY priority LIMIT 1"
+    ).get(lotteryId, provider);
+    if (!src) return;
+    db.prepare(
+      "INSERT INTO vendor_result_cache(source_id, round_id, lottery_id, raw_payload, fetched_at) VALUES(?, ?, ?, ?, ?)"
+    ).run(src.id, roundId || null, lotteryId, JSON.stringify(payload || {}), nowIso());
+  } catch (e) { console.warn("[result-cache]", e.message); }
+}
+
 
 
 /* APILOTTO Phase A: apply pulled data → upsert results into a round */
@@ -5854,6 +5867,9 @@ async function applyApilottoToRound(roundId) {
   }
   if (!pulled.ok) return { ok: false, error: pulled.error || "pull_failed", attempts: _pullErrors };
   const r = pulled.result;
+  /* B.4.2 RESULT-CACHE-V1: cache successful payload before applying */
+  const _provider = (_pullErrors.length === 0 || _pullErrors[0].startsWith("scraper:")) ? "API Lotto" : "Scraper";
+  cacheResultPayload(round.lottery_id, _provider, roundId, r);
 
   /* CRITICAL: apilotto returns latest only — must match this round's draw_date */
   const apilottoIso = apilottoDateToIso(r.drawDate);
@@ -6452,6 +6468,55 @@ app.delete("/api/admin/holidays/:id", requireAuth, requireAdmin, (req, res) => {
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
+
+/* === B.4.3 RESULT-CACHE-V1 recovery endpoint + B.4.4 cleanup cron === */
+app.get("/api/admin/cache-replay", requireAuth, requireAdmin, (req, res) => {
+  try {
+    const lid = req.query.lottery_id;
+    const limit = Math.min(Number(req.query.limit) || 20, 200);
+    let sql = "SELECT id, source_id, round_id, lottery_id, raw_payload, fetched_at FROM vendor_result_cache";
+    const params = [];
+    if (lid) { sql += " WHERE lottery_id = ?"; params.push(String(lid)); }
+    sql += " ORDER BY fetched_at DESC LIMIT ?";
+    params.push(limit);
+    const rows = db.prepare(sql).all(...params);
+    const parsed = rows.map(r => {
+      let payload = null;
+      try { payload = JSON.parse(r.raw_payload); } catch (e) {}
+      return { ...r, raw_payload: undefined, payload };
+    });
+    res.json({ ok: true, count: parsed.length, rows: parsed });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+app.post("/api/admin/cache-replay/:id/apply", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const targetRoundId = req.body?.round_id || null;
+    if (!Number.isFinite(id)) return res.status(400).json({ ok: false, error: "bad_id" });
+    const row = db.prepare("SELECT * FROM vendor_result_cache WHERE id = ?").get(id);
+    if (!row) return res.status(404).json({ ok: false, error: "not_found" });
+    logAudit(req.user.id, "cache_replay_apply", "vendor_result_cache", String(id), { targetRoundId });
+    res.json({ ok: true, cache_id: id, cached_at: row.fetched_at, hint: "Use payload from /api/admin/cache-replay then call /api/admin/rounds/:id/apply-apilotto or manual finalize" });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+/* B.4.4 RESULT-CACHE-V1 cleanup: remove rows >7 days old, runs daily at 03:30 ICT */
+let __resultCacheCleanupLast = "";
+setInterval(() => {
+  try {
+    const bkkNow = new Date(Date.now() + 7 * 3600000);
+    const hour = bkkNow.getUTCHours();
+    const minute = bkkNow.getUTCMinutes();
+    const dateKey = bkkNow.toISOString().slice(0, 10);
+    if (hour !== 3 || minute < 30 || minute >= 35) return;
+    if (__resultCacheCleanupLast === dateKey) return;
+    __resultCacheCleanupLast = dateKey;
+    const cutoff = new Date(Date.now() - 7 * 86400000).toISOString();
+    const r = db.prepare("DELETE FROM vendor_result_cache WHERE fetched_at < ?").run(cutoff);
+    console.log(`[result-cache-cleanup] removed ${r.changes} rows older than ${cutoff}`);
+  } catch (e) { console.warn("[result-cache-cleanup]", e.message); }
+}, 5 * 60 * 1000).unref();
 
 console.log("[p3-bank-accounts] backend ready");
 
