@@ -6720,6 +6720,11 @@ async function dailyReconcileCron() {
       let suggestion = null;
       try { suggestion = await getVendorSuggestion(round); } catch (_) { suggestion = null; }
       if (!suggestion || !suggestion.ok) continue;
+      /* FIX-RECONCILE-DATE-MATCH: skip ถ้า vendor ส่งผลของ "วันอื่น" (vendor latest != round.draw_date) */
+      if (suggestion.raw_draw_date && suggestion.raw_draw_date !== round.draw_date) {
+        console.log(`[reconcile] skip ${round.id} (${round.lottery_id}) — vendor date ${suggestion.raw_draw_date} != round ${round.draw_date}`);
+        continue;
+      }
       const diff = diffSubmittedVsVendor(round.id, suggestion);
       if (!diff.mismatched) continue;
       for (const field of diff.fields) {
