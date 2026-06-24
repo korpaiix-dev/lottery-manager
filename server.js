@@ -6195,6 +6195,61 @@ setInterval(async () => {
 
 /* ===== END SELF-HEALING WATCHDOG V1 ===== */
 
+/* === VENDOR-HEALTH-DAILY-REPORT V1 (B.1.5) === Discord report 09:00 ICT */
+let __vendorHealthReportLast = "";
+setInterval(async () => {
+  try {
+    const bkkNow = new Date(Date.now() + 7 * 3600000);
+    const hour = bkkNow.getUTCHours();
+    const minute = bkkNow.getUTCMinutes();
+    const dateKey = bkkNow.toISOString().slice(0, 10);
+    if (hour !== 9 || minute >= 10) return;
+    if (__vendorHealthReportLast === dateKey) return;
+    __vendorHealthReportLast = dateKey;
+
+    const rows = db.prepare(`
+      SELECT rs.id AS source_id, rs.provider, rs.lottery_id, rs.name AS source_name,
+             l.name AS lottery_name,
+             h.consecutive_fails, h.total_polls, h.total_success, h.total_fail,
+             h.last_success_at, h.last_fail_at, h.last_error
+      FROM result_sources rs
+      JOIN lotteries l ON l.id = rs.lottery_id
+      LEFT JOIN vendor_health_tracker h ON h.source_id = rs.id
+      WHERE rs.active = 1
+      ORDER BY h.consecutive_fails DESC NULLS LAST, rs.lottery_id, rs.priority
+    `).all();
+
+    const total = rows.length;
+    const healthy = rows.filter(r => (r.consecutive_fails || 0) === 0).length;
+    const warning = rows.filter(r => (r.consecutive_fails || 0) >= 1 && (r.consecutive_fails || 0) < 3).length;
+    const critical = rows.filter(r => (r.consecutive_fails || 0) >= 3).length;
+    const totalPolls = rows.reduce((s, r) => s + (r.total_polls || 0), 0);
+    const totalSuccess = rows.reduce((s, r) => s + (r.total_success || 0), 0);
+    const uptime = totalPolls > 0 ? Math.round((totalSuccess / totalPolls) * 1000) / 10 : null;
+
+    const criticalRows = rows.filter(r => (r.consecutive_fails || 0) >= 3).slice(0, 10);
+    const fields = criticalRows.map(r => ({
+      name: `${r.lottery_name} (${r.provider})`,
+      value: `fails: ${r.consecutive_fails} · last_err: ${(r.last_error || "?").slice(0, 80)}`,
+      inline: false,
+    }));
+
+    const color = critical > 0 ? 0xef4444 : warning > 0 ? 0xf59e0b : 0x22c55e;
+
+    await notifyDiscord("alerts_critical", {
+      content: "📊 Vendor Health Daily Report",
+      embeds: [makeEmbed({
+        title: `📊 Vendor Health ${dateKey}`,
+        description: `สรุปสถานะ ${total} sources · Uptime รวม: ${uptime != null ? uptime + "%" : "n/a"}\n\n✅ healthy: ${healthy}\n⚠️ warning (1-2 fails): ${warning}\n🚨 critical (≥3 fails): ${critical}`,
+        color,
+        fields: fields.length > 0 ? fields : undefined,
+        footer: "Daily report · 09:00 ICT"
+      })],
+    }).catch(()=>{});
+    console.log(`[vendor-health-daily] reported ${total} sources, critical=${critical}`);
+  } catch (e) { console.warn("[vendor-health-daily]", e.message); }
+}, 5 * 60 * 1000).unref();
+
 /* APILOTTO Phase B: admin endpoint */
 app.post("/api/admin/rounds/:roundId/apply-apilotto", requireAuth, requireAdmin, async (req, res) => {
   const r = await applyApilottoToRound(req.params.roundId);
