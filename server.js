@@ -5929,7 +5929,7 @@ function parsePuppeteerResult(resp) {
 /* PHASE-B-DEAD-CODE-REMOVED */
 /* Main entry: pullFromScraper(lotteryId) — ทำงานเหมือน pullFromApilotto */
 async function pullFromScraper(lotteryId) {
-  const src = db.prepare(`SELECT api_endpoint, url, name FROM result_sources WHERE lottery_id = ? AND provider='Scraper' AND active=1 ORDER BY priority LIMIT 1`).get(lotteryId);
+  const src = db.prepare(`SELECT id, api_endpoint, url, name FROM result_sources WHERE lottery_id = ? AND provider='Scraper' AND active=1 ORDER BY priority LIMIT 1`).get(lotteryId);
   if (!src) return { ok: false, error: "no_scraper_source" };
   const [parserName, filterName] = String(src.api_endpoint || "").split("::");
   let resp;
@@ -5954,6 +5954,8 @@ async function pullFromScraper(lotteryId) {
   else return { ok: false, error: "unknown_parser:" + parserName };
 
   if (!parsed.ok) return { ok: false, error: parsed.error };
+  /* D.8: detect schema drift */
+  try { detectSchemaChange(src.id, resp); } catch {}
   return { ok: true, lotteryId, result: parsed.result, fetchedAt: nowIso() };
 }
 
@@ -6820,6 +6822,123 @@ app.get("/api/admin/vendor-health", requireAuth, requireAdmin, (req, res) => {
     res.status(500).json({ ok: false, error: e.message });
   }
 });
+
+/* === D.8 VENDOR-SCHEMA-CHANGE-DETECTOR === */
+db.exec(`CREATE TABLE IF NOT EXISTS vendor_schema_snapshots (
+  source_id     TEXT PRIMARY KEY,
+  schema_hash   TEXT NOT NULL,
+  schema_json   TEXT NOT NULL,
+  sample_size   INTEGER NOT NULL DEFAULT 0,
+  detected_at   TEXT NOT NULL,
+  last_alerted_at TEXT
+)`);
+
+/** Recursively extract the (key,type) shape of a JSON document.
+ *  - For arrays: walks first element only (representative).
+ *  - For objects: keys sorted for stable hashing.
+ *  - Returns a JSON string of the shape.
+ */
+function __schemaShape(value, depth = 0) {
+  if (depth > 4) return "deep";
+  if (value === null) return "null";
+  if (Array.isArray(value)) {
+    if (!value.length) return "array<>";
+    return "array<" + __schemaShape(value[0], depth + 1) + ">";
+  }
+  if (typeof value === "object") {
+    const keys = Object.keys(value).sort();
+    const obj = {};
+    for (const k of keys) obj[k] = __schemaShape(value[k], depth + 1);
+    return obj;
+  }
+  return typeof value;
+}
+function __hashStr(s) {
+  /* tiny FNV-1a (sync, no crypto dep) */
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = (h * 0x01000193) >>> 0;
+  }
+  return h.toString(16).padStart(8, "0");
+}
+
+/** detectSchemaChange(source_id, raw)
+ *  - First call per source → store baseline (no alert).
+ *  - Subsequent calls → compare hash; if different, log + Discord alert (once per hour).
+ */
+function detectSchemaChange(source_id, raw) {
+  if (!source_id || raw == null) return;
+  try {
+    const shape = __schemaShape(raw);
+    const shapeStr = JSON.stringify(shape);
+    const hash = __hashStr(shapeStr);
+    const prev = db.prepare("SELECT schema_hash, schema_json, last_alerted_at FROM vendor_schema_snapshots WHERE source_id=?").get(source_id);
+    const now = nowIso();
+    if (!prev) {
+      db.prepare("INSERT INTO vendor_schema_snapshots (source_id, schema_hash, schema_json, sample_size, detected_at) VALUES (?,?,?,?,?)").run(source_id, hash, shapeStr, shapeStr.length, now);
+      return;
+    }
+    if (prev.schema_hash === hash) return;
+    /* schema changed — diff keys */
+    let added = [], removed = [];
+    try {
+      const oldShape = JSON.parse(prev.schema_json);
+      const oldKeys = new Set(__flatKeys(oldShape));
+      const newKeys = new Set(__flatKeys(shape));
+      for (const k of newKeys) if (!oldKeys.has(k)) added.push(k);
+      for (const k of oldKeys) if (!newKeys.has(k)) removed.push(k);
+    } catch {}
+    /* throttle: 1 alert / hour per source */
+    const lastAlert = prev.last_alerted_at ? Date.parse(prev.last_alerted_at) : 0;
+    const oneHourAgo = Date.now() - 60 * 60 * 1000;
+    const shouldAlert = lastAlert < oneHourAgo;
+    db.prepare("UPDATE vendor_schema_snapshots SET schema_hash=?, schema_json=?, sample_size=?, detected_at=?, last_alerted_at=? WHERE source_id=?")
+      .run(hash, shapeStr, shapeStr.length, now, shouldAlert ? now : prev.last_alerted_at, source_id);
+    if (shouldAlert) {
+      console.warn(`[schema-change] source ${source_id} added=${added.join(",")} removed=${removed.join(",")}`);
+      try {
+        notifyDiscord("alerts_warnings", {
+          embeds: [makeEmbed({
+            title: "📐 Vendor schema changed",
+            description: "source_id: `" + safeName(source_id) + "`",
+            color: 0xf59e0b,
+            fields: [
+              { name: "Added keys", value: (added.length ? added.slice(0, 10).map(s => "`" + s + "`").join(", ") : "—").slice(0, 1000), inline: false },
+              { name: "Removed keys", value: (removed.length ? removed.slice(0, 10).map(s => "`" + s + "`").join(", ") : "—").slice(0, 1000), inline: false },
+            ],
+            footer: "D.8 schema watcher",
+            timestamp: new Date().toISOString(),
+          })],
+        }).catch(() => {});
+      } catch {}
+    }
+  } catch (e) { console.warn("[detectSchemaChange]", e.message); }
+}
+/** Flat dotted-path key list for diff display */
+function __flatKeys(shape, prefix = "") {
+  if (!shape || typeof shape !== "object") return [prefix].filter(Boolean);
+  const out = [];
+  if (Array.isArray(shape)) return out;
+  for (const k of Object.keys(shape)) {
+    const path = prefix ? prefix + "." + k : k;
+    out.push(path);
+    if (shape[k] && typeof shape[k] === "object" && !Array.isArray(shape[k])) {
+      out.push(...__flatKeys(shape[k], path));
+    }
+  }
+  return out;
+}
+
+/** admin endpoint */
+app.get("/api/admin/schema-snapshots", requireAuth, requireAdmin, (_req, res) => {
+  try {
+    const rows = db.prepare("SELECT source_id, schema_hash, sample_size, detected_at, last_alerted_at FROM vendor_schema_snapshots ORDER BY detected_at DESC LIMIT 500").all();
+    res.json({ ok: true, rows });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+
 /* === D.7 SYSTEM-HEALTH-DASHBOARD === aggregated endpoint for /admin/system-health */
 app.get("/api/admin/system-health", requireAuth, requireAdmin, (_req, res) => {
   try {
