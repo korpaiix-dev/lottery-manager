@@ -5835,17 +5835,24 @@ async function applyApilottoToRound(roundId) {
   if (!round) return { ok: false, error: "round_not_found" };
   if (round.result_status === "finalized") return { ok: false, error: "result_finalized" };
 
-  /* SCRAPER-FRAMEWORK-V1: ลอง apilotto ก่อน, ถ้าไม่มี source ลอง scraper */
+  /* B.3 MULTI-SOURCE-FALLBACK-V1: try API Lotto → Scraper in order */
+  const _pullErrors = [];
   let pulled = await pullFromApilotto(round.lottery_id);
-  /* B.1.2 VENDOR-HEALTH-V1: track apilotto outcome (skip no_source) */
   if (pulled.ok) updateVendorHealth(round.lottery_id, "API Lotto", true, null);
-  else if (pulled.error !== "no_source") updateVendorHealth(round.lottery_id, "API Lotto", false, pulled.error);
-  if (!pulled.ok && pulled.error === "no_source") {
-    pulled = await pullFromScraper(round.lottery_id);
-    if (pulled.ok) updateVendorHealth(round.lottery_id, "Scraper", true, null);
-    else if (pulled.error !== "no_scraper_source") updateVendorHealth(round.lottery_id, "Scraper", false, pulled.error);
+  else {
+    if (pulled.error !== "no_source") updateVendorHealth(round.lottery_id, "API Lotto", false, pulled.error);
+    _pullErrors.push("apilotto:" + pulled.error);
+    /* fallback to Scraper on ANY apilotto failure (not just no_source) */
+    const scraped = await pullFromScraper(round.lottery_id);
+    if (scraped.ok) {
+      updateVendorHealth(round.lottery_id, "Scraper", true, null);
+      pulled = scraped;
+    } else {
+      if (scraped.error !== "no_scraper_source") updateVendorHealth(round.lottery_id, "Scraper", false, scraped.error);
+      _pullErrors.push("scraper:" + scraped.error);
+    }
   }
-  if (!pulled.ok) return { ok: false, error: pulled.error || "pull_failed" };
+  if (!pulled.ok) return { ok: false, error: pulled.error || "pull_failed", attempts: _pullErrors };
   const r = pulled.result;
 
   /* CRITICAL: apilotto returns latest only — must match this round's draw_date */
