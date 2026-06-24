@@ -6550,6 +6550,124 @@ setInterval(async () => {
   } catch (e) { console.warn("[vendor-health-daily]", e.message); }
 }, 5 * 60 * 1000).unref();
 
+/* === C.6 DAILY-RECONCILE-CRON === schema mismatch_alerts + 23:30 ICT cron */
+db.exec(`CREATE TABLE IF NOT EXISTS mismatch_alerts (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  round_id TEXT NOT NULL,
+  bet_type_id TEXT NOT NULL,
+  db_value TEXT,
+  vendor_value TEXT,
+  severity TEXT NOT NULL DEFAULT 'medium',
+  detected_at TEXT NOT NULL,
+  resolved_at TEXT,
+  notes TEXT
+)`);
+try {
+  db.exec("CREATE INDEX IF NOT EXISTS idx_mismatch_alerts_round ON mismatch_alerts(round_id)");
+  db.exec("CREATE INDEX IF NOT EXISTS idx_mismatch_alerts_detected ON mismatch_alerts(detected_at)");
+} catch (_) {}
+
+let __reconcileLast = "";
+async function dailyReconcileCron() {
+  try {
+    const bkkNow = new Date(Date.now() + 7 * 3600000);
+    const hour = bkkNow.getUTCHours();
+    const minute = bkkNow.getUTCMinutes();
+    const dateKey = bkkNow.toISOString().slice(0, 10);
+    if (hour !== 23 || minute < 30 || minute >= 40) return;
+    if (__reconcileLast === dateKey) return;
+    __reconcileLast = dateKey;
+
+    const cutoff = new Date(Date.now() - 24 * 3600000).toISOString();
+    const finalizedRounds = db.prepare(`
+      SELECT id, lottery_id, draw_date, label
+      FROM rounds
+      WHERE result_status = 'finalized'
+        AND result_finalized_at >= ?
+      ORDER BY result_finalized_at DESC
+      LIMIT 200
+    `).all(cutoff);
+
+    let totalMismatches = 0;
+    const mismatchedSummary = [];
+
+    for (const round of finalizedRounds) {
+      let suggestion = null;
+      try { suggestion = await getVendorSuggestion(round); } catch (_) { suggestion = null; }
+      if (!suggestion || !suggestion.ok) continue;
+      const diff = diffSubmittedVsVendor(round.id, suggestion);
+      if (!diff.mismatched) continue;
+      for (const field of diff.fields) {
+        try {
+          db.prepare(`
+            INSERT INTO mismatch_alerts (round_id, bet_type_id, db_value, vendor_value, severity, detected_at, notes)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+          `).run(
+            round.id,
+            field.field,
+            JSON.stringify(field.submitted || []),
+            JSON.stringify(field.vendor || []),
+            field.field === "three_top" ? "high" : "medium",
+            nowIso(),
+            "daily reconcile " + dateKey
+          );
+        } catch (e) { console.warn("[reconcile-insert]", e.message); }
+        totalMismatches++;
+      }
+      mismatchedSummary.push({
+        round_id: round.id,
+        lottery_id: round.lottery_id,
+        draw_date: round.draw_date,
+        diff_count: diff.fields.length,
+      });
+    }
+
+    if (totalMismatches > 0) {
+      try {
+        const fields = mismatchedSummary.slice(0, 10).map(m => ({
+          name: safeName(m.lottery_id) + " · " + safeName(m.draw_date),
+          value: "round " + safeName(m.round_id) + " · " + m.diff_count + " field(s) mismatch",
+          inline: false,
+        }));
+        await notifyDiscord("alerts_critical", {
+          content: "🔍 Daily Reconcile — เจอ mismatch ระหว่าง DB กับ vendor",
+          embeds: [makeEmbed({
+            title: "🔍 Daily Reconcile " + dateKey,
+            description: "ตรวจ finalized 24h ล่าสุด (" + finalizedRounds.length + " รอบ) · เจอ mismatch " + totalMismatches + " field",
+            color: 0xef4444,
+            fields,
+            footer: "Daily reconcile · 23:30 ICT"
+          })],
+        }).catch(() => {});
+      } catch (e) { console.warn("[reconcile-discord]", e.message); }
+    }
+    console.log("[daily-reconcile] checked=" + finalizedRounds.length + " mismatches=" + totalMismatches);
+  } catch (e) { console.warn("[daily-reconcile]", e.message); }
+}
+setInterval(() => { dailyReconcileCron().catch(() => {}); }, 5 * 60 * 1000).unref();
+
+/* C.6.3: admin endpoint — list recent mismatch_alerts */
+app.get("/api/admin/mismatch-alerts", requireAuth, requireAdmin, (req, res) => {
+  try {
+    const limit = Math.min(Number(req.query.limit) || 100, 500);
+    const rows = db.prepare(`
+      SELECT id, round_id, bet_type_id, db_value, vendor_value, severity, detected_at, resolved_at, notes
+      FROM mismatch_alerts
+      ORDER BY detected_at DESC
+      LIMIT ?
+    `).all(limit);
+    res.json({ items: rows });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post("/api/admin/mismatch-alerts/:id/resolve", requireAuth, requireAdmin, (req, res) => {
+  try {
+    const notes = cleanText(req.body && req.body.notes, 240);
+    db.prepare("UPDATE mismatch_alerts SET resolved_at = ?, notes = COALESCE(?, notes) WHERE id = ?").run(nowIso(), notes || null, Number(req.params.id));
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 /* APILOTTO Phase B: admin endpoint */
 app.post("/api/admin/rounds/:roundId/apply-apilotto", requireAuth, requireAdmin, async (req, res) => {
   const r = await applyApilottoToRound(req.params.roundId);
