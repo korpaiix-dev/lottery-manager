@@ -1,0 +1,32 @@
+#!/bin/bash
+# Pre-commit hook (Phase D.5): syntax check + parser unit tests + integration tests
+# Override with SKIP_TESTS=1 if you really need to commit broken state.
+set -e
+cd "$(git rev-parse --show-toplevel)"
+
+echo "🔍 pre-commit: node --check server.js"
+node --check server.js || { echo "❌ server.js syntax error — commit aborted"; exit 1; }
+
+if [ -f app.js ]; then
+  echo "🔍 pre-commit: node --check app.js"
+  node --check app.js || { echo "❌ app.js syntax error — commit aborted"; exit 1; }
+fi
+
+if [ "$SKIP_TESTS" = "1" ]; then
+  echo "⚠  SKIP_TESTS=1 — bypassing parser tests (use sparingly)"
+  echo "✓ syntax OK (tests skipped)"
+  exit 0
+fi
+
+echo "🧪 pre-commit: running tests (npm test)"
+if npm test --silent >/tmp/precommit-test.log 2>&1; then
+  passed=$(grep -E '^# tests |ℹ tests ' /tmp/precommit-test.log | tail -1 || echo '')
+  echo "✓ tests passed ($passed)"
+else
+  echo "❌ tests failed — commit aborted"
+  echo "-- tail of /tmp/precommit-test.log --"
+  tail -40 /tmp/precommit-test.log
+  exit 1
+fi
+
+echo "✓ syntax + tests OK"
