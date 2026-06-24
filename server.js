@@ -6096,7 +6096,12 @@ setInterval(async () => {
       LIMIT 20
     `).all();
 
-    const stale = overdue.filter(r => r.result_count === 0);
+    /* B.2.3 HOLIDAY-CALENDAR-V1: skip if today is holiday for this lottery */
+    const stale = overdue.filter(r => {
+      if (r.result_count !== 0) return false;
+      if (isHoliday(r.draw_date, r.lottery_id)) return false;
+      return true;
+    });
     if (stale.length === 0) return;
 
     /* dedup 24 ชม. ต่อ round — กัน alert spam + margin 5s กัน off-by-microseconds */
@@ -6401,6 +6406,44 @@ app.get("/api/admin/vendor-health", requireAuth, requireAdmin, (req, res) => {
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message });
   }
+});
+
+/* === B.2.5 HOLIDAY-CALENDAR-V1 admin endpoints === */
+app.get("/api/admin/holidays", requireAuth, requireAdmin, (req, res) => {
+  try {
+    const fromDate = req.query.from || "";
+    const toDate = req.query.to || "";
+    let sql = "SELECT id, date, name, lottery_id, created_at FROM holidays";
+    const params = [];
+    const where = [];
+    if (fromDate) { where.push("date >= ?"); params.push(fromDate); }
+    if (toDate) { where.push("date <= ?"); params.push(toDate); }
+    if (where.length) sql += " WHERE " + where.join(" AND ");
+    sql += " ORDER BY date ASC LIMIT 500";
+    const rows = db.prepare(sql).all(...params);
+    res.json({ ok: true, rows });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+app.post("/api/admin/holidays", requireAuth, requireAdmin, (req, res) => {
+  try {
+    const { date, name, lottery_id } = req.body || {};
+    if (!date || !name) return res.status(400).json({ ok: false, error: "date_and_name_required" });
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date))) return res.status(400).json({ ok: false, error: "invalid_date_format" });
+    const r = db.prepare("INSERT OR IGNORE INTO holidays(date, name, lottery_id) VALUES(?, ?, ?)").run(String(date), String(name), lottery_id ? String(lottery_id) : null);
+    if (r.changes === 0) return res.status(409).json({ ok: false, error: "duplicate" });
+    logAudit(req.user.id, "create_holiday", "holiday", String(r.lastInsertRowid), { date, name, lottery_id });
+    res.json({ ok: true, id: r.lastInsertRowid });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+app.delete("/api/admin/holidays/:id", requireAuth, requireAdmin, (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ ok: false, error: "bad_id" });
+    const r = db.prepare("DELETE FROM holidays WHERE id = ?").run(id);
+    if (r.changes === 0) return res.status(404).json({ ok: false, error: "not_found" });
+    logAudit(req.user.id, "delete_holiday", "holiday", String(id), null);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 
 console.log("[p3-bank-accounts] backend ready");
@@ -10680,6 +10723,8 @@ function generateRoundsForSchedule(schedule, fromDate, toDate) {
   let created = 0;
   for (let date = fromDate; date <= toDate; date = shiftIsoDate(date, 1)) {
     if (!scheduleRunsOnDate(schedule, date)) continue;
+    /* B.2.4 HOLIDAY-CALENDAR-V1: skip if date is holiday for this lottery */
+    if (isHoliday(date, schedule.lottery_id)) continue;
 
     const label = formatGeneratedRoundLabel(date);
     const exists = db
@@ -10744,6 +10789,18 @@ function syncFutureGeneratedRounds(schedule) {
     const openDate = shiftIsoDate(round.draw_date, -Number(schedule.open_days_before || 0));
     update.run(openDate, schedule.open_time, schedule.draw_time, schedule.result_time || schedule.draw_time, schedule.close_before_minutes, nowIso(), round.id);
   });
+}
+
+/* === HOLIDAY-CALENDAR-V1 (B.2) === check if date is holiday */
+function isHoliday(date, lotteryId) {
+  try {
+    const row = db.prepare(
+      "SELECT id, name FROM holidays WHERE date = ? AND (lottery_id IS NULL OR lottery_id = ?) LIMIT 1"
+    ).get(date, lotteryId || "");
+    return row || null;
+  } catch (e) {
+    return null;
+  }
 }
 
 function scheduleRunsOnDate(schedule, date) {
