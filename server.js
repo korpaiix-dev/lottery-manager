@@ -6053,10 +6053,11 @@ setInterval(async () => {
     const stale = overdue.filter(r => r.result_count === 0);
     if (stale.length === 0) return;
 
-    const dedupCutoff = Date.now() - 3600000;
+    /* dedup 24 ชม. ต่อ round — กัน alert spam + margin 5s กัน off-by-microseconds */
+    const dedupCutoff = Date.now() - 86400000;
     const toAlert = stale.filter(r => {
       const last = __alertedOverdue.get(r.id) || 0;
-      return last < dedupCutoff;
+      return last + 5000 < dedupCutoff;
     });
     if (toAlert.length === 0) return;
 
