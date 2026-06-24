@@ -4018,6 +4018,94 @@ app.post("/api/results/:roundId/finalize", requireAuth, requireAdmin, async (req
   res.json(presentRound(updated));
 });
 
+/* === C.5 UNDO + REVERSE === unfinalize round + reverse paid entries + delete results
+ * POST body: { reason: string }
+ */
+app.post("/api/admin/results/:roundId/unfinalize-and-reverse", requireAuth, requireAdmin, (req, res) => {
+  const round = findRound(req.params.roundId);
+  if (!round) return res.status(404).json({ error: "round_not_found" });
+  const reason = cleanText(req.body && req.body.reason, 240);
+  if (!reason) return res.status(400).json({ error: "reason_required" });
+
+  const prevResults = db.prepare("SELECT bet_type_id, number FROM results WHERE round_id = ? ORDER BY bet_type_id, number").all(round.id);
+
+  /* count paid entries to be reversed */
+  const paidAgg = db.prepare(`
+    SELECT COUNT(*) AS count, COALESCE(SUM(e.amount), 0) AS amount
+    FROM entries e
+    JOIN tickets t ON t.id = e.ticket_id
+    WHERE e.round_id = ? AND e.paid_at IS NOT NULL
+  `).get(round.id) || { count: 0, amount: 0 };
+
+  const now = nowIso();
+  /* node:sqlite ไม่มี db.transaction — emulate via BEGIN/COMMIT/ROLLBACK */
+  try {
+    db.exec("BEGIN");
+    db.prepare("UPDATE rounds SET result_status='draft', result_finalized_by=NULL, result_finalized_at=NULL, updated_at=? WHERE id=?").run(now, round.id);
+    db.prepare("UPDATE entries SET paid_at=NULL, updated_at=? WHERE round_id=? AND paid_at IS NOT NULL").run(now, round.id);
+    db.prepare("DELETE FROM results WHERE round_id=?").run(round.id);
+    db.exec("COMMIT");
+  } catch (e) {
+    try { db.exec("ROLLBACK"); } catch (_) {}
+    return res.status(500).json({ error: "reverse_failed", message: e.message });
+  }
+
+  /* C.5.4: audit */
+  logAudit(req.user.id, "unfinalize_and_reverse", "round", round.id, {
+    reason,
+    reversed_paid_count: paidAgg.count || 0,
+    reversed_paid_amount: paidAgg.amount || 0,
+    prev_results: prevResults,
+  });
+
+  /* C.5.3: Discord alert if amount > 10000 */
+  try {
+    if ((paidAgg.amount || 0) > 10000) {
+      notifyDiscord("alerts", { embeds: [makeEmbed({
+        title: "🚨 Round REVERSED — ยอดเกิน 10,000",
+        description: "งวด " + safeName(round.id) + " (" + safeName(round.lottery_id) + ")",
+        color: 0xff0000,
+        fields: [
+          { name: "ยอดที่ reverse", value: Number(paidAgg.amount || 0).toLocaleString() + " บาท", inline: true },
+          { name: "จำนวนรายการ", value: String(paidAgg.count || 0), inline: true },
+          { name: "เหตุผล", value: safeName(reason), inline: false },
+          { name: "By", value: safeName(req.user.username || req.user.id), inline: true },
+        ],
+      })] }).catch(() => {});
+    }
+  } catch (_) {}
+
+  res.json({
+    ok: true,
+    round_id: round.id,
+    reversed_paid_count: paidAgg.count || 0,
+    reversed_paid_amount: paidAgg.amount || 0,
+  });
+});
+
+/* === C.4.3 HISTORY VIEW === audit history per round (finalize/reverse events) */
+app.get("/api/admin/results/:roundId/history", requireAuth, requireAdmin, (req, res) => {
+  const round = findRound(req.params.roundId);
+  if (!round) return res.status(404).json({ error: "round_not_found" });
+  const rows = db.prepare(`
+    SELECT id, user_id, action, payload_json, created_at
+    FROM audit_logs
+    WHERE entity_type IN ('result', 'round')
+      AND entity_id = ?
+      AND action IN ('finalize', 'reopen', 'unfinalize_and_reverse', 'upsert')
+    ORDER BY created_at DESC
+    LIMIT 100
+  `).all(round.id);
+  const history = rows.map(r => ({
+    id: r.id,
+    user_id: r.user_id,
+    action: r.action,
+    created_at: r.created_at,
+    payload: safeParseJson(r.payload_json, null),
+  }));
+  res.json({ round_id: round.id, lottery_id: round.lottery_id, draw_date: round.draw_date, history });
+});
+
 app.post("/api/results/:roundId/reopen", requireAuth, requireAdmin, (req, res) => {
   const round = findRound(req.params.roundId);
   if (!round) return res.status(404).json({ error: "round_not_found" });
