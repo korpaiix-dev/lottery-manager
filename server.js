@@ -6552,6 +6552,129 @@ setInterval(async () => {
   } catch (e) { console.warn("[vendor-health-daily]", e.message); }
 }, 5 * 60 * 1000).unref();
 
+
+/* === D.9 DAILY-SNAPSHOT-REPORT-V1 === Discord summary 09:30 ICT */
+let __dailySnapshotLast = "";
+setInterval(async () => {
+  try {
+    const bkkNow = new Date(Date.now() + 7 * 3600000);
+    const hour = bkkNow.getUTCHours();
+    const minute = bkkNow.getUTCMinutes();
+    const dateKey = bkkNow.toISOString().slice(0, 10);
+    if (hour !== 9 || minute < 30 || minute >= 40) return;
+    if (__dailySnapshotLast === dateKey) return;
+    __dailySnapshotLast = dateKey;
+
+    /* Pipeline success rate (24h) */
+    let totalPolls24h = 0, totalSuccess24h = 0;
+    try {
+      const counts = db.prepare(`
+        SELECT COALESCE(SUM(total_polls),0) AS p, COALESCE(SUM(total_success),0) AS s FROM vendor_health_tracker
+      `).get();
+      totalPolls24h = counts.p || 0;
+      totalSuccess24h = counts.s || 0;
+    } catch {}
+    const pipeOk = totalPolls24h > 0 ? Math.round((totalSuccess24h / totalPolls24h) * 1000) / 10 : null;
+
+    /* Recent overdue alerts (24h) */
+    let overdue24h = 0;
+    try {
+      const r = db.prepare("SELECT COUNT(*) AS c FROM overdue_alerts WHERE alerted_at >= datetime('now','-1 day')").get();
+      overdue24h = r.c || 0;
+    } catch {}
+
+    /* Unresolved mismatches */
+    let mismatchOpen = 0;
+    try {
+      const r = db.prepare("SELECT COUNT(*) AS c FROM mismatch_alerts WHERE resolved_at IS NULL").get();
+      mismatchOpen = r.c || 0;
+    } catch {}
+
+    /* Schema changes detected last 24h */
+    let schemaChanges = 0;
+    try {
+      const r = db.prepare("SELECT COUNT(*) AS c FROM vendor_schema_snapshots WHERE last_alerted_at >= datetime('now','-1 day')").get();
+      schemaChanges = r.c || 0;
+    } catch {}
+
+    /* Stale crons */
+    let staleCron = 0;
+    const now = Date.now();
+    for (const [, e] of __cronRegistry) {
+      const lastRunMs = e.lastRun ? Date.parse(e.lastRun) : 0;
+      if (!lastRunMs) continue;
+      if (now - lastRunMs > (e.intervalMs + (e.jitterMs || 0)) * 3) staleCron++;
+    }
+
+    /* Vendor health summary */
+    let healthy = 0, warning = 0, critical = 0, vTotal = 0;
+    try {
+      const rows = db.prepare(`SELECT consecutive_fails FROM vendor_health_tracker`).all();
+      vTotal = rows.length;
+      healthy = rows.filter(r => (r.consecutive_fails || 0) === 0).length;
+      warning = rows.filter(r => (r.consecutive_fails || 0) >= 1 && (r.consecutive_fails || 0) < 3).length;
+      critical = rows.filter(r => (r.consecutive_fails || 0) >= 3).length;
+    } catch {}
+
+    /* Upcoming holidays (today/tomorrow) */
+    let nextHol = "—";
+    try {
+      const r = db.prepare(`SELECT date, name FROM holidays WHERE date >= date('now') ORDER BY date ASC LIMIT 1`).get();
+      if (r) nextHol = r.date + " — " + r.name;
+    } catch {}
+
+    /* Process uptime (best effort) */
+    const procUptimeMin = Math.round(process.uptime() / 60);
+
+    const color = critical > 0 || schemaChanges > 0 ? 0xef4444 : (warning > 0 || mismatchOpen > 0 || overdue24h > 0 ? 0xf59e0b : 0x22c55e);
+
+    await notifyDiscord("alerts_critical", {
+      content: "🗓️ Daily Snapshot Report",
+      embeds: [makeEmbed({
+        title: `🗓️ System Snapshot ${dateKey}`,
+        description: [
+          `Pipeline 24h: ${pipeOk != null ? pipeOk + "%" : "n/a"}  (${totalSuccess24h}/${totalPolls24h})`,
+          `Process uptime: ${procUptimeMin} min`,
+          ``,
+          `Vendors: ✅ ${healthy} · ⚠ ${warning} · 🚨 ${critical}  (total ${vTotal})`,
+          `Overdue alerts (24h): ${overdue24h}`,
+          `Mismatch alerts (open): ${mismatchOpen}`,
+          `Schema changes (24h): ${schemaChanges}`,
+          `Stale crons: ${staleCron}`,
+          ``,
+          `Next holiday: ${nextHol}`,
+        ].join("\n"),
+        color,
+        footer: "Daily snapshot · 09:30 ICT (D.9)",
+        timestamp: new Date().toISOString(),
+      })],
+    }).catch(() => {});
+    console.log(`[daily-snapshot] ${dateKey} pipe=${pipeOk}% critical=${critical} stale=${staleCron}`);
+  } catch (e) { console.warn("[daily-snapshot]", e.message); }
+}, 5 * 60 * 1000).unref();
+
+/* admin endpoint: trigger D.9 snapshot manually for testing */
+app.post("/api/admin/daily-snapshot/test", requireAuth, requireAdmin, async (_req, res) => {
+  try {
+    __dailySnapshotLast = ""; /* force resend */
+    /* set time to 09:30 ICT for one loop is overkill; just emit directly */
+    const bkkNow = new Date(Date.now() + 7 * 3600000);
+    const dateKey = bkkNow.toISOString().slice(0, 10);
+    await notifyDiscord("alerts_critical", {
+      content: "🧪 (test) Daily Snapshot Report",
+      embeds: [makeEmbed({
+        title: `🗓️ System Snapshot ${dateKey} (manual test)`,
+        description: "manual /api/admin/daily-snapshot/test trigger",
+        color: 0x6366f1,
+        footer: "D.9 test",
+        timestamp: new Date().toISOString(),
+      })],
+    }).catch(() => {});
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+
 /* === C.6 DAILY-RECONCILE-CRON === schema mismatch_alerts + 23:30 ICT cron */
 db.exec(`CREATE TABLE IF NOT EXISTS mismatch_alerts (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
