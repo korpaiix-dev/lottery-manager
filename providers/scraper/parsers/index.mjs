@@ -20,7 +20,11 @@ function calcStockNumber(date, price, change, raw) {
     const ch = Math.abs(parseFloat(change));
     if (Number.isFinite(ch)) {
       const chgStr = String(ch).split(".");
-      if (chgStr.length > 1) two_bottom = (chgStr[1] + "00").slice(0, 2);
+      if (chgStr.length > 1) {
+        two_bottom = (chgStr[1] + "00").slice(0, 2);
+      } else {
+        two_bottom = "00"; // integer change → decimal = 00
+      }
     }
   }
   return {
@@ -40,7 +44,7 @@ export const parsers = {
     const d = resp?.data;
     if (!d || !d.results) return { ok: false, error: "no_data" };
     const r = d.results;
-    if (r.digit3 == null || r.digit3 === "" || r.digit3 === "xxx") return { ok: false, error: "not_drawn_yet" };
+    if (r.digit3 == null || r.digit3 === "" || r.digit3 === "xxx" || r.digit2_top == null || r.digit2_top === "" || r.digit2_top === "xx") return { ok: false, error: "not_drawn_yet" };
     const three_top = String(r.digit3).padStart(3, "0");
     return {
       ok: true,
@@ -64,7 +68,13 @@ export const parsers = {
     const p1 = r.prize_1st || r.prize_2nd || r.prize_3rd_1 || r.special_1;
     if (!p1) return { ok: false, error: "not_drawn_yet" };
     const three_top = String(p1).slice(-3);
-    const two_src = r.prize_5th_4 || r.prize_5th_1 || r.prize_6th_3 || r.consolation_1;
+    // A.1 fix: prefer prize_2digits_1 (direct 2-digit field) → fallback to prize_5th_4
+    let two_bottom = null;
+    if (r.prize_2digits_1 != null && r.prize_2digits_1 !== "") {
+      two_bottom = String(r.prize_2digits_1).slice(-2);
+    } else if (r.prize_5th_4) {
+      two_bottom = String(r.prize_5th_4).slice(-2);
+    }
     return {
       ok: true,
       result: {
@@ -72,7 +82,7 @@ export const parsers = {
         first: String(p1),
         three_top,
         two_top: String(p1).slice(-2),
-        two_bottom: two_src ? String(two_src).slice(-2) : null,
+        two_bottom,
         three_tod: three_top,
         run_top: [...new Set(three_top.split(""))],
         raw: d,
@@ -134,30 +144,11 @@ export const parsers = {
     };
   },
 
-  /** Dow Jones Powerball */
-  dowjones_powerball(resp) {
-    const d = resp?.data;
-    if (!d || !d.results) return { ok: false, error: "no_data" };
-    const r = d.results;
-    if (!r.prize_1st || r.prize_1st === "xxxxx") return { ok: false, error: "not_drawn_yet" };
-    const p1 = String(r.prize_1st);
-    const three_top = p1.slice(-3);
-    const p2 = String(r.prize_2nd || r.consolation_1 || "");
-    return {
-      ok: true,
-      result: {
-        drawDate: d.lotto_date,
-        first: p1, three_top,
-        two_top: p1.slice(-2),
-        two_bottom: p2 ? p2.slice(-2) : null,
-        three_tod: three_top,
-        run_top: [...new Set(three_top.split(""))],
-        raw: d,
-      },
-    };
-  },
+  /** Dow Jones Powerball — A.3 alias to market_close (same vendor schema + date offset) */
+  dowjones_powerball(resp) { return this.dowjones_market_close(resp); },
 
-  /** Lotto Super Rich: gcp.lottosuperrich.com — gb/de/ru sections */
+  /** Lotto Super Rich: gcp.lottosuperrich.com — gb/de/ru sections
+   *  A.2: vendor ไม่มี field 2 ล่างที่เชื่อถือได้ → two_bottom = null (อย่า fabricate จาก prize_2nd) */
   lottosuperrich(resp, filterName) {
     const dataSet = resp?.data?.[filterName];
     if (!dataSet || !dataSet.results) return { ok: false, error: "no_data" };
@@ -165,14 +156,13 @@ export const parsers = {
     if (r.prize_1st == null) return { ok: false, error: "not_drawn_yet" };
     const p1 = String(r.prize_1st);
     const three_top = p1.slice(-3);
-    const p2 = String(r.prize_2nd || "");
     return {
       ok: true,
       result: {
         drawDate: dataSet.lotto_date,
         first: p1, three_top,
         two_top: p1.slice(-2),
-        two_bottom: p2 ? p2.slice(-2) : null,
+        two_bottom: null,
         three_tod: three_top,
         run_top: [...new Set(three_top.split(""))],
         raw: dataSet,
