@@ -5787,6 +5787,60 @@ async function notifyResultFinalized(roundId, source) {
     console.warn("[discord-result-notify]", e.message);
   }
 }
+/* === VENDOR-HEALTH-V1 (B.1.2) === update health counters per pull attempt
+ * Called after pullFromApilotto/pullFromScraper to track success/fail per source.
+ * Looks up source_id from result_sources by lottery_id + provider.
+ */
+function updateVendorHealth(lotteryId, provider, success, errorMsg) {
+  try {
+    const src = db.prepare(
+      "SELECT id FROM result_sources WHERE lottery_id = ? AND provider = ? AND active = 1 ORDER BY priority LIMIT 1"
+    ).get(lotteryId, provider);
+    if (!src) return;
+    const now = nowIso();
+    if (success) {
+      db.prepare(`
+        INSERT INTO vendor_health_tracker (source_id, last_success_at, consecutive_fails, total_polls, total_success, total_fail, updated_at)
+        VALUES (?, ?, 0, 1, 1, 0, ?)
+        ON CONFLICT(source_id) DO UPDATE SET
+          last_success_at = excluded.last_success_at,
+          consecutive_fails = 0,
+          total_polls = total_polls + 1,
+          total_success = total_success + 1,
+          updated_at = excluded.updated_at
+      `).run(src.id, now, now);
+    } else {
+      const safeErr = String(errorMsg || "unknown").slice(0, 200);
+      db.prepare(`
+        INSERT INTO vendor_health_tracker (source_id, last_fail_at, last_error, consecutive_fails, total_polls, total_success, total_fail, updated_at)
+        VALUES (?, ?, ?, 1, 1, 0, 1, ?)
+        ON CONFLICT(source_id) DO UPDATE SET
+          last_fail_at = excluded.last_fail_at,
+          last_error = excluded.last_error,
+          consecutive_fails = consecutive_fails + 1,
+          total_polls = total_polls + 1,
+          total_fail = total_fail + 1,
+          updated_at = excluded.updated_at
+      `).run(src.id, now, safeErr, now);
+    }
+  } catch (e) {
+    console.warn("[vendor-health]", e.message);
+  }
+}
+/* === B.4.2 RESULT-CACHE-V1 === insert cache row on successful pull */
+function cacheResultPayload(lotteryId, provider, roundId, payload) {
+  try {
+    const src = db.prepare(
+      "SELECT id FROM result_sources WHERE lottery_id = ? AND provider = ? AND active = 1 ORDER BY priority LIMIT 1"
+    ).get(lotteryId, provider);
+    if (!src) return;
+    db.prepare(
+      "INSERT INTO vendor_result_cache(source_id, round_id, lottery_id, raw_payload, fetched_at) VALUES(?, ?, ?, ?, ?)"
+    ).run(src.id, roundId || null, lotteryId, JSON.stringify(payload || {}), nowIso());
+  } catch (e) { console.warn("[result-cache]", e.message); }
+}
+
+
 
 /* APILOTTO Phase A: apply pulled data → upsert results into a round */
 async function applyApilottoToRound(roundId) {
@@ -5794,13 +5848,28 @@ async function applyApilottoToRound(roundId) {
   if (!round) return { ok: false, error: "round_not_found" };
   if (round.result_status === "finalized") return { ok: false, error: "result_finalized" };
 
-  /* SCRAPER-FRAMEWORK-V1: ลอง apilotto ก่อน, ถ้าไม่มี source ลอง scraper */
+  /* B.3 MULTI-SOURCE-FALLBACK-V1: try API Lotto → Scraper in order */
+  const _pullErrors = [];
   let pulled = await pullFromApilotto(round.lottery_id);
-  if (!pulled.ok && pulled.error === "no_source") {
-    pulled = await pullFromScraper(round.lottery_id);
+  if (pulled.ok) updateVendorHealth(round.lottery_id, "API Lotto", true, null);
+  else {
+    if (pulled.error !== "no_source") updateVendorHealth(round.lottery_id, "API Lotto", false, pulled.error);
+    _pullErrors.push("apilotto:" + pulled.error);
+    /* fallback to Scraper on ANY apilotto failure (not just no_source) */
+    const scraped = await pullFromScraper(round.lottery_id);
+    if (scraped.ok) {
+      updateVendorHealth(round.lottery_id, "Scraper", true, null);
+      pulled = scraped;
+    } else {
+      if (scraped.error !== "no_scraper_source") updateVendorHealth(round.lottery_id, "Scraper", false, scraped.error);
+      _pullErrors.push("scraper:" + scraped.error);
+    }
   }
-  if (!pulled.ok) return { ok: false, error: pulled.error || "pull_failed" };
+  if (!pulled.ok) return { ok: false, error: pulled.error || "pull_failed", attempts: _pullErrors };
   const r = pulled.result;
+  /* B.4.2 RESULT-CACHE-V1: cache successful payload before applying */
+  const _provider = (_pullErrors.length === 0 || _pullErrors[0].startsWith("scraper:")) ? "API Lotto" : "Scraper";
+  cacheResultPayload(round.lottery_id, _provider, roundId, r);
 
   /* CRITICAL: apilotto returns latest only — must match this round's draw_date */
   const apilottoIso = apilottoDateToIso(r.drawDate);
@@ -6030,15 +6099,38 @@ setInterval(async () => {
   } catch (e) { console.warn("[watchdog-recover]", e.message); }
 }, 3 * 60 * 1000).unref();
 
+/* === B.5.3 CRON-DEDUP-V1 === persistent dedup (replaces in-mem Map) */
+function cronDedupClaim(key, windowMs) {
+  try {
+    const now = Date.now();
+    const cutoff = new Date(now - (windowMs || 86400000)).toISOString();
+    const existing = db.prepare("SELECT sent_at FROM cron_dedup_log WHERE key = ?").get(key);
+    if (existing && existing.sent_at > cutoff) return false; /* still within dedup window */
+    db.prepare(`
+      INSERT INTO cron_dedup_log(key, sent_at) VALUES(?, ?)
+      ON CONFLICT(key) DO UPDATE SET sent_at = excluded.sent_at
+    `).run(key, new Date(now).toISOString());
+    return true;
+  } catch (e) { console.warn("[cron-dedup]", e.message); return true; }
+}
+function cronDedupCleanup() {
+  try {
+    const cutoff = new Date(Date.now() - 7 * 86400000).toISOString();
+    db.prepare("DELETE FROM cron_dedup_log WHERE sent_at < ?").run(cutoff);
+  } catch (e) { console.warn("[cron-dedup-cleanup]", e.message); }
+}
+setInterval(cronDedupCleanup, 24 * 3600 * 1000).unref();
+
 /* === WATCHDOG-OVERDUE-V1 === ทุก 15 นาที */
-const __alertedOverdue = new Map();
+/* B.5.3 deprecated by cron_dedup_log */ const __alertedOverdue = new Map();
 setInterval(async () => {
   try {
     const now = new Date();
     const overdueMin = 30;
     const overdueTime = new Date(now.getTime() - overdueMin * 60000);
     const overdue = db.prepare(`
-      SELECT r.id, r.lottery_id, l.name AS lottery_name, r.draw_date, r.draw_time,
+      SELECT r.id, r.lottery_id, l.name AS lottery_name, l.category AS lottery_category,
+             r.draw_date, r.draw_time,
              (SELECT COUNT(*) FROM results WHERE round_id = r.id) AS result_count
       FROM rounds r
       JOIN lotteries l ON l.id = r.lottery_id
@@ -6046,41 +6138,83 @@ setInterval(async () => {
         AND r.draw_date = date('now', '+7 hours')
         AND datetime(r.draw_date || ' ' || r.draw_time, '+7 hours') < datetime('now')
         AND datetime(r.draw_date || ' ' || r.draw_time, '+7 hours', '+30 minutes') < datetime('now')
-      ORDER BY r.draw_time
-      LIMIT 20
+      ORDER BY l.category, r.draw_time
+      LIMIT 40
     `).all();
 
-    const stale = overdue.filter(r => r.result_count === 0);
+    /* B.2.3 HOLIDAY-CALENDAR-V1: skip if today is holiday for this lottery */
+    const stale = overdue.filter(r => {
+      if (r.result_count !== 0) return false;
+      if (isHoliday(r.draw_date, r.lottery_id)) return false;
+      return true;
+    });
     if (stale.length === 0) return;
 
-    /* dedup 24 ชม. ต่อ round — กัน alert spam + margin 5s กัน off-by-microseconds */
-    const dedupCutoff = Date.now() - 86400000;
-    const toAlert = stale.filter(r => {
-      const last = __alertedOverdue.get(r.id) || 0;
-      return last + 5000 < dedupCutoff;
-    });
+    /* B.5.3 CRON-DEDUP-V1: persistent dedup (replaces in-mem Map) — 24h window per round */
+    const toAlert = stale.filter(r => cronDedupClaim('watchdog-overdue:' + r.id, 86400000));
     if (toAlert.length === 0) return;
 
-    toAlert.forEach(r => __alertedOverdue.set(r.id, Date.now()));
-    if (__alertedOverdue.size > 1000) {
-      const cutoff2 = Date.now() - 86400000;
-      for (const [k, v] of __alertedOverdue) {
-        if (v < cutoff2) __alertedOverdue.delete(k);
+    /* B.1.3 VENDOR-HEALTH-V1: enrich alert with health info */
+    const lotteryIds = toAlert.map(r => r.lottery_id);
+    const healthMap = new Map();
+    if (lotteryIds.length > 0) {
+      const placeholders = lotteryIds.map(() => "?").join(",");
+      const healthRows = db.prepare(`
+        SELECT rs.lottery_id, rs.provider, h.consecutive_fails, h.last_error, h.last_success_at, h.last_fail_at
+        FROM result_sources rs
+        LEFT JOIN vendor_health_tracker h ON h.source_id = rs.id
+        WHERE rs.lottery_id IN (${placeholders}) AND rs.active = 1
+        ORDER BY rs.lottery_id, rs.priority
+      `).all(...lotteryIds);
+      for (const row of healthRows) {
+        if (!healthMap.has(row.lottery_id)) healthMap.set(row.lottery_id, []);
+        healthMap.get(row.lottery_id).push(row);
       }
     }
+    const buildFieldValue = (r) => {
+      const lines = [`${r.draw_date} ${r.draw_time}`];
+      const hRows = healthMap.get(r.lottery_id) || [];
+      for (const h of hRows) {
+        const fails = h.consecutive_fails || 0;
+        if (fails >= 3) {
+          lines.push(`⚠️ ${h.provider}: ${fails} fails — ${(h.last_error || "?").slice(0, 50)}`);
+        } else if (fails > 0) {
+          lines.push(`${h.provider}: ${fails} fails`);
+        }
+      }
+      return lines.join("\n");
+    };
+
+    /* B.5.2 WATCHDOG-PER-CATEGORY V1: group fields by lottery category */
+    const __byCategory = {};
+    for (const r of toAlert) {
+      const cat = r.lottery_category || "other";
+      if (!__byCategory[cat]) __byCategory[cat] = [];
+      __byCategory[cat].push(r);
+    }
+    const catLabels = { government: "🇹🇭 รัฐบาล", stock: "📈 หุ้น", stock_vip: "📈 หุ้น VIP", daily: "📅 รายวัน", foreign: "🌏 ต่างประเทศ", other: "อื่นๆ" };
+    const groupedFields = [];
+    for (const cat of Object.keys(__byCategory)) {
+      const list = __byCategory[cat];
+      const header = `${catLabels[cat] || cat} · ${list.length} ตัว`;
+      const body = list.slice(0, 8).map(r => `• ${r.lottery_name} ${r.draw_time}`).join("\n");
+      groupedFields.push({ name: header, value: body || "—", inline: false });
+    }
+    /* still include detailed health for top 5 critical */
+    const detailedFields = toAlert.slice(0, 5).map(r => ({
+      name: r.lottery_name,
+      value: buildFieldValue(r),
+      inline: false
+    }));
 
     notifyDiscord("alerts_critical", {
       content: "🚨 หวยค้าง — scraper อาจมีปัญหา",
       embeds: [makeEmbed({
         title: `🚨 Overdue ${toAlert.length} หวยยังไม่ออก`,
-        description: "หวยที่ draw_time ผ่านไป 30+ นาที + ไม่มี results เลย\nอาจเป็น scraper ติด / API down / source เปลี่ยน format",
+        description: "หวยที่ draw_time ผ่านไป 30+ นาที + ไม่มี results เลย\nอาจเป็น scraper ติด / API down / source เปลี่ยน format\n⚠️ = consecutive fails ≥ 3 (urgent)",
         color: 0xef4444,
-        fields: toAlert.slice(0, 10).map(r => ({
-          name: r.lottery_name,
-          value: `${r.draw_date} ${r.draw_time}`,
-          inline: true
-        })),
-        footer: "ตรวจ scraper + manual import ถ้าจำเป็น"
+        fields: [...groupedFields, ...detailedFields],
+        footer: "ตรวจ scraper + manual import ถ้าจำเป็น · grouped by category"
       })],
     }).catch(()=>{});
     console.warn(`[watchdog-overdue] alerted ${toAlert.length} stale rounds`);
@@ -6117,6 +6251,61 @@ setInterval(async () => {
 }, 60 * 60 * 1000).unref();
 
 /* ===== END SELF-HEALING WATCHDOG V1 ===== */
+
+/* === VENDOR-HEALTH-DAILY-REPORT V1 (B.1.5) === Discord report 09:00 ICT */
+let __vendorHealthReportLast = "";
+setInterval(async () => {
+  try {
+    const bkkNow = new Date(Date.now() + 7 * 3600000);
+    const hour = bkkNow.getUTCHours();
+    const minute = bkkNow.getUTCMinutes();
+    const dateKey = bkkNow.toISOString().slice(0, 10);
+    if (hour !== 9 || minute >= 10) return;
+    if (__vendorHealthReportLast === dateKey) return;
+    __vendorHealthReportLast = dateKey;
+
+    const rows = db.prepare(`
+      SELECT rs.id AS source_id, rs.provider, rs.lottery_id, rs.name AS source_name,
+             l.name AS lottery_name,
+             h.consecutive_fails, h.total_polls, h.total_success, h.total_fail,
+             h.last_success_at, h.last_fail_at, h.last_error
+      FROM result_sources rs
+      JOIN lotteries l ON l.id = rs.lottery_id
+      LEFT JOIN vendor_health_tracker h ON h.source_id = rs.id
+      WHERE rs.active = 1
+      ORDER BY h.consecutive_fails DESC NULLS LAST, rs.lottery_id, rs.priority
+    `).all();
+
+    const total = rows.length;
+    const healthy = rows.filter(r => (r.consecutive_fails || 0) === 0).length;
+    const warning = rows.filter(r => (r.consecutive_fails || 0) >= 1 && (r.consecutive_fails || 0) < 3).length;
+    const critical = rows.filter(r => (r.consecutive_fails || 0) >= 3).length;
+    const totalPolls = rows.reduce((s, r) => s + (r.total_polls || 0), 0);
+    const totalSuccess = rows.reduce((s, r) => s + (r.total_success || 0), 0);
+    const uptime = totalPolls > 0 ? Math.round((totalSuccess / totalPolls) * 1000) / 10 : null;
+
+    const criticalRows = rows.filter(r => (r.consecutive_fails || 0) >= 3).slice(0, 10);
+    const fields = criticalRows.map(r => ({
+      name: `${r.lottery_name} (${r.provider})`,
+      value: `fails: ${r.consecutive_fails} · last_err: ${(r.last_error || "?").slice(0, 80)}`,
+      inline: false,
+    }));
+
+    const color = critical > 0 ? 0xef4444 : warning > 0 ? 0xf59e0b : 0x22c55e;
+
+    await notifyDiscord("alerts_critical", {
+      content: "📊 Vendor Health Daily Report",
+      embeds: [makeEmbed({
+        title: `📊 Vendor Health ${dateKey}`,
+        description: `สรุปสถานะ ${total} sources · Uptime รวม: ${uptime != null ? uptime + "%" : "n/a"}\n\n✅ healthy: ${healthy}\n⚠️ warning (1-2 fails): ${warning}\n🚨 critical (≥3 fails): ${critical}`,
+        color,
+        fields: fields.length > 0 ? fields : undefined,
+        footer: "Daily report · 09:00 ICT"
+      })],
+    }).catch(()=>{});
+    console.log(`[vendor-health-daily] reported ${total} sources, critical=${critical}`);
+  } catch (e) { console.warn("[vendor-health-daily]", e.message); }
+}, 5 * 60 * 1000).unref();
 
 /* APILOTTO Phase B: admin endpoint */
 app.post("/api/admin/rounds/:roundId/apply-apilotto", requireAuth, requireAdmin, async (req, res) => {
@@ -6240,6 +6429,123 @@ app.get("/api/admin/apilotto/ping", requireAuth, requireAdmin, async (req, res) 
     res.json({ ok: r.ok, status: r.status, configured: true });
   } catch (e) { res.json({ ok: false, error: e.message }); }
 });
+
+/* === B.1.4 VENDOR-HEALTH-V1 admin endpoint === */
+app.get("/api/admin/vendor-health", requireAuth, requireAdmin, (req, res) => {
+  try {
+    const rows = db.prepare(`
+      SELECT rs.id AS source_id, rs.lottery_id, rs.provider, rs.name AS source_name, rs.priority, rs.active,
+             l.name AS lottery_name,
+             h.last_success_at, h.last_fail_at, h.last_error,
+             h.consecutive_fails, h.total_polls, h.total_success, h.total_fail, h.updated_at
+      FROM result_sources rs
+      JOIN lotteries l ON l.id = rs.lottery_id
+      LEFT JOIN vendor_health_tracker h ON h.source_id = rs.id
+      ORDER BY h.consecutive_fails DESC NULLS LAST, rs.lottery_id, rs.priority
+    `).all();
+    const enriched = rows.map(r => {
+      const total = r.total_polls || 0;
+      const uptime = total > 0 ? Math.round(((r.total_success || 0) / total) * 1000) / 10 : null;
+      return { ...r, uptime_pct: uptime };
+    });
+    const summary = {
+      total_sources: enriched.length,
+      healthy: enriched.filter(r => (r.consecutive_fails || 0) === 0).length,
+      warning: enriched.filter(r => (r.consecutive_fails || 0) >= 1 && (r.consecutive_fails || 0) < 3).length,
+      critical: enriched.filter(r => (r.consecutive_fails || 0) >= 3).length,
+    };
+    res.json({ ok: true, summary, rows: enriched });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+/* === B.2.5 HOLIDAY-CALENDAR-V1 admin endpoints === */
+app.get("/api/admin/holidays", requireAuth, requireAdmin, (req, res) => {
+  try {
+    const fromDate = req.query.from || "";
+    const toDate = req.query.to || "";
+    let sql = "SELECT id, date, name, lottery_id, created_at FROM holidays";
+    const params = [];
+    const where = [];
+    if (fromDate) { where.push("date >= ?"); params.push(fromDate); }
+    if (toDate) { where.push("date <= ?"); params.push(toDate); }
+    if (where.length) sql += " WHERE " + where.join(" AND ");
+    sql += " ORDER BY date ASC LIMIT 500";
+    const rows = db.prepare(sql).all(...params);
+    res.json({ ok: true, rows });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+app.post("/api/admin/holidays", requireAuth, requireAdmin, (req, res) => {
+  try {
+    const { date, name, lottery_id } = req.body || {};
+    if (!date || !name) return res.status(400).json({ ok: false, error: "date_and_name_required" });
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date))) return res.status(400).json({ ok: false, error: "invalid_date_format" });
+    const r = db.prepare("INSERT OR IGNORE INTO holidays(date, name, lottery_id) VALUES(?, ?, ?)").run(String(date), String(name), lottery_id ? String(lottery_id) : null);
+    if (r.changes === 0) return res.status(409).json({ ok: false, error: "duplicate" });
+    logAudit(req.user.id, "create_holiday", "holiday", String(r.lastInsertRowid), { date, name, lottery_id });
+    res.json({ ok: true, id: r.lastInsertRowid });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+app.delete("/api/admin/holidays/:id", requireAuth, requireAdmin, (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ ok: false, error: "bad_id" });
+    const r = db.prepare("DELETE FROM holidays WHERE id = ?").run(id);
+    if (r.changes === 0) return res.status(404).json({ ok: false, error: "not_found" });
+    logAudit(req.user.id, "delete_holiday", "holiday", String(id), null);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+/* === B.4.3 RESULT-CACHE-V1 recovery endpoint + B.4.4 cleanup cron === */
+app.get("/api/admin/cache-replay", requireAuth, requireAdmin, (req, res) => {
+  try {
+    const lid = req.query.lottery_id;
+    const limit = Math.min(Number(req.query.limit) || 20, 200);
+    let sql = "SELECT id, source_id, round_id, lottery_id, raw_payload, fetched_at FROM vendor_result_cache";
+    const params = [];
+    if (lid) { sql += " WHERE lottery_id = ?"; params.push(String(lid)); }
+    sql += " ORDER BY fetched_at DESC LIMIT ?";
+    params.push(limit);
+    const rows = db.prepare(sql).all(...params);
+    const parsed = rows.map(r => {
+      let payload = null;
+      try { payload = JSON.parse(r.raw_payload); } catch (e) {}
+      return { ...r, raw_payload: undefined, payload };
+    });
+    res.json({ ok: true, count: parsed.length, rows: parsed });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+app.post("/api/admin/cache-replay/:id/apply", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const targetRoundId = req.body?.round_id || null;
+    if (!Number.isFinite(id)) return res.status(400).json({ ok: false, error: "bad_id" });
+    const row = db.prepare("SELECT * FROM vendor_result_cache WHERE id = ?").get(id);
+    if (!row) return res.status(404).json({ ok: false, error: "not_found" });
+    logAudit(req.user.id, "cache_replay_apply", "vendor_result_cache", String(id), { targetRoundId });
+    res.json({ ok: true, cache_id: id, cached_at: row.fetched_at, hint: "Use payload from /api/admin/cache-replay then call /api/admin/rounds/:id/apply-apilotto or manual finalize" });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+/* B.4.4 RESULT-CACHE-V1 cleanup: remove rows >7 days old, runs daily at 03:30 ICT */
+let __resultCacheCleanupLast = "";
+setInterval(() => {
+  try {
+    const bkkNow = new Date(Date.now() + 7 * 3600000);
+    const hour = bkkNow.getUTCHours();
+    const minute = bkkNow.getUTCMinutes();
+    const dateKey = bkkNow.toISOString().slice(0, 10);
+    if (hour !== 3 || minute < 30 || minute >= 35) return;
+    if (__resultCacheCleanupLast === dateKey) return;
+    __resultCacheCleanupLast = dateKey;
+    const cutoff = new Date(Date.now() - 7 * 86400000).toISOString();
+    const r = db.prepare("DELETE FROM vendor_result_cache WHERE fetched_at < ?").run(cutoff);
+    console.log(`[result-cache-cleanup] removed ${r.changes} rows older than ${cutoff}`);
+  } catch (e) { console.warn("[result-cache-cleanup]", e.message); }
+}, 5 * 60 * 1000).unref();
 
 console.log("[p3-bank-accounts] backend ready");
 
@@ -10518,6 +10824,8 @@ function generateRoundsForSchedule(schedule, fromDate, toDate) {
   let created = 0;
   for (let date = fromDate; date <= toDate; date = shiftIsoDate(date, 1)) {
     if (!scheduleRunsOnDate(schedule, date)) continue;
+    /* B.2.4 HOLIDAY-CALENDAR-V1: skip if date is holiday for this lottery */
+    if (isHoliday(date, schedule.lottery_id)) continue;
 
     const label = formatGeneratedRoundLabel(date);
     const exists = db
@@ -10582,6 +10890,18 @@ function syncFutureGeneratedRounds(schedule) {
     const openDate = shiftIsoDate(round.draw_date, -Number(schedule.open_days_before || 0));
     update.run(openDate, schedule.open_time, schedule.draw_time, schedule.result_time || schedule.draw_time, schedule.close_before_minutes, nowIso(), round.id);
   });
+}
+
+/* === HOLIDAY-CALENDAR-V1 (B.2) === check if date is holiday */
+function isHoliday(date, lotteryId) {
+  try {
+    const row = db.prepare(
+      "SELECT id, name FROM holidays WHERE date = ? AND (lottery_id IS NULL OR lottery_id = ?) LIMIT 1"
+    ).get(date, lotteryId || "");
+    return row || null;
+  } catch (e) {
+    return null;
+  }
 }
 
 function scheduleRunsOnDate(schedule, date) {
