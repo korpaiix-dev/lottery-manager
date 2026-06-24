@@ -1,0 +1,33 @@
+{
+  "status": "success",
+  "data": {
+    "lotto_date": "2026-06-23",
+    "start_spin": "2026-06-24 01:05:00",
+    "show_1st": "2026-06-24 01:30",
+    "show_2nd": "2026-06-24 01:15:00",
+    "results": {
+      "prize_1st": "66893",
+      "prize_2nd": "35118",
+      "prize_3rd_1": "24059",
+      "prize_3rd_2": "07913",
+      "prize_3rd_3": "63759",
+      "special_1": "48209",
+      "special_2": "19737",
+      "special_3": "41248",
+      "special_4": "24500",
+      "special_5": "63365",
+      "special_6": "90550",
+      "special_7": "27498",
+      "special_8": "61024",
+      "consolation_1": "59",
+      "consolation_2": "36",
+      "consolation_3": "77",
+      "consolation_4": "00"
+    },
+    "prev": "2026-06-22",
+    "next": null
+  },
+  "prev": "2026-06-22",
+  "next": null,
+  "update": "2026-06-24T07:01:54.648Z"
+}

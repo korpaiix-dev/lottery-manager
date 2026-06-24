@@ -5929,7 +5929,7 @@ function parsePuppeteerResult(resp) {
 /* PHASE-B-DEAD-CODE-REMOVED */
 /* Main entry: pullFromScraper(lotteryId) — ทำงานเหมือน pullFromApilotto */
 async function pullFromScraper(lotteryId) {
-  const src = db.prepare(`SELECT api_endpoint, url, name FROM result_sources WHERE lottery_id = ? AND provider='Scraper' AND active=1 ORDER BY priority LIMIT 1`).get(lotteryId);
+  const src = db.prepare(`SELECT id, api_endpoint, url, name FROM result_sources WHERE lottery_id = ? AND provider='Scraper' AND active=1 ORDER BY priority LIMIT 1`).get(lotteryId);
   if (!src) return { ok: false, error: "no_scraper_source" };
   const [parserName, filterName] = String(src.api_endpoint || "").split("::");
   let resp;
@@ -5954,6 +5954,8 @@ async function pullFromScraper(lotteryId) {
   else return { ok: false, error: "unknown_parser:" + parserName };
 
   if (!parsed.ok) return { ok: false, error: parsed.error };
+  /* D.8: detect schema drift */
+  try { detectSchemaChange(src.id, resp); } catch {}
   return { ok: true, lotteryId, result: parsed.result, fetchedAt: nowIso() };
 }
 
@@ -6550,6 +6552,129 @@ setInterval(async () => {
   } catch (e) { console.warn("[vendor-health-daily]", e.message); }
 }, 5 * 60 * 1000).unref();
 
+
+/* === D.9 DAILY-SNAPSHOT-REPORT-V1 === Discord summary 09:30 ICT */
+let __dailySnapshotLast = "";
+setInterval(async () => {
+  try {
+    const bkkNow = new Date(Date.now() + 7 * 3600000);
+    const hour = bkkNow.getUTCHours();
+    const minute = bkkNow.getUTCMinutes();
+    const dateKey = bkkNow.toISOString().slice(0, 10);
+    if (hour !== 9 || minute < 30 || minute >= 40) return;
+    if (__dailySnapshotLast === dateKey) return;
+    __dailySnapshotLast = dateKey;
+
+    /* Pipeline success rate (24h) */
+    let totalPolls24h = 0, totalSuccess24h = 0;
+    try {
+      const counts = db.prepare(`
+        SELECT COALESCE(SUM(total_polls),0) AS p, COALESCE(SUM(total_success),0) AS s FROM vendor_health_tracker
+      `).get();
+      totalPolls24h = counts.p || 0;
+      totalSuccess24h = counts.s || 0;
+    } catch {}
+    const pipeOk = totalPolls24h > 0 ? Math.round((totalSuccess24h / totalPolls24h) * 1000) / 10 : null;
+
+    /* Recent overdue alerts (24h) */
+    let overdue24h = 0;
+    try {
+      const r = db.prepare("SELECT COUNT(*) AS c FROM overdue_alerts WHERE alerted_at >= datetime('now','-1 day')").get();
+      overdue24h = r.c || 0;
+    } catch {}
+
+    /* Unresolved mismatches */
+    let mismatchOpen = 0;
+    try {
+      const r = db.prepare("SELECT COUNT(*) AS c FROM mismatch_alerts WHERE resolved_at IS NULL").get();
+      mismatchOpen = r.c || 0;
+    } catch {}
+
+    /* Schema changes detected last 24h */
+    let schemaChanges = 0;
+    try {
+      const r = db.prepare("SELECT COUNT(*) AS c FROM vendor_schema_snapshots WHERE last_alerted_at >= datetime('now','-1 day')").get();
+      schemaChanges = r.c || 0;
+    } catch {}
+
+    /* Stale crons */
+    let staleCron = 0;
+    const now = Date.now();
+    for (const [, e] of __cronRegistry) {
+      const lastRunMs = e.lastRun ? Date.parse(e.lastRun) : 0;
+      if (!lastRunMs) continue;
+      if (now - lastRunMs > (e.intervalMs + (e.jitterMs || 0)) * 3) staleCron++;
+    }
+
+    /* Vendor health summary */
+    let healthy = 0, warning = 0, critical = 0, vTotal = 0;
+    try {
+      const rows = db.prepare(`SELECT consecutive_fails FROM vendor_health_tracker`).all();
+      vTotal = rows.length;
+      healthy = rows.filter(r => (r.consecutive_fails || 0) === 0).length;
+      warning = rows.filter(r => (r.consecutive_fails || 0) >= 1 && (r.consecutive_fails || 0) < 3).length;
+      critical = rows.filter(r => (r.consecutive_fails || 0) >= 3).length;
+    } catch {}
+
+    /* Upcoming holidays (today/tomorrow) */
+    let nextHol = "—";
+    try {
+      const r = db.prepare(`SELECT date, name FROM holidays WHERE date >= date('now') ORDER BY date ASC LIMIT 1`).get();
+      if (r) nextHol = r.date + " — " + r.name;
+    } catch {}
+
+    /* Process uptime (best effort) */
+    const procUptimeMin = Math.round(process.uptime() / 60);
+
+    const color = critical > 0 || schemaChanges > 0 ? 0xef4444 : (warning > 0 || mismatchOpen > 0 || overdue24h > 0 ? 0xf59e0b : 0x22c55e);
+
+    await notifyDiscord("alerts_critical", {
+      content: "🗓️ Daily Snapshot Report",
+      embeds: [makeEmbed({
+        title: `🗓️ System Snapshot ${dateKey}`,
+        description: [
+          `Pipeline 24h: ${pipeOk != null ? pipeOk + "%" : "n/a"}  (${totalSuccess24h}/${totalPolls24h})`,
+          `Process uptime: ${procUptimeMin} min`,
+          ``,
+          `Vendors: ✅ ${healthy} · ⚠ ${warning} · 🚨 ${critical}  (total ${vTotal})`,
+          `Overdue alerts (24h): ${overdue24h}`,
+          `Mismatch alerts (open): ${mismatchOpen}`,
+          `Schema changes (24h): ${schemaChanges}`,
+          `Stale crons: ${staleCron}`,
+          ``,
+          `Next holiday: ${nextHol}`,
+        ].join("\n"),
+        color,
+        footer: "Daily snapshot · 09:30 ICT (D.9)",
+        timestamp: new Date().toISOString(),
+      })],
+    }).catch(() => {});
+    console.log(`[daily-snapshot] ${dateKey} pipe=${pipeOk}% critical=${critical} stale=${staleCron}`);
+  } catch (e) { console.warn("[daily-snapshot]", e.message); }
+}, 5 * 60 * 1000).unref();
+
+/* admin endpoint: trigger D.9 snapshot manually for testing */
+app.post("/api/admin/daily-snapshot/test", requireAuth, requireAdmin, async (_req, res) => {
+  try {
+    __dailySnapshotLast = ""; /* force resend */
+    /* set time to 09:30 ICT for one loop is overkill; just emit directly */
+    const bkkNow = new Date(Date.now() + 7 * 3600000);
+    const dateKey = bkkNow.toISOString().slice(0, 10);
+    await notifyDiscord("alerts_critical", {
+      content: "🧪 (test) Daily Snapshot Report",
+      embeds: [makeEmbed({
+        title: `🗓️ System Snapshot ${dateKey} (manual test)`,
+        description: "manual /api/admin/daily-snapshot/test trigger",
+        color: 0x6366f1,
+        footer: "D.9 test",
+        timestamp: new Date().toISOString(),
+      })],
+    }).catch(() => {});
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+
 /* === C.6 DAILY-RECONCILE-CRON === schema mismatch_alerts + 23:30 ICT cron */
 db.exec(`CREATE TABLE IF NOT EXISTS mismatch_alerts (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -6820,6 +6945,228 @@ app.get("/api/admin/vendor-health", requireAuth, requireAdmin, (req, res) => {
     res.status(500).json({ ok: false, error: e.message });
   }
 });
+
+/* === D.8 VENDOR-SCHEMA-CHANGE-DETECTOR === */
+db.exec(`CREATE TABLE IF NOT EXISTS vendor_schema_snapshots (
+  source_id     TEXT PRIMARY KEY,
+  schema_hash   TEXT NOT NULL,
+  schema_json   TEXT NOT NULL,
+  sample_size   INTEGER NOT NULL DEFAULT 0,
+  detected_at   TEXT NOT NULL,
+  last_alerted_at TEXT
+)`);
+
+/** Recursively extract the (key,type) shape of a JSON document.
+ *  - For arrays: walks first element only (representative).
+ *  - For objects: keys sorted for stable hashing.
+ *  - Returns a JSON string of the shape.
+ */
+function __schemaShape(value, depth = 0) {
+  if (depth > 4) return "deep";
+  if (value === null) return "null";
+  if (Array.isArray(value)) {
+    if (!value.length) return "array<>";
+    return "array<" + __schemaShape(value[0], depth + 1) + ">";
+  }
+  if (typeof value === "object") {
+    const keys = Object.keys(value).sort();
+    const obj = {};
+    for (const k of keys) obj[k] = __schemaShape(value[k], depth + 1);
+    return obj;
+  }
+  return typeof value;
+}
+function __hashStr(s) {
+  /* tiny FNV-1a (sync, no crypto dep) */
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = (h * 0x01000193) >>> 0;
+  }
+  return h.toString(16).padStart(8, "0");
+}
+
+/** detectSchemaChange(source_id, raw)
+ *  - First call per source → store baseline (no alert).
+ *  - Subsequent calls → compare hash; if different, log + Discord alert (once per hour).
+ */
+function detectSchemaChange(source_id, raw) {
+  if (!source_id || raw == null) return;
+  try {
+    const shape = __schemaShape(raw);
+    const shapeStr = JSON.stringify(shape);
+    const hash = __hashStr(shapeStr);
+    const prev = db.prepare("SELECT schema_hash, schema_json, last_alerted_at FROM vendor_schema_snapshots WHERE source_id=?").get(source_id);
+    const now = nowIso();
+    if (!prev) {
+      db.prepare("INSERT INTO vendor_schema_snapshots (source_id, schema_hash, schema_json, sample_size, detected_at) VALUES (?,?,?,?,?)").run(source_id, hash, shapeStr, shapeStr.length, now);
+      return;
+    }
+    if (prev.schema_hash === hash) return;
+    /* schema changed — diff keys */
+    let added = [], removed = [];
+    try {
+      const oldShape = JSON.parse(prev.schema_json);
+      const oldKeys = new Set(__flatKeys(oldShape));
+      const newKeys = new Set(__flatKeys(shape));
+      for (const k of newKeys) if (!oldKeys.has(k)) added.push(k);
+      for (const k of oldKeys) if (!newKeys.has(k)) removed.push(k);
+    } catch {}
+    /* throttle: 1 alert / hour per source */
+    const lastAlert = prev.last_alerted_at ? Date.parse(prev.last_alerted_at) : 0;
+    const oneHourAgo = Date.now() - 60 * 60 * 1000;
+    const shouldAlert = lastAlert < oneHourAgo;
+    db.prepare("UPDATE vendor_schema_snapshots SET schema_hash=?, schema_json=?, sample_size=?, detected_at=?, last_alerted_at=? WHERE source_id=?")
+      .run(hash, shapeStr, shapeStr.length, now, shouldAlert ? now : prev.last_alerted_at, source_id);
+    if (shouldAlert) {
+      console.warn(`[schema-change] source ${source_id} added=${added.join(",")} removed=${removed.join(",")}`);
+      try {
+        notifyDiscord("alerts_warnings", {
+          embeds: [makeEmbed({
+            title: "📐 Vendor schema changed",
+            description: "source_id: `" + safeName(source_id) + "`",
+            color: 0xf59e0b,
+            fields: [
+              { name: "Added keys", value: (added.length ? added.slice(0, 10).map(s => "`" + s + "`").join(", ") : "—").slice(0, 1000), inline: false },
+              { name: "Removed keys", value: (removed.length ? removed.slice(0, 10).map(s => "`" + s + "`").join(", ") : "—").slice(0, 1000), inline: false },
+            ],
+            footer: "D.8 schema watcher",
+            timestamp: new Date().toISOString(),
+          })],
+        }).catch(() => {});
+      } catch {}
+    }
+  } catch (e) { console.warn("[detectSchemaChange]", e.message); }
+}
+/** Flat dotted-path key list for diff display */
+function __flatKeys(shape, prefix = "") {
+  if (!shape || typeof shape !== "object") return [prefix].filter(Boolean);
+  const out = [];
+  if (Array.isArray(shape)) return out;
+  for (const k of Object.keys(shape)) {
+    const path = prefix ? prefix + "." + k : k;
+    out.push(path);
+    if (shape[k] && typeof shape[k] === "object" && !Array.isArray(shape[k])) {
+      out.push(...__flatKeys(shape[k], path));
+    }
+  }
+  return out;
+}
+
+/** admin endpoint */
+app.get("/api/admin/schema-snapshots", requireAuth, requireAdmin, (_req, res) => {
+  try {
+    const rows = db.prepare("SELECT source_id, schema_hash, sample_size, detected_at, last_alerted_at FROM vendor_schema_snapshots ORDER BY detected_at DESC LIMIT 500").all();
+    res.json({ ok: true, rows });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+
+/* === D.7 SYSTEM-HEALTH-DASHBOARD === aggregated endpoint for /admin/system-health */
+app.get("/api/admin/system-health", requireAuth, requireAdmin, (_req, res) => {
+  try {
+    /* Vendor health */
+    const vh = db.prepare(`
+      SELECT rs.id AS source_id, rs.lottery_id, rs.provider, rs.name AS source_name, rs.priority, rs.active,
+             l.name AS lottery_name,
+             h.last_success_at, h.last_fail_at, h.last_error,
+             h.consecutive_fails, h.total_polls, h.total_success, h.total_fail
+      FROM result_sources rs
+      JOIN lotteries l ON l.id = rs.lottery_id
+      LEFT JOIN vendor_health_tracker h ON h.source_id = rs.id
+      WHERE rs.active = 1
+    `).all();
+    const vendors = vh.map(r => {
+      const total = r.total_polls || 0;
+      const uptime = total > 0 ? Math.round(((r.total_success || 0) / total) * 1000) / 10 : null;
+      let status = "unknown";
+      if ((r.consecutive_fails || 0) >= 3) status = "critical";
+      else if ((r.consecutive_fails || 0) >= 1) status = "warning";
+      else if (total > 0) status = "healthy";
+      return { ...r, uptime_pct: uptime, status };
+    });
+    const vsummary = {
+      total: vendors.length,
+      healthy: vendors.filter(v => v.status === "healthy").length,
+      warning: vendors.filter(v => v.status === "warning").length,
+      critical: vendors.filter(v => v.status === "critical").length,
+      unknown: vendors.filter(v => v.status === "unknown").length,
+    };
+
+    /* Cron status with last_run age */
+    const cronRows = [];
+    const now = Date.now();
+    for (const [name, e] of __cronRegistry) {
+      const lastRunMs = e.lastRun ? Date.parse(e.lastRun) : 0;
+      const ageMs = lastRunMs ? now - lastRunMs : null;
+      const expected = e.intervalMs + (e.jitterMs || 0);
+      const stale = ageMs != null && ageMs > expected * 3;
+      cronRows.push({
+        name: e.name,
+        interval_ms: e.intervalMs,
+        last_run: e.lastRun,
+        last_duration_ms: e.lastDurationMs,
+        last_error: e.lastError,
+        run_count: e.runCount,
+        age_ms: ageMs,
+        stale,
+      });
+    }
+    cronRows.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+
+    /* Overdue alerts (recent 7d) */
+    const overdue = db.prepare(`
+      SELECT oa.round_id, oa.alerted_at, r.lottery_id, r.draw_date, l.name AS lottery_name
+      FROM overdue_alerts oa
+      JOIN rounds r ON r.id = oa.round_id
+      JOIN lotteries l ON l.id = r.lottery_id
+      WHERE oa.alerted_at >= datetime('now', '-7 days')
+      ORDER BY oa.alerted_at DESC
+      LIMIT 50
+    `).all();
+
+    /* Mismatch alerts (Phase C.6) — recent unresolved */
+    let mismatches = [];
+    try {
+      mismatches = db.prepare(`
+        SELECT id, round_id, bet_type_id, db_value, vendor_value, severity, detected_at, resolved_at, notes
+        FROM mismatch_alerts
+        WHERE resolved_at IS NULL
+        ORDER BY detected_at DESC
+        LIMIT 50
+      `).all();
+    } catch {}
+
+    /* Upcoming holidays (next 14d) */
+    let holidays = [];
+    try {
+      holidays = db.prepare(`
+        SELECT id, date, name, lottery_id
+        FROM holidays
+        WHERE date >= date('now') AND date <= date('now', '+14 days')
+        ORDER BY date ASC
+      `).all();
+    } catch {}
+
+    res.json({
+      ok: true,
+      generated_at: new Date().toISOString(),
+      vendors: { summary: vsummary, rows: vendors },
+      cron: { rows: cronRows, stale_count: cronRows.filter(c => c.stale).length },
+      overdue_alerts: overdue,
+      mismatch_alerts: mismatches,
+      upcoming_holidays: holidays,
+    });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+/* serve /admin/system-health → HTML page */
+app.get("/admin/system-health", (_req, res) => {
+  res.sendFile(path.join(__dirname, "system-health.html"));
+});
+
 
 /* === B.2.5 HOLIDAY-CALENDAR-V1 admin endpoints === */
 app.get("/api/admin/holidays", requireAuth, requireAdmin, (req, res) => {

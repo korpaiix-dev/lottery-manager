@@ -1,0 +1,19 @@
+{
+  "status": "success",
+  "data": {
+    "lotto_date": "2026-06-23",
+    "start_spin": "2026-06-23 20:25:00",
+    "show_result": "2026-06-23 20:30:00",
+    "results": {
+      "digit5": "29055",
+      "digit4": "9055",
+      "digit3": "055",
+      "digit2_top": "55",
+      "digit1": "5",
+      "digit2_bottom": "29",
+      "digit2_special": "60"
+    }
+  },
+  "now": "2026-06-24 14:07:08",
+  "update": "2026-06-24 14:02:07"
+}

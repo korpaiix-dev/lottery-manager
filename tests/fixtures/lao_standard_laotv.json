@@ -1,0 +1,16 @@
+{
+  "status": "success",
+  "data": {
+    "lotto_date": "2026-06-24",
+    "start_spin": "2026-06-24 10:25:00",
+    "show_result": "2026-06-24 10:30:00",
+    "results": {
+      "digit5": "85450",
+      "digit4": "5450",
+      "digit3": "450",
+      "digit2_top": "50",
+      "digit2_bottom": "85"
+    }
+  },
+  "now": "2026-06-24 14:07:07"
+}
