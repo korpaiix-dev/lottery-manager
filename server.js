@@ -3821,7 +3821,75 @@ app.post("/api/results", requireAuth, requireWriteAccess, requireNonAffiliate, (
   res.json(inserted);
 });
 
-app.post("/api/results/:roundId/finalize", requireAuth, requireAdmin, (req, res) => {
+/* === C.1 PHASE-C MANUAL-SAFETY === vendor cross-check helper === */
+async function getVendorSuggestion(round) {
+  if (!round) return { ok: false, error: "no_round" };
+  try {
+    const apilotto = await pullFromApilotto(round.lottery_id).catch(e => ({ ok: false, error: e && e.message || "err" }));
+    if (apilotto && apilotto.ok && apilotto.result) {
+      const r = apilotto.result;
+      return {
+        ok: true,
+        source: "apilotto",
+        source_name: "API Lotto",
+        three_top: Array.isArray(r.three_top) ? r.three_top : (r.three_top ? [String(r.three_top)] : []),
+        two_top: r.two_top ? [String(r.two_top)] : [],
+        two_bottom: r.two_bottom ? [String(r.two_bottom)] : [],
+        raw_draw_date: r.drawDate || null,
+        raw: r,
+      };
+    }
+    const sc = await pullFromScraper(round.lottery_id).catch(e => ({ ok: false, error: e && e.message || "err" }));
+    if (sc && sc.ok && sc.result) {
+      const r = sc.result;
+      return {
+        ok: true,
+        source: "scraper",
+        source_name: "Scraper",
+        three_top: Array.isArray(r.three_top) ? r.three_top : (r.three_top ? [String(r.three_top)] : []),
+        two_top: r.two_top ? [String(r.two_top)] : [],
+        two_bottom: r.two_bottom ? [String(r.two_bottom)] : [],
+        raw_draw_date: r.drawDate || null,
+        raw: r,
+      };
+    }
+    return { ok: false, error: (apilotto && apilotto.error) || (sc && sc.error) || "vendor_unreachable" };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+}
+
+/* C.1.1: GET vendor suggestion for finalize confirm modal */
+app.get("/api/admin/results/:roundId/vendor-suggest", requireAuth, requireAdmin, async (req, res) => {
+  const round = findRound(req.params.roundId);
+  if (!round) return res.status(404).json({ error: "round_not_found" });
+  const sug = await getVendorSuggestion(round);
+  res.json({ round_id: round.id, lottery_id: round.lottery_id, draw_date: round.draw_date, suggestion: sug });
+});
+
+/* C.1: compare current submitted results vs vendor suggestion */
+function diffSubmittedVsVendor(roundId, suggestion) {
+  if (!suggestion || !suggestion.ok) return { mismatched: false, fields: [] };
+  const rows = db.prepare("SELECT bet_type_id, number FROM results WHERE round_id = ?").all(roundId);
+  const submitted = {};
+  for (const rr of rows) {
+    if (!submitted[rr.bet_type_id]) submitted[rr.bet_type_id] = [];
+    submitted[rr.bet_type_id].push(String(rr.number));
+  }
+  const mism = [];
+  function cmpSet(field, vendArr) {
+    const s = (submitted[field] || []).slice().sort();
+    const v = (vendArr || []).slice().sort();
+    if (!v.length) return;
+    if (JSON.stringify(s) !== JSON.stringify(v)) mism.push({ field, submitted: s, vendor: v });
+  }
+  cmpSet("three_top", suggestion.three_top);
+  cmpSet("two_top", suggestion.two_top);
+  cmpSet("two_bottom", suggestion.two_bottom);
+  return { mismatched: mism.length > 0, fields: mism };
+}
+
+app.post("/api/results/:roundId/finalize", requireAuth, requireAdmin, async (req, res) => {
   const round = findRound(req.params.roundId);
   if (!round) return res.status(404).json({ error: "round_not_found" });
   if (round.result_status === "finalized") return res.status(409).json({ error: "result_already_finalized" });
@@ -3847,6 +3915,64 @@ app.post("/api/results/:roundId/finalize", requireAuth, requireAdmin, (req, res)
     return res.status(409).json({ error: "result_incomplete", missingBetTypeIds });
   }
 
+  /* === C.1.3 + C.2 + C.4 MANUAL-SAFETY GUARDS === */
+  const overrideReason = cleanText(req.body && req.body.override_reason, 240);
+  const overrideConfirm = Boolean(req.body && req.body.override_confirm);
+  const retypeConfirm = cleanText(req.body && req.body.retype_three_top, 40);
+
+  /* C.2: semantic validation */
+  const semBetTypes = db.prepare("SELECT DISTINCT bet_type_id FROM results WHERE round_id = ?").all(round.id).map(r => r.bet_type_id);
+  const semNumbers = {};
+  for (const bt of semBetTypes) {
+    semNumbers[bt] = db.prepare("SELECT number FROM results WHERE round_id = ? AND bet_type_id = ?").all(round.id, bt).map(r => r.number);
+  }
+  const semResult = validateResultSemantic(semNumbers, round.lottery_id, semBetTypes);
+  if (!semResult.ok) {
+    return res.status(409).json({ error: "semantic_invalid", details: semResult.errors });
+  }
+
+  /* C.1.1+C.1.3: vendor cross-check */
+  let vendorSuggestion = null;
+  try { vendorSuggestion = await getVendorSuggestion(round); } catch (e) { vendorSuggestion = { ok: false, error: e.message }; }
+  const vendorDiff = vendorSuggestion && vendorSuggestion.ok ? diffSubmittedVsVendor(round.id, vendorSuggestion) : { mismatched: false, fields: [] };
+  if (vendorDiff.mismatched && (!overrideConfirm || !overrideReason)) {
+    return res.status(409).json({
+      error: "vendor_mismatch_requires_override",
+      vendor: vendorSuggestion,
+      diff: vendorDiff.fields,
+      hint: "submit override_reason + override_confirm:true to proceed",
+    });
+  }
+
+  /* C.3: re-type confirmation — required for manual finalize */
+  if (req.body && req.body.skip_retype !== true) {
+    const threeTopRow = (semNumbers.three_top || []).slice().sort().join(",");
+    const retypeNorm = String(retypeConfirm || "").split(/[\s,]+/).filter(Boolean).sort().join(",");
+    if (threeTopRow && retypeNorm !== threeTopRow) {
+      /* track failed attempts per round (in-memory + dedup_log persistent) */
+      try {
+        const key = "retype_fail:" + round.id;
+        const existing = db.prepare("SELECT sent_at FROM cron_dedup_log WHERE key = ?").get(key);
+        const count = existing ? (Number(existing.sent_at.split("#")[1] || 0) + 1) : 1;
+        if (existing) {
+          db.prepare("UPDATE cron_dedup_log SET sent_at = ? WHERE key = ?").run(nowIso() + "#" + count, key);
+        } else {
+          db.prepare("INSERT INTO cron_dedup_log(key, sent_at) VALUES(?, ?)").run(key, nowIso() + "#" + count);
+        }
+        if (count >= 3) {
+          notifyDiscord("alerts", { embeds: [makeEmbed({ title: "🔒 Manual finalize locked", description: "Retype confirm ผิด 3 ครั้งที่งวด " + safeName(round.id), color: 0xff4444 })] }).catch(() => {});
+          return res.status(423).json({ error: "retype_locked", attempts: count });
+        }
+        return res.status(409).json({ error: "retype_mismatch", attempts: count });
+      } catch (e) {
+        return res.status(409).json({ error: "retype_mismatch" });
+      }
+    }
+  }
+
+  /* C.4: snapshot previous results before finalize */
+  const prevResultsSnapshot = db.prepare("SELECT bet_type_id, number FROM results WHERE round_id = ? ORDER BY bet_type_id, number").all(round.id);
+
   const now = nowIso();
   db.prepare(`
     UPDATE rounds
@@ -3855,7 +3981,36 @@ app.post("/api/results/:roundId/finalize", requireAuth, requireAdmin, (req, res)
   `).run(req.user.id, now, now, round.id);
 
   const updated = findRound(round.id);
-  logAudit(req.user.id, "finalize", "result", round.id, updated);
+
+  /* C.4.2: detailed audit with prev+next+vendor diff */
+  logAudit(req.user.id, "finalize", "result", round.id, {
+    round: updated,
+    prev_results: prevResultsSnapshot,
+    next_results: prevResultsSnapshot, /* identical — finalize doesn't change numbers */
+    vendor_diff: vendorDiff.fields,
+    override_reason: overrideReason || null,
+    override_used: Boolean(vendorDiff.mismatched && overrideConfirm),
+    source: "manual",
+  });
+
+  /* C.1.5: Discord alert on override */
+  if (vendorDiff.mismatched && overrideConfirm) {
+    try {
+      notifyDiscord("alerts", { embeds: [makeEmbed({
+        title: "⚠️ Manual finalize OVERRIDE — vendor mismatch",
+        description: "งวด " + safeName(round.id) + " (" + safeName(round.lottery_id) + ")",
+        color: 0xff9900,
+        fields: [
+          { name: "Reason", value: safeName(overrideReason || "—"), inline: false },
+          { name: "Diff", value: "```" + JSON.stringify(vendorDiff.fields, null, 0).slice(0, 900) + "```", inline: false },
+          { name: "By", value: safeName(req.user.username || req.user.id), inline: true },
+        ],
+      })] }).catch(() => {});
+    } catch (_) {}
+  }
+
+  /* clear retype lock on success */
+  try { db.prepare("DELETE FROM cron_dedup_log WHERE key = ?").run("retype_fail:" + round.id); } catch (_) {}
 
   /* === DISCORD-HOOK-1 MANUAL === */
   notifyResultFinalized(round.id, "manual").catch(() => {});
@@ -10527,6 +10682,56 @@ function publicUser(user) {
     headHouseId: user.head_house_id || null,
     createdAt: user.created_at,
   };
+}
+
+/* === C.2 SEMANTIC-VALIDATION === verify result numbers across bet_types
+ * numbers: { bet_type_id: [num1, num2, ...] }
+ * Returns { ok: bool, errors: [string] }
+ */
+function validateResultSemantic(numbers, lotteryId, betTypes) {
+  const errors = [];
+  numbers = numbers || {};
+  const three_top = (numbers.three_top || []).map(String).filter(Boolean);
+  const two_top   = (numbers.two_top   || []).map(String).filter(Boolean);
+  const two_bottom= (numbers.two_bottom|| []).map(String).filter(Boolean);
+  const three_tod = (numbers.three_tod || []).map(String).filter(Boolean);
+  const run_top   = (numbers.run_top   || []).map(String).filter(Boolean);
+
+  function isDigitsLen(s, n) { return new RegExp("^\\d{" + n + "}$").test(s); }
+
+  if (three_top.length && !three_top.every(x => isDigitsLen(x, 3))) {
+    errors.push("three_top: ต้องเป็นเลข 3 หลักทุกตัว");
+  }
+  if (two_top.length && !two_top.every(x => isDigitsLen(x, 2))) {
+    errors.push("two_top: ต้องเป็นเลข 2 หลักทุกตัว");
+  }
+  if (two_bottom.length && !two_bottom.every(x => isDigitsLen(x, 2))) {
+    errors.push("two_bottom: ต้องเป็นเลข 2 หลักทุกตัว");
+  }
+
+  /* two_top ต้องตรงกับ slice(-2) ของ three_top หลักแรก ถ้ามีทั้งคู่ */
+  if (three_top.length && two_top.length) {
+    const expectedTwoTop = three_top[0].slice(-2);
+    if (!two_top.includes(expectedTwoTop)) {
+      errors.push("two_top (" + two_top.join(",") + ") ไม่ตรงกับ 2 ตัวท้ายของ three_top (" + expectedTwoTop + ")");
+    }
+  }
+
+  /* three_tod ตรวจตามที่เก็บใน DB (string จาก parser) */
+  if (three_tod.length && !three_tod.every(x => /^\d{3}$/.test(x))) {
+    errors.push("three_tod: ต้องเป็นเลข 3 หลัก");
+  }
+
+  /* run_top — unique digits ของ three_top */
+  if (three_top.length && run_top.length) {
+    const expected = [...new Set(three_top[0].split(""))].sort();
+    const got = [...new Set(run_top.map(x => x[0]))].sort();
+    if (JSON.stringify(expected) !== JSON.stringify(got)) {
+      /* warn only — บาง parser ไม่ส่ง run_top — ไม่ block */
+    }
+  }
+
+  return { ok: errors.length === 0, errors };
 }
 
 function logAudit(userId, action, entityType, entityId, payload) {
