@@ -6820,6 +6820,111 @@ app.get("/api/admin/vendor-health", requireAuth, requireAdmin, (req, res) => {
     res.status(500).json({ ok: false, error: e.message });
   }
 });
+/* === D.7 SYSTEM-HEALTH-DASHBOARD === aggregated endpoint for /admin/system-health */
+app.get("/api/admin/system-health", requireAuth, requireAdmin, (_req, res) => {
+  try {
+    /* Vendor health */
+    const vh = db.prepare(`
+      SELECT rs.id AS source_id, rs.lottery_id, rs.provider, rs.name AS source_name, rs.priority, rs.active,
+             l.name AS lottery_name,
+             h.last_success_at, h.last_fail_at, h.last_error,
+             h.consecutive_fails, h.total_polls, h.total_success, h.total_fail
+      FROM result_sources rs
+      JOIN lotteries l ON l.id = rs.lottery_id
+      LEFT JOIN vendor_health_tracker h ON h.source_id = rs.id
+      WHERE rs.active = 1
+    `).all();
+    const vendors = vh.map(r => {
+      const total = r.total_polls || 0;
+      const uptime = total > 0 ? Math.round(((r.total_success || 0) / total) * 1000) / 10 : null;
+      let status = "unknown";
+      if ((r.consecutive_fails || 0) >= 3) status = "critical";
+      else if ((r.consecutive_fails || 0) >= 1) status = "warning";
+      else if (total > 0) status = "healthy";
+      return { ...r, uptime_pct: uptime, status };
+    });
+    const vsummary = {
+      total: vendors.length,
+      healthy: vendors.filter(v => v.status === "healthy").length,
+      warning: vendors.filter(v => v.status === "warning").length,
+      critical: vendors.filter(v => v.status === "critical").length,
+      unknown: vendors.filter(v => v.status === "unknown").length,
+    };
+
+    /* Cron status with last_run age */
+    const cronRows = [];
+    const now = Date.now();
+    for (const [name, e] of __cronRegistry) {
+      const lastRunMs = e.lastRun ? Date.parse(e.lastRun) : 0;
+      const ageMs = lastRunMs ? now - lastRunMs : null;
+      const expected = e.intervalMs + (e.jitterMs || 0);
+      const stale = ageMs != null && ageMs > expected * 3;
+      cronRows.push({
+        name: e.name,
+        interval_ms: e.intervalMs,
+        last_run: e.lastRun,
+        last_duration_ms: e.lastDurationMs,
+        last_error: e.lastError,
+        run_count: e.runCount,
+        age_ms: ageMs,
+        stale,
+      });
+    }
+    cronRows.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+
+    /* Overdue alerts (recent 7d) */
+    const overdue = db.prepare(`
+      SELECT oa.round_id, oa.alerted_at, r.lottery_id, r.draw_date, l.name AS lottery_name
+      FROM overdue_alerts oa
+      JOIN rounds r ON r.id = oa.round_id
+      JOIN lotteries l ON l.id = r.lottery_id
+      WHERE oa.alerted_at >= datetime('now', '-7 days')
+      ORDER BY oa.alerted_at DESC
+      LIMIT 50
+    `).all();
+
+    /* Mismatch alerts (Phase C.6) — recent unresolved */
+    let mismatches = [];
+    try {
+      mismatches = db.prepare(`
+        SELECT id, round_id, bet_type_id, db_value, vendor_value, severity, detected_at, resolved_at, notes
+        FROM mismatch_alerts
+        WHERE resolved_at IS NULL
+        ORDER BY detected_at DESC
+        LIMIT 50
+      `).all();
+    } catch {}
+
+    /* Upcoming holidays (next 14d) */
+    let holidays = [];
+    try {
+      holidays = db.prepare(`
+        SELECT id, date, name, lottery_id
+        FROM holidays
+        WHERE date >= date('now') AND date <= date('now', '+14 days')
+        ORDER BY date ASC
+      `).all();
+    } catch {}
+
+    res.json({
+      ok: true,
+      generated_at: new Date().toISOString(),
+      vendors: { summary: vsummary, rows: vendors },
+      cron: { rows: cronRows, stale_count: cronRows.filter(c => c.stale).length },
+      overdue_alerts: overdue,
+      mismatch_alerts: mismatches,
+      upcoming_holidays: holidays,
+    });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+/* serve /admin/system-health → HTML page */
+app.get("/admin/system-health", (_req, res) => {
+  res.sendFile(path.join(__dirname, "system-health.html"));
+});
+
 
 /* === B.2.5 HOLIDAY-CALENDAR-V1 admin endpoints === */
 app.get("/api/admin/holidays", requireAuth, requireAdmin, (req, res) => {

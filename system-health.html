@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>System Health — Lottery Manager</title>
+  <style>
+    :root { --bg:#0f1115; --panel:#171a21; --text:#e6e8eb; --muted:#9aa0a6; --healthy:#22c55e; --warning:#f59e0b; --critical:#ef4444; --unknown:#6b7280; --line:#262a33; }
+    * { box-sizing:border-box }
+    body { margin:0; background:var(--bg); color:var(--text); font:14px/1.5 -apple-system, "Segoe UI", "Noto Sans Thai", system-ui, sans-serif; }
+    header { padding:18px 22px; border-bottom:1px solid var(--line); display:flex; justify-content:space-between; align-items:center; }
+    header h1 { margin:0; font-size:18px; }
+    header .meta { color:var(--muted); font-size:12px; }
+    main { padding:20px; max-width:1280px; margin:0 auto; }
+    .row { display:grid; gap:14px; }
+    .row.k4 { grid-template-columns:repeat(4,minmax(0,1fr)); }
+    .row.k2 { grid-template-columns:repeat(2,minmax(0,1fr)); }
+    .kpi { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:14px 16px; }
+    .kpi .lbl { color:var(--muted); font-size:12px; text-transform:uppercase; letter-spacing:.04em; }
+    .kpi .v { font-size:28px; font-weight:700; margin-top:4px; }
+    .kpi.healthy .v { color:var(--healthy); }
+    .kpi.warning .v { color:var(--warning); }
+    .kpi.critical .v { color:var(--critical); }
+    .kpi.unknown .v { color:var(--unknown); }
+    section { margin-top:24px; }
+    h2 { font-size:15px; margin:0 0 10px; display:flex; gap:8px; align-items:center; }
+    h2 .count { background:var(--line); color:var(--muted); padding:2px 8px; border-radius:999px; font-size:12px; font-weight:400; }
+    table { width:100%; background:var(--panel); border:1px solid var(--line); border-radius:10px; border-collapse:separate; border-spacing:0; overflow:hidden; }
+    th, td { padding:8px 12px; text-align:left; border-bottom:1px solid var(--line); font-size:13px; }
+    th { background:#1d2128; color:var(--muted); font-weight:500; font-size:12px; }
+    tr:last-child td { border-bottom:none; }
+    .pill { display:inline-block; padding:2px 8px; border-radius:999px; font-size:11px; font-weight:600; }
+    .pill.healthy { background:rgba(34,197,94,.15); color:var(--healthy); }
+    .pill.warning { background:rgba(245,158,11,.15); color:var(--warning); }
+    .pill.critical { background:rgba(239,68,68,.15); color:var(--critical); }
+    .pill.unknown { background:rgba(107,114,128,.15); color:var(--unknown); }
+    .pill.stale { background:rgba(239,68,68,.15); color:var(--critical); }
+    .pill.fresh { background:rgba(34,197,94,.15); color:var(--healthy); }
+    .small { color:var(--muted); font-size:11px; }
+    button { background:var(--panel); border:1px solid var(--line); color:var(--text); padding:6px 14px; border-radius:6px; cursor:pointer; font-size:13px; }
+    button:hover { background:#222730; }
+    .err { color:var(--critical); padding:16px; }
+    .empty { color:var(--muted); padding:18px; text-align:center; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>System Health Dashboard</h1>
+    <div class="meta"><span id="generated">—</span> <button onclick="loadAll()">Refresh</button></div>
+  </header>
+  <main>
+    <div id="err"></div>
+    <div class="row k4" id="kpi-row"></div>
+
+    <section>
+      <h2>Vendor Health <span class="count" id="vh-count">0</span></h2>
+      <div id="vh-tbl"></div>
+    </section>
+
+    <section>
+      <h2>Cron Status <span class="count" id="cron-count">0</span></h2>
+      <div id="cron-tbl"></div>
+    </section>
+
+    <section class="row k2">
+      <div>
+        <h2>Recent Overdue Alerts (7d) <span class="count" id="ov-count">0</span></h2>
+        <div id="ov-tbl"></div>
+      </div>
+      <div>
+        <h2>Mismatch Alerts (unresolved) <span class="count" id="mm-count">0</span></h2>
+        <div id="mm-tbl"></div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Upcoming Holidays (14d) <span class="count" id="hol-count">0</span></h2>
+      <div id="hol-tbl"></div>
+    </section>
+  </main>
+
+<script>
+function esc(s){ return String(s ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function fmtAge(ms){ if(ms==null) return '—'; const s=Math.round(ms/1000); if(s<60) return s+'s'; if(s<3600) return Math.round(s/60)+'m'; if(s<86400) return (s/3600).toFixed(1)+'h'; return (s/86400).toFixed(1)+'d'; }
+
+async function loadAll(){
+  document.getElementById('err').innerHTML='';
+  try{
+    const r = await fetch('/api/admin/system-health', { credentials:'same-origin' });
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    const d = await r.json();
+    if(!d.ok) throw new Error(d.error || 'API error');
+    render(d);
+  }catch(e){
+    document.getElementById('err').innerHTML = '<div class="err">Failed to load: '+esc(e.message)+'</div>';
+  }
+}
+
+function render(d){
+  document.getElementById('generated').textContent = 'as of ' + new Date(d.generated_at).toLocaleString('th-TH');
+  const v = d.vendors.summary;
+  document.getElementById('kpi-row').innerHTML =
+    `<div class="kpi healthy"><div class="lbl">Healthy</div><div class="v">${v.healthy}</div></div>
+     <div class="kpi warning"><div class="lbl">Warning</div><div class="v">${v.warning}</div></div>
+     <div class="kpi critical"><div class="lbl">Critical</div><div class="v">${v.critical}</div></div>
+     <div class="kpi unknown"><div class="lbl">Unknown / total</div><div class="v">${v.unknown} / ${v.total}</div></div>`;
+
+  /* vendor health table */
+  const vrows = d.vendors.rows.sort((a,b)=>{
+    const order={critical:0,warning:1,unknown:2,healthy:3};
+    return (order[a.status]??9)-(order[b.status]??9);
+  });
+  document.getElementById('vh-count').textContent = vrows.length;
+  document.getElementById('vh-tbl').innerHTML = vrows.length ?
+    `<table><thead><tr><th>Status</th><th>Lottery</th><th>Source</th><th>Provider</th><th>Uptime</th><th>Polls</th><th>Cons. Fails</th><th>Last Error</th></tr></thead><tbody>${
+      vrows.map(r=>`<tr><td><span class="pill ${r.status}">${r.status}</span></td><td>${esc(r.lottery_name)}</td><td>${esc(r.source_name)}</td><td class="small">${esc(r.provider)}</td><td>${r.uptime_pct==null?'—':r.uptime_pct+'%'}</td><td>${r.total_polls||0}</td><td>${r.consecutive_fails||0}</td><td class="small">${esc((r.last_error||'').slice(0,60))}</td></tr>`).join('')
+    }</tbody></table>` : '<div class="empty">no sources</div>';
+
+  /* cron */
+  document.getElementById('cron-count').textContent = d.cron.rows.length;
+  document.getElementById('cron-tbl').innerHTML = d.cron.rows.length ?
+    `<table><thead><tr><th>Status</th><th>Cron name</th><th>Interval</th><th>Age</th><th>Last duration</th><th>Runs</th><th>Last error</th></tr></thead><tbody>${
+      d.cron.rows.map(c=>`<tr><td><span class="pill ${c.stale?'stale':'fresh'}">${c.stale?'STALE':'OK'}</span></td><td>${esc(c.name)}</td><td>${fmtAge(c.interval_ms)}</td><td>${fmtAge(c.age_ms)}</td><td>${c.last_duration_ms!=null?c.last_duration_ms+'ms':'—'}</td><td>${c.run_count||0}</td><td class="small">${esc((c.last_error||'').slice(0,60))}</td></tr>`).join('')
+    }</tbody></table>` : '<div class="empty">no crons</div>';
+
+  /* overdue */
+  document.getElementById('ov-count').textContent = d.overdue_alerts.length;
+  document.getElementById('ov-tbl').innerHTML = d.overdue_alerts.length ?
+    `<table><thead><tr><th>Time</th><th>Lottery</th><th>Draw</th></tr></thead><tbody>${
+      d.overdue_alerts.map(o=>`<tr><td class="small">${esc(o.alerted_at)}</td><td>${esc(o.lottery_name)}</td><td>${esc(o.draw_date)}</td></tr>`).join('')
+    }</tbody></table>` : '<div class="empty">no alerts (good)</div>';
+
+  /* mismatch */
+  document.getElementById('mm-count').textContent = d.mismatch_alerts.length;
+  document.getElementById('mm-tbl').innerHTML = d.mismatch_alerts.length ?
+    `<table><thead><tr><th>Sev</th><th>Round</th><th>Bet type</th><th>DB</th><th>Vendor</th><th>Detected</th></tr></thead><tbody>${
+      d.mismatch_alerts.map(m=>`<tr><td><span class="pill critical">${esc(m.severity)}</span></td><td class="small">${esc(m.round_id)}</td><td>${esc(m.bet_type_id)}</td><td>${esc(m.db_value)}</td><td>${esc(m.vendor_value)}</td><td class="small">${esc(m.detected_at)}</td></tr>`).join('')
+    }</tbody></table>` : '<div class="empty">no mismatches</div>';
+
+  /* holidays */
+  document.getElementById('hol-count').textContent = d.upcoming_holidays.length;
+  document.getElementById('hol-tbl').innerHTML = d.upcoming_holidays.length ?
+    `<table><thead><tr><th>Date</th><th>Name</th><th>Lottery</th></tr></thead><tbody>${
+      d.upcoming_holidays.map(h=>`<tr><td>${esc(h.date)}</td><td>${esc(h.name)}</td><td>${esc(h.lottery_id||'(all)')}</td></tr>`).join('')
+    }</tbody></table>` : '<div class="empty">no upcoming holidays</div>';
+}
+
+loadAll();
+setInterval(loadAll, 60000);
+</script>
+</body>
+</html>
