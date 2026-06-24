@@ -5787,6 +5787,47 @@ async function notifyResultFinalized(roundId, source) {
     console.warn("[discord-result-notify]", e.message);
   }
 }
+/* === VENDOR-HEALTH-V1 (B.1.2) === update health counters per pull attempt
+ * Called after pullFromApilotto/pullFromScraper to track success/fail per source.
+ * Looks up source_id from result_sources by lottery_id + provider.
+ */
+function updateVendorHealth(lotteryId, provider, success, errorMsg) {
+  try {
+    const src = db.prepare(
+      "SELECT id FROM result_sources WHERE lottery_id = ? AND provider = ? AND active = 1 ORDER BY priority LIMIT 1"
+    ).get(lotteryId, provider);
+    if (!src) return;
+    const now = nowIso();
+    if (success) {
+      db.prepare(`
+        INSERT INTO vendor_health_tracker (source_id, last_success_at, consecutive_fails, total_polls, total_success, total_fail, updated_at)
+        VALUES (?, ?, 0, 1, 1, 0, ?)
+        ON CONFLICT(source_id) DO UPDATE SET
+          last_success_at = excluded.last_success_at,
+          consecutive_fails = 0,
+          total_polls = total_polls + 1,
+          total_success = total_success + 1,
+          updated_at = excluded.updated_at
+      `).run(src.id, now, now);
+    } else {
+      const safeErr = String(errorMsg || "unknown").slice(0, 200);
+      db.prepare(`
+        INSERT INTO vendor_health_tracker (source_id, last_fail_at, last_error, consecutive_fails, total_polls, total_success, total_fail, updated_at)
+        VALUES (?, ?, ?, 1, 1, 0, 1, ?)
+        ON CONFLICT(source_id) DO UPDATE SET
+          last_fail_at = excluded.last_fail_at,
+          last_error = excluded.last_error,
+          consecutive_fails = consecutive_fails + 1,
+          total_polls = total_polls + 1,
+          total_fail = total_fail + 1,
+          updated_at = excluded.updated_at
+      `).run(src.id, now, safeErr, now);
+    }
+  } catch (e) {
+    console.warn("[vendor-health]", e.message);
+  }
+}
+
 
 /* APILOTTO Phase A: apply pulled data → upsert results into a round */
 async function applyApilottoToRound(roundId) {
@@ -5796,8 +5837,13 @@ async function applyApilottoToRound(roundId) {
 
   /* SCRAPER-FRAMEWORK-V1: ลอง apilotto ก่อน, ถ้าไม่มี source ลอง scraper */
   let pulled = await pullFromApilotto(round.lottery_id);
+  /* B.1.2 VENDOR-HEALTH-V1: track apilotto outcome (skip no_source) */
+  if (pulled.ok) updateVendorHealth(round.lottery_id, "API Lotto", true, null);
+  else if (pulled.error !== "no_source") updateVendorHealth(round.lottery_id, "API Lotto", false, pulled.error);
   if (!pulled.ok && pulled.error === "no_source") {
     pulled = await pullFromScraper(round.lottery_id);
+    if (pulled.ok) updateVendorHealth(round.lottery_id, "Scraper", true, null);
+    else if (pulled.error !== "no_scraper_source") updateVendorHealth(round.lottery_id, "Scraper", false, pulled.error);
   }
   if (!pulled.ok) return { ok: false, error: pulled.error || "pull_failed" };
   const r = pulled.result;
