@@ -6318,6 +6318,36 @@ app.get("/api/admin/apilotto/ping", requireAuth, requireAdmin, async (req, res) 
   } catch (e) { res.json({ ok: false, error: e.message }); }
 });
 
+/* === B.1.4 VENDOR-HEALTH-V1 admin endpoint === */
+app.get("/api/admin/vendor-health", requireAuth, requireAdmin, (req, res) => {
+  try {
+    const rows = db.prepare(`
+      SELECT rs.id AS source_id, rs.lottery_id, rs.provider, rs.name AS source_name, rs.priority, rs.active,
+             l.name AS lottery_name,
+             h.last_success_at, h.last_fail_at, h.last_error,
+             h.consecutive_fails, h.total_polls, h.total_success, h.total_fail, h.updated_at
+      FROM result_sources rs
+      JOIN lotteries l ON l.id = rs.lottery_id
+      LEFT JOIN vendor_health_tracker h ON h.source_id = rs.id
+      ORDER BY h.consecutive_fails DESC NULLS LAST, rs.lottery_id, rs.priority
+    `).all();
+    const enriched = rows.map(r => {
+      const total = r.total_polls || 0;
+      const uptime = total > 0 ? Math.round(((r.total_success || 0) / total) * 1000) / 10 : null;
+      return { ...r, uptime_pct: uptime };
+    });
+    const summary = {
+      total_sources: enriched.length,
+      healthy: enriched.filter(r => (r.consecutive_fails || 0) === 0).length,
+      warning: enriched.filter(r => (r.consecutive_fails || 0) >= 1 && (r.consecutive_fails || 0) < 3).length,
+      critical: enriched.filter(r => (r.consecutive_fails || 0) >= 3).length,
+    };
+    res.json({ ok: true, summary, rows: enriched });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
 console.log("[p3-bank-accounts] backend ready");
 
 
