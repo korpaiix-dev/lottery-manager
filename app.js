@@ -5060,16 +5060,74 @@ async function renderResultEditor() {
   });
 
   document.querySelector("#finalizeResultBtn")?.addEventListener("click", async () => {
+    /* === C.1.2 + C.3.1 PHASE-C MANUAL-SAFETY FRONTEND === */
     try {
-      await api(`/api/results/${encodeURIComponent(roundId)}/finalize`, { method: "POST" });
-      await refreshState();
-    } catch (error) {
-      if (error?.payload?.error === "result_incomplete") {
-        showToast("ยังยืนยันผลไม่ได้ เพราะยังกรอกผลไม่ครบทุกประเภทเลขที่มีการขายในงวดนี้", "warning");
-        return;
+      /* Step 1: fetch vendor suggestion */
+      let suggestion = null;
+      try {
+        const r = await fetch(`/api/admin/results/${encodeURIComponent(roundId)}/vendor-suggest`, { credentials: "include" });
+        if (r.ok) suggestion = await r.json();
+      } catch (_) {}
+
+      /* Step 2: show modal with vendor preview + collect retype + (optional) override_reason */
+      const sug = suggestion && suggestion.suggestion;
+      const vendorBlock = sug && sug.ok
+        ? `<div style="background:#f4f9ff;border:1px solid #b9d4f0;border-radius:8px;padding:10px;margin:8px 0">
+            <div style="font-weight:600;margin-bottom:4px">ผลจาก vendor (${sug.source_name || sug.source})</div>
+            <div>3 ตัวบน: <strong>${(sug.three_top || []).join(", ") || "—"}</strong></div>
+            <div>2 ตัวบน: <strong>${(sug.two_top || []).join(", ") || "—"}</strong></div>
+            <div>2 ตัวล่าง: <strong>${(sug.two_bottom || []).join(", ") || "—"}</strong></div>
+          </div>`
+        : `<div style="background:#fff4e6;border:1px solid #f0c891;border-radius:8px;padding:10px;margin:8px 0">⚠️ ไม่สามารถดึงข้อมูลจาก vendor ได้ (${(sug && sug.error) || "n/a"}) — กรุณาตรวจสอบเลขด้วยตัวเองอีกครั้ง</div>`;
+      const html = `
+        <div>
+          <div style="margin-bottom:6px">ระบบจะเทียบเลขที่กรอกกับ vendor ก่อน finalize</div>
+          ${vendorBlock}
+          <label style="display:block;margin-top:8px">พิมพ์ <strong>3 ตัวบน</strong> ซ้ำเพื่อยืนยัน (เลขแรกหรือทุกตัวคั่นด้วยช่องว่าง)</label>
+          <input id="phaseC_retype" type="text" inputmode="numeric" autocomplete="off"
+            style="width:100%;padding:8px;border:1px solid #ccc;border-radius:6px;font-size:16px" placeholder="เช่น 123 หรือ 123 456" />
+          <label style="display:block;margin-top:10px">เหตุผล override (กรอกถ้าเลขไม่ตรง vendor)</label>
+          <textarea id="phaseC_reason" rows="2" style="width:100%;padding:8px;border:1px solid #ccc;border-radius:6px;font-size:14px" placeholder="เช่น vendor ผิด — มีหลักฐาน screenshot จาก..."></textarea>
+        </div>
+      `;
+      const ok = await confirmDialog({ title: "ยืนยันผลรางวัล (Phase C safety)", body: html, confirmLabel: "Finalize", cancelLabel: "ยกเลิก" });
+      if (!ok) return;
+      const retype = (document.getElementById("phaseC_retype")?.value || "").trim();
+      const reason = (document.getElementById("phaseC_reason")?.value || "").trim();
+      if (!retype) { showToast("กรุณาพิมพ์ 3 ตัวบนเพื่อยืนยัน", "warning"); return; }
+
+      /* Step 3: call finalize with override fields */
+      try {
+        await api(`/api/results/${encodeURIComponent(roundId)}/finalize`, {
+          method: "POST",
+          body: {
+            retype_three_top: retype,
+            override_reason: reason,
+            override_confirm: Boolean(reason),
+          },
+        });
+        await refreshState();
+        showToast("✓ Finalize สำเร็จ", "success");
+      } catch (error) {
+        const code = error?.payload?.error;
+        if (code === "result_incomplete") {
+          showToast("ยังยืนยันผลไม่ได้ เพราะยังกรอกผลไม่ครบทุกประเภทเลขที่มีการขายในงวดนี้", "warning"); return;
+        }
+        if (code === "semantic_invalid") {
+          showToast("⚠️ Semantic validation: " + (error.payload.details || []).join(" · "), "danger"); return;
+        }
+        if (code === "vendor_mismatch_requires_override") {
+          showToast("เลขไม่ตรง vendor — กรุณากรอกเหตุผล override ก่อน finalize", "warning"); return;
+        }
+        if (code === "retype_mismatch") {
+          showToast("3 ตัวบนที่พิมพ์ไม่ตรง (พยายามครั้งที่ " + (error.payload.attempts || 1) + "/3)", "danger"); return;
+        }
+        if (code === "retype_locked") {
+          showToast("🔒 ล็อก finalize ของงวดนี้ — พิมพ์ผิดเกิน 3 ครั้ง แจ้ง Discord แล้ว ติดต่อแอดมิน", "danger"); return;
+        }
+        showToast("ยังยืนยันผลไม่ได้: " + (code || error.message || "unknown"), "danger");
       }
-      showToast("ยังยืนยันผลไม่ได้ ตรวจว่ามีผลรางวัลครบแล้ว", "warning");
-    }
+    } catch (e) { showToast("เกิดข้อผิดพลาด: " + e.message, "danger"); }
   });
   document.querySelector("#reopenResultBtn")?.addEventListener("click", async () => {
     if (!(await confirmDialog({ title: "เปิดผลกลับมาแก้", body: "ผลรางวัลที่ยืนยันแล้วจะเปลี่ยนสถานะกลับเป็น draft เพื่อแก้ไข", danger: false }))) return;
