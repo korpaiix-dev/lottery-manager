@@ -481,7 +481,7 @@ app.use(helmet({
       styleSrc: ["\u0027self\u0027", "\u0027unsafe-inline\u0027", "https://fonts.googleapis.com"],
       fontSrc: ["\u0027self\u0027", "https://fonts.gstatic.com", "data:"],
       imgSrc: ["\u0027self\u0027", "data:", "https:", "blob:"],
-      connectSrc: ["\u0027self\u0027", "https://api.line.me", "https://liff.line.me"],
+      connectSrc: ["\u0027self\u0027", "https://api.line.me", "https://liff.line.me", "https://liffsdk.line-scdn.net", "https://static.line-scdn.net", "https://access.line.me"],
       frameAncestors: ["\u0027self\u0027", "https://liff.line.me"],
     },
   },
@@ -1912,6 +1912,34 @@ app.use("/img", express.static(path.join(__dirname, "img"), {
   maxAge: "7d",
   setHeaders: (res) => { res.setHeader("Cache-Control", "public, max-age=604800"); }
 }));
+
+// === DIAGNOSTIC: LIFF debug logger (2026-06-25) ===
+// Frontend posts here from tryLiffInit so we can see WHY isInClient/login/token fails
+const __liffDebugRl = new Map();
+app.post("/api/debug/liff-info", express.json({ limit: "16kb" }), (req, res) => {
+  try {
+    const ip = String(req.headers["x-forwarded-for"] || req.socket.remoteAddress || "?").split(",")[0].trim();
+    const now = Date.now();
+    const last = __liffDebugRl.get(ip) || 0;
+    if (now - last < 1000) return res.status(204).end(); // throttle 1/s per IP
+    __liffDebugRl.set(ip, now);
+    if (__liffDebugRl.size > 500) {
+      for (const [k, v] of __liffDebugRl) { if (now - v > 600000) __liffDebugRl.delete(k); }
+    }
+    const info = req.body || {};
+    console.log("[LIFF-DEBUG]", JSON.stringify({
+      ts: new Date().toISOString(),
+      ip,
+      ua: req.headers["user-agent"],
+      referer: req.headers.referer || null,
+      ...info,
+    }));
+  } catch (e) {
+    console.warn("[LIFF-DEBUG] handler err:", e.message);
+  }
+  res.status(204).end();
+});
+
 app.get("/order-config.js", (_req, res) => {
   const s = loadLineSettings();
   res.type("application/javascript").send(`window.LIFF_ID = ${JSON.stringify(s.liffId || "")};`);
@@ -2719,7 +2747,7 @@ function requireCsrf(req, res, next) {
   /* Skip public + customer endpoints (no session) */
   const url = req.path || req.url || "";
   const skip = [
-    "/api/login", "/api/logout", "/api/customer/", "/api/public/", "/api/csrf", "/api/line/"
+    "/api/login", "/api/logout", "/api/customer/", "/api/public/", "/api/csrf", "/api/line/", "/api/debug/"
   ].some((p) => url.startsWith(p));
   if (skip) return next();
   /* Require valid token matching session */

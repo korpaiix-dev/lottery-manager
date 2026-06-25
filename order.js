@@ -18,18 +18,68 @@
     }
   } catch (e) {}
   async function tryLiffInit() {
-    if (!window.liff || !window.LIFF_ID || window.LIFF_ID === "REPLACE_WITH_LIFF_ID" || !window.LIFF_ID) return;
+    var diag = {
+      ts: new Date().toISOString(),
+      stage: "start",
+      url: location.href,
+      ua: navigator.userAgent,
+      hasLiff: !!window.liff,
+      liffId: window.LIFF_ID || null,
+      placeholder: window.LIFF_ID === "REPLACE_WITH_LIFF_ID",
+    };
+    function sendDiag() {
+      try {
+        navigator.sendBeacon
+          ? navigator.sendBeacon("/api/debug/liff-info",
+              new Blob([JSON.stringify(diag)], { type: "application/json" }))
+          : fetch("/api/debug/liff-info", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(diag),
+              keepalive: true,
+            });
+      } catch (e) {}
+    }
+    if (!window.liff || !window.LIFF_ID || window.LIFF_ID === "REPLACE_WITH_LIFF_ID") {
+      diag.stage = "no_sdk_or_id";
+      sendDiag();
+      return;
+    }
     try {
       await liff.init({ liffId: window.LIFF_ID });
-      // Only auto-fill profile when running INSIDE LINE app (in-app browser)
-      // Outside LINE (normal web browser), skip — user fills form manually
-      if (!liff.isInClient || !liff.isInClient()) {
+      diag.stage = "init_ok";
+      diag.initOk = true;
+      try { diag.isInClient = !!(liff.isInClient && liff.isInClient()); } catch (e) { diag.isInClientErr = String(e.message || e); }
+      try { diag.isLoggedIn = !!(liff.isLoggedIn && liff.isLoggedIn()); } catch (e) { diag.isLoggedInErr = String(e.message || e); }
+      try { diag.os = liff.getOS && liff.getOS(); } catch (e) {}
+      try { diag.lang = liff.getLanguage && liff.getLanguage(); } catch (e) {}
+      try { diag.lineVersion = liff.getLineVersion && liff.getLineVersion(); } catch (e) {}
+      try { diag.context = liff.getContext && liff.getContext(); } catch (e) { diag.contextErr = String(e.message || e); }
+      var uaHasLine = /Line\//i.test(navigator.userAgent);
+      diag.uaHasLine = uaHasLine;
+      // Treat as in-LINE if SDK says so OR User-Agent contains "Line/"
+      var inLine = diag.isInClient || uaHasLine;
+      diag.effectiveInLine = inLine;
+      if (!inLine) {
+        diag.stage = "external_browser";
         console.log("[LIFF] not in LINE app — skip auto-login");
+        sendDiag();
         return;
       }
-      if (liff.isLoggedIn()) {
+      if (!diag.isLoggedIn) {
+        diag.stage = "not_logged_in_will_login";
+        sendDiag();
+        try { liff.login(); } catch (e) { console.warn("[LIFF] login err:", e); }
+        return;
+      }
+      try {
         const p = await liff.getProfile();
+        diag.userIdLen = p && p.userId ? p.userId.length : 0;
+        diag.hasDisplayName = !!(p && p.displayName);
         const token = liff.getAccessToken ? liff.getAccessToken() : null;
+        diag.hasToken = !!token;
+        diag.tokenLen = token ? token.length : 0;
+        diag.stage = diag.hasToken ? "ok_with_token" : "ok_no_token";
         lineProfile = { userId: p.userId, displayName: p.displayName, pictureUrl: p.pictureUrl, accessToken: token };
         var nameInput = document.querySelector("#custName");
         if (nameInput && !nameInput.value) nameInput.value = p.displayName || "";
@@ -40,13 +90,17 @@
           bd.innerHTML = (p.pictureUrl ? '<img src="' + p.pictureUrl + '" alt="" />' : "") + '<span>เข้าระบบเป็น <strong>' + p.displayName + '</strong></span>';
           head.appendChild(bd);
         }
-      } else {
-        // Only login when in LINE app — silent redirect inside LINE webview
-        liff.login();
+      } catch (e) {
+        diag.stage = "get_profile_failed";
+        diag.profileErr = String(e.message || e);
       }
     } catch (e) {
-      console.warn("[LIFF] init failed (probably not in LINE):", e.message);
+      diag.stage = "init_failed";
+      diag.error = String(e.message || e);
+      diag.stack = String(e.stack || "").slice(0, 500);
+      console.warn("[LIFF] init failed:", e.message);
     }
+    sendDiag();
   }
   tryLiffInit();
 
