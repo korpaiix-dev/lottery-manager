@@ -5662,8 +5662,12 @@ async function pullFromApilotto(lotteryId) {
       /* 2 ตัวบน/ล่าง */
       two_top: two_top_from_no1,
       two_bottom: String(item.suffix2 || "").padStart(2, "0"),
-      /* 3 ตัวบน = เลขท้าย 3 ตัวของรางวัล 1 + 3 ตัวหน้า (prefix3) — ใช้ prefix3 ตาม pattern ของระบบ */
-      three_top: Array.isArray(item.prefix3) ? item.prefix3.map(x => String(x).padStart(3,"0")) : [],
+      /* THAI-FIX-V2: 3 ตัวบน = 3 หลักท้ายของรางวัลที่ 1 (ไม่ใช่ prefix3 = เลขหน้า 3 ตัว!)
+       * prefix3 (001, 980) = "เลขหน้า 3 ตัว" — คนละ bet type
+       * suffix3 (304, 531) = "เลขท้าย 3 ตัว" → three_bottom
+       * เดิม: three_top = prefix3 → แสดง "001 980" แทน "495" — ผิด!
+       */
+      three_top: [three_top_from_no1],
       three_bottom: Array.isArray(item.suffix3) ? item.suffix3.map(x => String(x).padStart(3,"0")) : [],
       /* 3 ตัวโต๊ด = 3 ตัวท้ายรางวัล 1 (sortDigits ตอน match) */
       three_tod: three_top_from_no1,
